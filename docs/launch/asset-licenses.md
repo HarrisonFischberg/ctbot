@@ -6,7 +6,7 @@
 |---|---|---|
 | Dashboard code, styles, icons (inline SVG paths) | Written for this project | MIT (this repo) |
 | Fonts | System fonts only (`-apple-system`, `ui-serif`, `ui-monospace` stacks); none bundled or downloaded | Not distributed |
-| Images | None in the repository | n/a |
+| Screenshots in `docs/images/` | Captured from CTbot's own dashboard with demo data (anonymised account) | MIT (this repo) |
 | Chart palette | Validated default palette from the dataviz skill used during development; colour values only | Not copyrightable values |
 
 ## Python dependencies (installed versions, 2026-10-15)
