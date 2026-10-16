@@ -157,6 +157,9 @@ body { min-height: 100vh; }
   font-size: 12.5px; color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums;
   box-shadow: 0 8px 28px rgba(0,0,0,.45); opacity: 0; transition: opacity .1s; }
 .chart .tip .t { color: var(--muted); font-size: 11.5px; }
+.pxpick input { width: 92px; background: rgba(var(--tint), .05); border: 1px solid transparent; color: var(--ink); border-radius: 999px;
+  padding: 5px 12px; font: 600 12.5px var(--sans); text-transform: uppercase; }
+.pxpick input:focus { outline: none; border-color: var(--neon); }
 .empty { display: grid; place-items: center; height: 100%; color: var(--muted); font-size: 13.5px; text-align: center; padding: 20px; }
 .seg { display: inline-flex; background: rgba(var(--tint), .05); border-radius: 999px; padding: 3px; gap: 2px; }
 .seg button { background: transparent; color: var(--ink-2); border: 0; padding: 5px 12px; font: 500 12px var(--sans); cursor: pointer; border-radius: 999px; }
@@ -224,6 +227,7 @@ body { min-height: 100vh; }
 .act input { width: 78px; background: rgba(var(--tint), .05); border: 1px solid transparent; color: var(--ink); border-radius: 999px;
   padding: 6px 10px; font: 13px var(--sans); font-variant-numeric: tabular-nums; text-align: right; }
 .act input:focus { outline: none; border-color: var(--neon); }
+.act .usd { color: var(--muted); margin-right: -2px; }
 .btn { background: rgba(var(--tint), .08); border: 0; color: var(--ink); border-radius: 999px; padding: 7px 16px;
   font: 600 12.5px var(--sans); cursor: pointer; white-space: nowrap; transition: background .15s; }
 .btn:hover:not(:disabled) { background: rgba(var(--tint), .14); }
@@ -327,7 +331,7 @@ body.resizing-any { user-select: none; cursor: nwse-resize; }
 @media (min-width: 1101px) { .card.sized-w { grid-column: span var(--span); } }
 .card.sized-h { height: var(--h); display: flex; flex-direction: column; overflow: auto; }
 .card.sized-min { min-height: var(--h); }  /* no scrolling body: may grow, never cut its text */
-.card.sized-h > :is(.scroll, .log, .chart, .catalog, .limits, .strats, .discover, .holdings, .steps, #runs, .keys, #rh, #checks) {
+.card.sized-h > :is(.scroll, .log, .chart, .catalog, .limits, .strats, .discover, .holdings, .steps, #runs, .keys, #rh, #wb, #checks) {
   flex: 1 1 auto; min-height: 0; max-height: none !important; height: auto !important; overflow: auto; }
 /* ---- settings ---- */
 .keys { display: grid; gap: 14px; }
@@ -339,8 +343,8 @@ body.resizing-any { user-select: none; cursor: nwse-resize; }
   border-radius: 999px; padding: 8px 14px; font: 13px var(--sans); }
 .krow input:focus { outline: none; border-color: var(--neon); }
 .note { color: var(--muted); font-size: 12.5px; line-height: 1.55; margin: 12px 0 0; }
-#rh p { margin: 0 0 10px; font-size: 13.5px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-#rh .note { display: block; }
+#rh p, #wb p { margin: 0 0 10px; font-size: 13.5px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+#rh .note, #wb .note { display: block; }
 code { font: 12px var(--code); background: rgba(var(--tint), .06); padding: 1px 5px; border-radius: 5px; }
 /* ---- launcher ---- */
 .launch { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; }
@@ -507,10 +511,20 @@ main:focus { outline: none; }
           <button data-range="1d">1D</button><button data-range="1w">1W</button><button data-range="all" class="on">All</button>
         </span>
         <span class="seg" role="group" aria-label="View">
-          <button data-view="chart" class="on">Chart</button><button data-view="table">Table</button>
+          <button data-view="chart" class="on">Line</button><button data-view="candles">Candles</button><button data-view="table">Table</button>
         </span>
       </h2>
       <div class="chart" id="chart"></div>
+    </div>
+    <div data-tab="home" class="card span-12">
+      <h2>Stock chart <span class="count" id="pxMeta"></span><span class="spacer"></span>
+        <form class="pxpick" id="pxForm"><input id="pxSym" list="pxList" maxlength="10" autocomplete="off" spellcheck="false"
+          aria-label="Stock symbol: type one and press Enter" placeholder="Symbol"><datalist id="pxList"></datalist></form>
+        <span class="seg" role="group" aria-label="Chart span">
+          <button data-px="1d">1D</button><button data-px="1w">1W</button><button data-px="3m">3M</button><button data-px="1y">1Y</button>
+        </span>
+      </h2>
+      <div class="chart" id="pxChart"></div>
     </div>
     <div data-tab="home" class="card span-12">
       <h2>Your strategies <span class="count" id="runMeta"></span></h2>
@@ -611,8 +625,12 @@ main:focus { outline: none; }
       <h2>Robinhood</h2>
       <div id="rh"></div>
     </div>
-    <div data-tab="settings" class="card span-12">
-      <h2>Check connections <span class="count">read-only: a quote from Robinhood, the Claude model, the bot's heartbeat, live off</span>
+    <div data-tab="settings" class="card span-5">
+      <h2>Webull</h2>
+      <div id="wb"></div>
+    </div>
+    <div data-tab="settings" class="card span-7">
+      <h2>Check connections <span class="count">read-only: a quote from Robinhood, Webull and TradingFlow candles if set up, the Claude model, the bot's heartbeat, live off</span>
         <span class="spacer"></span><button class="btn" id="runChecks" type="button">Run check</button></h2>
       <div id="checks" class="xscroll"><div class="note">Not run yet.</div></div>
     </div>
@@ -760,6 +778,35 @@ main:focus { outline: none; }
        ${rh.signed_in ? `<button class="btn sell" id="rhDisconnect" type="button">Disconnect</button>` : ""}`;
     clearTimeout(rhPoll);
     if (rh.connecting) rhPoll = setTimeout(loadSettings, 2000);
+    renderWebull(st.webull || {});
+  }
+  let wbPoll = 0;
+  function renderWebull(w) {
+    let h;
+    if (!w.configured) {
+      h = `<p><span class="tag off">Not set up</span></p>
+        <p class="note">Paste your Webull <b>App Key</b> and <b>App Secret</b> under API keys. You get them on the Webull website:
+        OpenAPI Management → App Management (approval takes Webull 1–2 business days).</p>`;
+    } else {
+      const status = w.checked ? `<span class="tag on">Connected</span> ${esc(w.checked)}`
+        : w.token === "PENDING" ? `<span class="tag q">Waiting for you in the Webull app</span>`
+        : w.token === "NORMAL" ? `<span class="tag on">Approved</span> press Check again to test it`
+        : `<span class="tag off">Keys saved, not checked yet</span>`;
+      h = `<p>${status}</p>` +
+        (w.token === "PENDING" ? `<p class="note">Webull texted a code to your phone. In the Webull app open Menu → Messages → OpenAPI Notifications,
+          tap the latest message and enter the code within 5 minutes. This card updates by itself.</p>` : "") +
+        (w.error ? `<p class="note" style="color:var(--crit)">${esc(w.error)}</p>` : "") +
+        `<button class="btn ${w.checked ? "" : "solid"}" id="wbConnect" type="button">${w.checked || w.token === "NORMAL" ? "Check again" : "Connect Webull"}</button>
+         ${w.token ? `<button class="btn sell" id="wbDisconnect" type="button">Disconnect</button>` : ""}`;
+    }
+    $("wb").innerHTML = h + `<p class="note">Read-only: CTbot uses Webull only for price candles (the stock chart, and a backup for daily prices).
+      It never places Webull orders. US stock prices need Webull's OpenAPI market-data subscription (Nasdaq Basic, non-display);
+      one bought in the Webull app doesn't carry over.</p>`;
+    clearTimeout(wbPoll);
+    if (w.token === "PENDING") wbPoll = setTimeout(async () => {
+      const [ok, j] = await api("/api/webull/check");
+      if (ok) { SETTINGS = j; renderSettings(j); }
+    }, 3000);
   }
   document.addEventListener("submit", async (e) => {
     const f = e.target.closest(".krow");
@@ -787,6 +834,20 @@ main:focus { outline: none; }
       const [ok, j] = await api("/api/robinhood/disconnect");
       if (!ok) return toast(j.error || "Could not disconnect.", true);
       toast("Disconnected. The saved Robinhood sign-in was deleted."); renderSettings(j); return;
+    }
+    if (e.target.closest("#wbConnect")) {
+      const b = e.target.closest("#wbConnect"); b.disabled = true; b.textContent = "Checking…";
+      const [ok, j] = await api("/api/webull/connect");
+      if (!ok) { toast(j.error || "Could not reach Webull.", true); return loadSettings(); }
+      SETTINGS = j; renderSettings(j);
+      const w = j.webull;
+      toast(w.error ? "Webull: " + w.error : w.checked ? "Webull connected." : "Approve the sign-in in the Webull app.", !!w.error); return;
+    }
+    if (e.target.closest("#wbDisconnect")) {
+      if (!confirm("Disconnect Webull?\n\nThis deletes the Webull sign-in token saved on this Mac. Your keys stay saved; remove them under API keys.")) return;
+      const [ok, j] = await api("/api/webull/disconnect");
+      if (!ok) return toast(j.error || "Could not disconnect.", true);
+      toast("Disconnected. The saved Webull token was deleted."); renderSettings(j); return;
     }
     if (e.target.closest("#rhConnect")) {
       const [ok, j] = await api("/api/robinhood/connect");
@@ -916,8 +977,15 @@ main:focus { outline: none; }
       el.innerHTML = `<div class="empty">No equity history yet.<br>Each paper cycle records a point; run ctbot-paper --loop during market hours.</div>`;
       return;
     }
-    const W = el.clientWidth || 800, H = el.clientHeight || 280, pl = 64, pr = 16, pt = 12, pb = 28;
     const base = S.account_summary.starting_capital;
+    if (view === "candles") {
+      const [C, label] = equityCandles(pts);
+      $("eqCount").textContent = `${C.length} candles · ${label} each`;
+      drawCandles(el, C, { base, fmtT: label === "1 day" || label === "1 week" ? fmtDay : fmtTime,
+        aria: `Account value in ${label} candles, latest ${usd(C[C.length - 1].c)}` });
+      return;
+    }
+    const W = el.clientWidth || 800, H = el.clientHeight || 280, pl = 64, pr = 16, pt = 12, pb = 28;
     let lo = Math.min(base, ...pts.map((p) => p.v)), hi = Math.max(base, ...pts.map((p) => p.v));
     const pad = (hi - lo) * 0.12 || hi * 0.01 || 1; lo -= pad; hi += pad;
     const t0 = pts[0].t, t1 = pts[pts.length - 1].t;
@@ -957,6 +1025,123 @@ main:focus { outline: none; }
     });
     hit.addEventListener("mouseleave", () => { xh.setAttribute("opacity", 0); tip.style.opacity = 0; });
   }
+
+  // ---- candlesticks ------------------------------------------------------------
+  // One candle per period: the body runs from the open to the close (green if it closed higher,
+  // red if lower) and the thin wick from the low to the high. Shared by both charts.
+  const fmtDay = (t) => new Date(t).toLocaleDateString("en-US", { timeZone: ET, month: "short", day: "numeric", year: "numeric" });
+  const etDay = (t) => new Date(t).toLocaleDateString("en-CA", { timeZone: ET });  // 2026-10-16
+  function equityCandles(pts) {  // paper-cycle points -> [candles, period label], at most ~60 candles
+    const span = pts[pts.length - 1].t - pts[0].t;
+    const P = [[3e5, "5 min"], [9e5, "15 min"], [18e5, "30 min"], [36e5, "1 hour"], [72e5, "2 hours"], [144e5, "4 hours"],
+      [864e5, "1 day"], [6048e5, "1 week"]];
+    const [B, label] = P.find(([b]) => span / b <= 60) || P[P.length - 1];
+    const keyOf = (t) => B === 864e5 ? etDay(t) : B === 6048e5 ? Math.floor((Date.parse(etDay(t)) / 864e5 + 3) / 7) : Math.floor(t / B);
+    const C = [];
+    let key = null;
+    for (const p of pts) {
+      const k = keyOf(p.t), last = C[C.length - 1];
+      if (k !== key) {  // a new period opens where the last one closed, so every move shows
+        const o = last ? last.c : p.v;
+        C.push({ t: p.t, o, h: Math.max(o, p.v), l: Math.min(o, p.v), c: p.v }); key = k;
+      } else { last.h = Math.max(last.h, p.v); last.l = Math.min(last.l, p.v); last.c = p.v; }
+    }
+    return [C, label];
+  }
+  function drawCandles(el, C, o) {  // C: [{t, o, h, l, c, v?}] oldest first; o: {fmtT, aria, base?, vol?}
+    const W = el.clientWidth || 800, H = el.clientHeight || 280, pl = 64, pr = 16, pt = 12, pb = 28;
+    const volH = o.vol ? Math.round((H - pt - pb) * 0.18) : 0, ph = H - pt - pb - (volH ? volH + 8 : 0);
+    let lo = Math.min(...C.map((k) => k.l)), hi = Math.max(...C.map((k) => k.h));
+    if (o.base != null) { lo = Math.min(lo, o.base); hi = Math.max(hi, o.base); }
+    const pad = (hi - lo) * 0.08 || hi * 0.01 || 1; lo -= pad; hi += pad;
+    const slot = (W - pl - pr) / C.length, bw = Math.max(1, Math.min(14, slot * 0.68));
+    const x = (i) => pl + slot * (i + 0.5), y = (v) => pt + (1 - (v - lo) / (hi - lo)) * ph;
+    const vmax = Math.max(1, ...C.map((k) => k.v || 0)), vy0 = H - pb, f = (v) => v.toFixed(1);
+    const dec = hi - lo < 5 ? 2 : 0;
+    const xi = [...new Set([0, .25, .5, .75, 1].map((q) => Math.round(q * (C.length - 1))))];
+    const marks = C.map((k, i) => {
+      const col = k.c >= k.o ? "var(--good)" : "var(--crit)", cx = f(x(i)), left = f(x(i) - bw / 2);
+      const top = y(Math.max(k.o, k.c)), h = Math.max(1, Math.abs(y(k.o) - y(k.c)));
+      const vh = volH && k.v ? (k.v / vmax) * volH : 0;
+      return `<line x1="${cx}" x2="${cx}" y1="${f(y(k.h))}" y2="${f(y(k.l))}" stroke="${col}" stroke-width="1"/>` +
+        `<rect x="${left}" y="${f(top)}" width="${f(bw)}" height="${f(h)}" fill="${col}"/>` +
+        (vh ? `<rect x="${left}" y="${f(vy0 - vh)}" width="${f(bw)}" height="${f(vh)}" fill="${col}" opacity=".3"/>` : "");
+    }).join("");
+    el.innerHTML = `
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria)}">
+        ${niceTicks(lo, hi).map((v) => `<line x1="${pl}" x2="${W - pr}" y1="${f(y(v))}" y2="${f(y(v))}" stroke="var(--grid)"/>
+          <text x="${pl - 10}" y="${f(y(v) + 4)}" text-anchor="end" fill="var(--muted)" font-family="var(--mono)" font-size="11">${usd(v, v % 1 ? 2 : dec)}</text>`).join("")}
+        ${xi.map((i, j) => `<text x="${f(x(i))}" y="${H - 8}" text-anchor="${j === 0 ? "start" : j === xi.length - 1 ? "end" : "middle"}" fill="var(--muted)" font-family="var(--mono)" font-size="11">${esc(o.fmtT(C[i].t))}</text>`).join("")}
+        ${o.base != null ? `<line x1="${pl}" x2="${W - pr}" y1="${f(y(o.base))}" y2="${f(y(o.base))}" stroke="var(--ink-2)" stroke-dasharray="3 4" opacity=".5"/>
+          <text x="${W - pr}" y="${f(y(o.base) - 6)}" text-anchor="end" fill="var(--ink-2)" font-family="var(--mono)" font-size="11" opacity=".8">start ${usd(o.base, 0)}</text>` : ""}
+        ${marks}
+        <line class="xh" y1="${pt}" y2="${H - pb}" stroke="var(--neon-dim)" opacity="0"/>
+        <rect x="${pl}" y="${pt}" width="${W - pl - pr}" height="${H - pt - pb}" fill="transparent" class="hit"/>
+      </svg><div class="tip"></div>`;
+    const hit = el.querySelector(".hit"), xh = el.querySelector(".xh"), tip = el.querySelector(".tip");
+    hit.addEventListener("mousemove", (ev) => {
+      const r = el.getBoundingClientRect(), mx = (ev.clientX - r.left) * (W / r.width);
+      const i = Math.max(0, Math.min(C.length - 1, Math.floor((mx - pl) / slot))), k = C[i], d = k.c - k.o;
+      xh.setAttribute("x1", x(i)); xh.setAttribute("x2", x(i)); xh.setAttribute("opacity", 1);
+      tip.innerHTML = `<div class="t">${esc(o.fmtT(k.t))}</div><div>Open ${usd(k.o)} · High ${usd(k.h)}</div><div>Low ${usd(k.l)} · Close ${usd(k.c)}</div>
+        <div class="${dir(d)}">${sgnUsd(d)} ${sgnPct(k.o ? d / k.o : 0)}${k.v ? ` <span class="t">· ${qty(Math.round(k.v))} shares</span>` : ""}</div>`;
+      const px = x(i) * (r.width / W);
+      tip.style.left = Math.min(px + 12, r.width - 230) + "px"; tip.style.top = "8px"; tip.style.opacity = 1;
+    });
+    hit.addEventListener("mouseleave", () => { xh.setAttribute("opacity", 0); tip.style.opacity = 0; });
+  }
+
+  // ---- stock chart: candles from /api/bars (Robinhood, then Webull, then saved bars) ----
+  let pxSym = "", pxSpan = "1d", PX = null, pxAt = 0, pxReq = 0;
+  try { pxSym = localStorage.getItem("ctbot.pxSym") || ""; pxSpan = localStorage.getItem("ctbot.pxSpan") || pxSpan; } catch (e) {}
+  function pxSymbols() {
+    const P = (S.positions || []).slice().sort((a, b) => b.market_value - a.market_value).map((p) => p.symbol);
+    return [...new Set([...P, ...(S.watchlist || []).map((w) => w.symbol), "SPY", "QQQ"])];
+  }
+  async function loadPx(force = false) {
+    if (!S || tab !== "home") return;
+    const sym = pxSym || pxSymbols()[0];
+    if (!force && PX && PX.symbol === sym && PX.span === pxSpan && Date.now() - pxAt < 60000) return;
+    const id = ++pxReq; pxAt = Date.now();
+    if (force || !PX || PX.symbol !== sym || PX.span !== pxSpan) { PX = null; renderPx(); }
+    let out;
+    try {
+      const r = await fetch(`/api/bars?symbol=${encodeURIComponent(sym)}&span=${pxSpan}`, { cache: "no-store" });
+      out = r.ok ? await r.json() : { notes: ["HTTP " + r.status] };
+    } catch (e) { out = { notes: [e.message] }; }
+    if (id !== pxReq) return;  // a newer pick is on its way
+    PX = { symbol: sym, span: pxSpan, bars: [], notes: [], ...out };
+    renderPx();
+  }
+  function renderPx() {
+    const el = $("pxChart"), inp = $("pxSym"), sym = pxSym || (S ? pxSymbols()[0] : "");
+    if (S) $("pxList").innerHTML = pxSymbols().map((v) => `<option value="${esc(v)}">`).join("");
+    if (document.activeElement !== inp) inp.value = sym;
+    document.querySelectorAll("[data-px]").forEach((b) => b.classList.toggle("on", b.dataset.px === pxSpan));
+    if (!PX) { $("pxMeta").textContent = ""; el.innerHTML = `<div class="empty">Loading ${esc(sym)} candles…</div>`; return; }
+    const B = PX.bars || [];
+    if (B.length < 2) {
+      $("pxMeta").textContent = "";
+      el.innerHTML = `<div class="empty">No candles for ${esc(PX.symbol)} yet.<br>${esc((PX.notes || []).join(" · ") || "Connect Robinhood or Webull on the Settings tab.")}</div>`;
+      return;
+    }
+    const first = B[0], last = B[B.length - 1], chg = last.c - first.o;
+    $("pxMeta").innerHTML = `${usd(last.c)} <span class="${dir(chg)}">${sgnPct(chg / first.o)}</span> · ${esc(PX.interval)} candles · from ${esc(PX.source)}`;
+    drawCandles(el, B, { vol: true, fmtT: PX.span === "1d" || PX.span === "1w" ? fmtTime : fmtDay,
+      aria: `${PX.symbol} price in ${PX.interval} candles, last ${usd(last.c)}` });
+  }
+  document.querySelectorAll("[data-px]").forEach((b) => b.addEventListener("click", () => {
+    pxSpan = b.dataset.px; try { localStorage.setItem("ctbot.pxSpan", pxSpan); } catch (e) {} loadPx(true);
+  }));
+  $("pxForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = $("pxSym").value.trim().toUpperCase();
+    if (!/^[A-Z][A-Z.]{0,9}$/.test(v)) return toast("Type a stock symbol, like SPY.", true);
+    pxSym = v; try { localStorage.setItem("ctbot.pxSym", v); } catch (err) {} $("pxSym").blur(); loadPx(true);
+  });
+  $("pxSym").addEventListener("change", () => {  // picked from the list; Enter already submitted
+    if ($("pxSym").value.trim().toUpperCase() !== pxSym) $("pxForm").requestSubmit();
+  });
 
   // ---- tables ----------------------------------------------------------------
   function renderPositions() {
@@ -1106,7 +1291,7 @@ main:focus { outline: none; }
         : all.length ? "Nothing in this group. Try All." : "No trade ideas yet. They appear after the paper bot runs a cycle during market hours."}</div>`;
     } else {
       $("ideas").innerHTML = `<table class="tbl"><thead><tr><th>Time</th><th>Stock</th><th>Idea</th><th>From</th><th>What happened</th>
-        <th title="Claude's verdict and how sure it was">Claude</th><th class="r">Paper trade</th></tr></thead><tbody>${rows.map((i) => {
+        <th title="Claude's verdict and how sure it was">Claude</th><th class="r" title="Dollars of paper money to buy, filled in from the bot's suggested size. Change it, then press Buy.">Paper trade ($)</th></tr></thead><tbody>${rows.map((i) => {
         const d = i.decision, rk = i.risk, open = openIdeas.has(i.id), long = i.direction === "long";
         const [g, label, why] = ideaOutcome(i);
         const amt = rk && rk.notional ? rk.notional : d && d.suggested_notional ? Math.min(d.suggested_notional, S.limits.max_trading_capital) : 50;
@@ -1114,7 +1299,7 @@ main:focus { outline: none; }
         const claude = d ? `<span class="${d.approve ? "up" : "down"}">${d.approve ? "✓ yes" : "✗ no"} · ${(d.confidence * 100).toFixed(0)}% sure</span>` : `<span class="flat">not asked</span>`;
         const tagc = { rec: "rec", bought: "on", no: "rej", blocked: "sell", watch: "q" }[g] || "";
         const act = !long ? `<span class="flat" style="font-size:11px">exits run automatically</span>` : filled ? `<span class="up">✓ filled</span>`
-          : `<span class="act"><input type="number" min="1" max="${S.limits.max_trading_capital}" step="1" value="${Math.round(amt)}" aria-label="Dollar amount for ${esc(i.symbol)}" data-amt="${esc(i.id)}">
+          : `<span class="act"><span class="usd" aria-hidden="true">$</span><input type="number" min="1" max="${S.limits.max_trading_capital}" step="1" value="${Math.round(amt)}" aria-label="Dollar amount for ${esc(i.symbol)}" data-amt="${esc(i.id)}">
              <button class="btn ${i.status === "recommended" ? "solid" : ""}" data-buy="${esc(i.id)}" data-sym="${esc(i.symbol)}" ${canTrade() ? "" : "disabled"}>Buy</button></span>`;
         const sig = i.signals.map((s) => `<li><b>${esc(plainOf(s.strategy).title)}</b> said ${esc(s.direction === "long" ? "buy" : s.direction)} (strength ${(s.strength * 100).toFixed(0)}%)
           <span class="lm">${esc(Object.entries(s.evidence || {}).map(([k, v]) => `${k.replace(/_/g, " ")} ${typeof v === "number" ? +v.toFixed(4) : v}`).join(" · "))}</span></li>`).join("");
@@ -1621,6 +1806,7 @@ main:focus { outline: none; }
     renderChrome(); renderKpis(); renderIdeas(); renderChart(); renderLimits(); renderPositions();
     renderWatchlist(); renderFills(); renderStrategies(); renderLog(); renderC2(); renderModels(); renderFilterScore(); renderLab();
     renderRuns(); renderCatalog(); renderCompare(); renderStressWF(); renderDiscover(); renderSteps();
+    loadPx();
     applySorts();
     $("updated").textContent = "updated " + new Date(S.generated_at).toLocaleTimeString("en-US", { timeZone: ET, hour12: false }) + " ET";
   }
@@ -1651,7 +1837,7 @@ main:focus { outline: none; }
   document.querySelectorAll("[data-log]").forEach((b) => b.addEventListener("click", () => {
     logFilter = b.dataset.log; document.querySelectorAll("[data-log]").forEach((x) => x.classList.toggle("on", x === b)); S && renderLog();
   }));
-  window.addEventListener("resize", () => { if (S) { renderChart(); renderCompare(); } });
+  window.addEventListener("resize", () => { if (S) { renderChart(); renderCompare(); if (PX) renderPx(); } });
 
   // ---- sortable tables: click a header -> desc, asc, original; remembered across refreshes ----
   let sortState = {};
@@ -1847,7 +2033,7 @@ main:focus { outline: none; }
     cardsOf(grid).filter((c) => !order.includes(c.dataset.card)).forEach((c) => grid.appendChild(c));
   }
   const saveOrder = (grid) => { layout[grid.id] = cardsOf(grid).map((c) => c.dataset.card); writeJSON(LAYOUT, layout); };
-  const redrawCharts = () => { if (S) { renderChart(); renderCompare(); } };
+  const redrawCharts = () => { if (S) { renderChart(); renderCompare(); if (PX) renderPx(); } };
 
   if (!layout.ownFirst) {  // once: "What you own" moved to the top of Home
     if (layout.cards) layout.cards = ["posCount", ...layout.cards.filter((k) => k !== "posCount")];

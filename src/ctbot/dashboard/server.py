@@ -10,6 +10,10 @@ rebinding). Endpoints:
   POST /api/settings/test run the read-only preflight checks
   POST /api/robinhood/connect  start the Robinhood sign-in (opens your browser)
   POST /api/robinhood/disconnect  delete the saved Robinhood sign-in
+  GET  /api/bars?symbol=SPY&span=1d  candles for the stock chart (Robinhood, Webull, saved bars)
+  POST /api/webull/connect     check the Webull keys; ask for a 2FA token if the Webull app wants one
+  POST /api/webull/check       has the 2FA token been approved in the Webull app yet?
+  POST /api/webull/disconnect  delete the saved Webull token
 
 The order POST only appends to the paper queue; it never touches the ledger, Robinhood, or live
 code. Every POST requires the page's token header and a same-origin request, so other websites
@@ -31,6 +35,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs
 
 from ctbot import allocations, manual_queue, secret_store
 from ctbot.config import Settings
@@ -40,20 +45,25 @@ INDEX = Path(__file__).with_name("index.html")
 log = logging.getLogger(__name__)
 
 
-def _quotes_fn(settings: Settings):
+def _robinhood_md(settings: Settings):
     if settings.market_data != "robinhood":
         return None
     from ctbot.market_data.robinhood_mcp_client import ReadOnlyRobinhoodClient
     from ctbot.market_data.robinhood_readonly import RobinhoodReadOnlyMarketData
 
-    md = RobinhoodReadOnlyMarketData(
+    return RobinhoodReadOnlyMarketData(
         ReadOnlyRobinhoodClient(interactive=False).call_many, quote_ttl_s=30.0
     )
-    return md.quotes
 
 
 def make_handler(settings: Settings, port: int):
-    quotes = _quotes_fn(settings)
+    from ctbot.dashboard.candles import CandleSource
+    from ctbot.market_data.webull_client import WebullClient
+
+    md = _robinhood_md(settings)
+    quotes = md.quotes if md is not None else None
+    webull = WebullClient()
+    candles = CandleSource(md, webull)
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
     allowed_origins = {f"http://{h}" for h in allowed_hosts}
     token = secrets.token_urlsafe(24)
@@ -96,11 +106,51 @@ def make_handler(settings: Settings, port: int):
             p.terminate()  # sign-in abandoned: free the callback port
             p.wait(5)
         running = p is not None and p.poll() is None
+        tok = webull.saved_token() or {}
         return {
             "keys": secret_store.status(),
             "robinhood": {"signed_in": TOKEN_PATH.exists(), "connecting": running,
                           "last_exit": None if p is None or running else p.returncode},
+            # never the token itself: only whether one is saved and its status
+            "webull": {"configured": webull.configured, "token": tok.get("status"), **wb},
         }
+
+    wb: dict = {"needs_token": None, "checked": None, "error": None}  # last Connect result
+
+    def webull_connect(_body: dict) -> tuple[int, dict]:
+        from ctbot.net import SourceUnavailable
+
+        wb.update(error=None, checked=None)
+        if not webull.configured:
+            return 400, {"error": "save the Webull App Key and App Secret first"}
+        try:
+            wb["needs_token"] = webull.token_required()
+            if wb["needs_token"] and (webull.saved_token() or {}).get("status") != "NORMAL":
+                webull.create_token()  # Webull texts a code; the user enters it in the Webull app
+            if not wb["needs_token"] or webull.check_token() == "NORMAL":
+                bars = webull.bars(["SPY"], "day", 5).get("SPY") or []
+                wb["checked"] = f"SPY closed at {bars[-1].close:.2f} on {bars[-1].ts.date()}" if bars else "connected"
+        except SourceUnavailable as e:
+            wb["error"] = str(e)
+        log.info("Webull connect: token %s, %s", "needed" if wb["needs_token"] else "not needed",
+                 "ok" if wb["checked"] else "not yet")
+        return 200, settings_status()
+
+    def webull_check(_body: dict) -> tuple[int, dict]:
+        from ctbot.net import SourceUnavailable
+
+        try:
+            if webull.check_token() == "NORMAL" and not wb["checked"]:
+                return webull_connect({})
+        except SourceUnavailable as e:
+            wb["error"] = str(e)
+        return 200, settings_status()
+
+    def webull_disconnect(_body: dict) -> tuple[int, dict]:
+        webull.forget_token()
+        wb.update(needs_token=None, checked=None, error=None)
+        log.info("Webull token deleted from this machine")
+        return 200, settings_status()
 
     def save_setting(body: dict) -> tuple[int, dict]:
         key, value = body.get("key"), body.get("value", "")
@@ -213,6 +263,9 @@ def make_handler(settings: Settings, port: int):
         "/api/settings": save_setting,
         "/api/settings/test": test_connections,
         "/api/robinhood/connect": connect_robinhood,
+        "/api/webull/connect": webull_connect,
+        "/api/webull/check": webull_check,
+        "/api/webull/disconnect": webull_disconnect,
     }
 
     class Handler(BaseHTTPRequestHandler):
@@ -240,6 +293,13 @@ def make_handler(settings: Settings, port: int):
                 return self._send(404, b"not found", "text/plain")
             if path == "/api/settings":
                 return self._send(200, json.dumps(settings_status()).encode(), "application/json")
+            if path == "/api/bars":
+                q = parse_qs(self.path.partition("?")[2])
+                sym = (q.get("symbol") or [""])[0].upper()
+                if not re.fullmatch(r"[A-Z][A-Z.]{0,9}", sym):
+                    return self._send(400, b'{"error": "bad symbol"}', "application/json")
+                out = candles.get(sym, (q.get("span") or ["1d"])[0])
+                return self._send(200, json.dumps(out).encode(), "application/json")
             if path == "/api/state":
                 live = replace(settings,  # account saved on the Settings tab shows at once
                                robinhood_account_number=os.environ.get("ROBINHOOD_ACCOUNT_NUMBER", "").strip(),

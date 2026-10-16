@@ -32,7 +32,8 @@ src/ctbot/
   net.py                       guarded HTTP for public sources: timeout, retry, circuit breaker
   market_data/                 price data: CSV (offline), Robinhood MCP read-only
     tradingflow_client.py      TradingFlow MCP (API key): allowlisted read tools, circuit breaker
-    failover.py                Robinhood daily bars with TradingFlow as the backup source
+    webull_client.py           Webull OpenAPI (App Key/Secret, HMAC-signed): allowlisted market-data paths
+    failover.py                Robinhood daily bars with Webull, then TradingFlow, as backup sources
     context.py                 review context + earnings guard (Robinhood, then public extras)
     tradingview.py             public TradingView scanner: earnings dates, technical rating
     news.py                    Marketaux news sentiment (optional key; numbers only)

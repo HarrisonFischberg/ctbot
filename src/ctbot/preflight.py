@@ -39,6 +39,18 @@ def run_checks(settings) -> list[dict[str, Any]]:
             add("tradingflow", True, f"SPY close {float(bars[-1]['close']):.2f} on {bars[-1]['date']}")
         except Exception as e:  # noqa: BLE001
             add("tradingflow", False, f"{e} -> check TRADINGFLOW_API_KEY")
+    from ctbot.market_data.webull_client import WebullClient
+
+    wb = WebullClient()
+    if wb.configured:  # optional second candle source: only checked once both keys are set
+        try:
+            bars = wb.bars(["SPY"], "day", 5).get("SPY")
+            if not bars:
+                raise ValueError("webull: no SPY bars in the reply")
+            add("webull", True, f"SPY close {bars[-1].close:.2f} on {bars[-1].ts.date().isoformat()}")
+        except Exception as e:  # noqa: BLE001
+            add("webull", False, f"{e} -> check the Webull keys, its OpenAPI market-data "
+                                 "subscription, or press Connect Webull on Settings")
     try:
         import anthropic
 
