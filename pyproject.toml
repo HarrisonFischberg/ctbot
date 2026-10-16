@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ctbot"
+version = "0.1.0"
+description = "CTbot (Creature Trading Bot): a multi-strategy, Claude-reviewed paper-trading agent that reads market data from your own Robinhood account."
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Rare Creatures LLC", email = "hello@rarecreatures.app" }]
+readme = "README.md"
+dependencies = [
+    "anthropic>=0.70",
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "python-dotenv>=1.0",
+    "mcp>=2.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5"]
+research = ["quantstats>=0.0.86", "vectorbt>=1.1"]
+
+[project.scripts]
+# Two separate entrypoints = two separate processes. Paper never shares a process with live.
+ctbot-paper = "ctbot.paper.main:main"
+ctbot-live = "ctbot.live.main:main"
+# One-time interactive Robinhood sign-in for read-only market data.
+ctbot-robinhood-login = "ctbot.market_data.robinhood_mcp_client:login_main"
+# Read-only local dashboard at http://127.0.0.1:8787.
+ctbot-dashboard = "ctbot.dashboard.server:main"
+# Research (read-only data, offline backtests).
+ctbot-fetch-bars = "ctbot.research.bars:main"
+ctbot-backtest = "ctbot.research.backtest:main"
+ctbot-c2-rank = "ctbot.research.c2_rank:main"
+ctbot-c2-track = "ctbot.research.c2_rank:track_main"
+ctbot-score-ideas = "ctbot.research.score_ideas:main"
+ctbot-preflight = "ctbot.preflight:main"
+ctbot-lab = "ctbot.research.lab:main"
+ctbot-tearsheet = "ctbot.research.tearsheet:main"
+ctbot-sweep = "ctbot.research.sweep:main"
+ctbot-perf = "ctbot.research.perf:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ctbot = ["dashboard/index.html"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

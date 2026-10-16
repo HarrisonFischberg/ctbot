@@ -1,0 +1,17 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+data/*
+!data/.gitkeep
+logs/*
+!logs/.gitkeep
+!data/events/
+data/events/*
+!data/events/sample_events.json
+.DS_Store
+.claude/
+*.log

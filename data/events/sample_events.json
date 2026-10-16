@@ -1,0 +1,11 @@
+[
+  {"kind": "congress_trade", "symbol": "MSFT", "side": "buy", "actor": "SAMPLE Member A",
+   "event_date": "2026-09-10", "disclosed_date": "2026-09-30", "size_usd": 50000, "source": "sample"},
+  {"kind": "congress_trade", "symbol": "MSFT", "side": "buy", "actor": "SAMPLE Member B",
+   "event_date": "2026-09-15", "disclosed_date": "2026-10-02", "size_usd": 15001, "source": "sample"},
+  {"kind": "insider_trade", "symbol": "JPM", "side": "buy", "actor": "SAMPLE Director C",
+   "event_date": "2026-10-01", "disclosed_date": "2026-10-03", "size_usd": 250000, "source": "sample"},
+  {"kind": "options_flow", "symbol": "XLE", "side": "buy", "actor": "flow",
+   "event_date": "2026-10-12", "disclosed_date": "2026-10-12", "size_usd": 400000, "source": "sample",
+   "raw": {"option_type": "call", "is_sweep": true, "expiry": "2026-11-20"}}
+]

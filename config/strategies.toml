@@ -1,0 +1,167 @@
+# Strategy registry config. Each table: enabled, ensemble weight, and constructor params.
+# Weights are relative; candidate score = weighted agreement / total enabled weight.
+
+[momentum]
+enabled = false  # off: no exit plan to score in shadow / no data source
+weight = 1.0
+[momentum.params]
+lookback_days = 120
+skip_days = 5
+trend_sma_days = 50
+top_n = 3
+min_return = 0.05
+
+[mean_reversion]
+enabled = false  # off: no exit plan to score in shadow / no data source
+weight = 0.75
+[mean_reversion.params]
+z_window = 20
+z_entry = 2.0
+z_exit = 0.5
+max_half_life_days = 20
+
+[congressional]
+enabled = false  # off: no exit plan to score in shadow / no data source
+weight = 0.75
+[congressional.params]
+window_days = 30
+max_disclosure_lag_days = 45   # STOCK Act allows up to 45 days; older is stale
+min_actors = 2
+saturation_actors = 5
+min_size_usd = 15000
+
+[institutional]
+enabled = false  # off: no exit plan to score in shadow / no data source
+weight = 1.0
+[institutional.params]
+window_days = 45
+max_disclosure_lag_days = 60   # 13F filings lag quarter-end by up to 45 days
+min_actors = 2
+saturation_actors = 6
+
+# Collective2: "c2:watchlist" expands to the strategies in data/c2/watchlist.json
+# (ctbot-c2-rank). Needs ALT_DATA_PROVIDERS=collective2. Without a C2 subscription only
+# exits are visible (open positions return 403), so this only closes positions we hold.
+[copy_trading]
+enabled = false
+weight = 0.5
+standalone = true              # a tracked actor's buy can open a LONG without other strategies
+[copy_trading.params]
+tracked_actors = ["c2:watchlist"]
+window_days = 30
+max_disclosure_lag_days = 60
+# Followed traders often hold small caps. A ~$50 position is tiny next to $1M/day,
+# so relax the global $5 / $20M liquidity limits for entries this strategy signals.
+# Only min_share_price and min_avg_dollar_volume may be set here, and only to loosen.
+[copy_trading.risk]
+min_share_price = 1.0
+min_avg_dollar_volume = 1000000
+
+[options_flow]
+enabled = false                # needs an options-flow provider (e.g. Unusual Whales)
+weight = 0.75
+[options_flow.params]
+window_days = 3
+min_print_premium_usd = 100000
+min_net_premium_usd = 500000
+min_prints = 2
+max_days_to_expiry = 60
+
+# ---- Intraday paper models (need MARKET_DATA=robinhood; run the bot with --interval 300) ----
+# Each acts alone (standalone), carries its own stop/target/exit time, and is reviewed by
+# Claude once per symbol per day. Fills are tagged with the model for per-model results.
+# The Feb-Oct 2026 backtest found no reliable edge in any of them: this is a forward test.
+
+[orb]
+enabled = true
+mode = "shadow"           # reviewed + scored on real bars, never traded (100% core decision)
+weight = 1.0
+standalone = true
+[orb.params]
+min_rvol = 1.2          # opening 30-min volume vs its 20-day average
+max_risk_pct = 0.02     # stop at the range low, but never more than 2% away
+reward_risk = 2.0       # target = 2x the risk
+
+[vwap_revert]
+# Disabled 2026-10-14: negative after costs in both periods of the 88-symbol backtest
+# (in-sample -8.1 bps over 1,330 trades, out-of-sample -6.9 bps over 1,127).
+enabled = false
+weight = 1.0
+standalone = true
+[vwap_revert.params]
+min_dip = 0.0075        # buy 0.75%+ below VWAP
+stop_pct = 0.015
+
+[overnight]
+enabled = true
+mode = "shadow"           # reviewed + scored on real bars, never traded (100% core decision)
+weight = 1.0
+standalone = true
+[overnight.params]
+stop_pct = 0.03
+max_per_day = 2
+
+# ---- Multi-day ETF models (2010-2026 backtest positive in BOTH periods after costs) ----
+# Decide 15:30-15:44 ET with the live price as today's close; not day trades.
+
+[rsi2_etf]
+enabled = true
+mode = "shadow"           # reviewed + scored on real bars, never traded (100% core decision)
+weight = 1.0
+standalone = true
+[rsi2_etf.params]
+rsi_below = 10.0        # 2-day RSI under 10, price above its 200-day average
+max_hold_days = 10      # safety exit if price never regains its 5-day average
+disaster_stop = 0.10
+exclude = ["QQQ"]       # QQQ belongs to trend_core (one position per symbol)
+
+[turn_of_month]
+enabled = true
+mode = "shadow"           # reviewed + scored on real bars, never traded (100% core decision)
+weight = 1.0
+standalone = true
+[turn_of_month.params]
+symbols = ["SPY"]       # QQQ belongs to trend_core
+disaster_stop = 0.08
+
+# ---- Core allocation ----
+# Hold QQQ at size_pct of equity while above its 200-day average; cash otherwise.
+# Systematic: no Claude review; risk checks apply. Backtest 2020-26: CAGR +18.7%, max DD -21.9%.
+[trend_core]
+enabled = true
+weight = 1.0
+standalone = true
+[trend_core.params]
+symbol = "QQQ"
+sma_days = 170          # chosen on 2010-19 only (ctbot-sweep): plateau 150-200d; OOS Sharpe 1.25 vs 1.19 at 200d
+size_pct = 0.4          # 40% QQQ; 40% in trend_core_qld; 20% scanner ORB sleeve
+
+# ---- Market-wide scanner ORB (trades with the 20% sleeve) ----
+# Robinhood scanner (read-only preview) picks the day's most unusually active Russell 1000 names;
+# long breakout of a green first 5-min bar, stop 0.10 x ATR14, out 15:50 ET.
+[orb_sip]
+enabled = true
+mode = "trade"
+weight = 1.0
+standalone = true
+[orb_sip.params]
+stop_atr = 0.10
+size_pct = 0.20         # the 20% sleeve carved from the core
+top_k = 20
+last_entry = "11:00"
+
+# ---- Second core: same QQQ trend signal, held in QLD (2x QQQ), volatility-capped ----
+# Position = 40% x min(1, 30% / QLD's 20-day volatility), resized daily 15:30-15:44 ET.
+# Lab 2020-26: +29.6%/yr, max DD -24% (100% sized); 1999-2026 synthetic stress: +14.9%/yr, max DD -43%.
+[trend_core_qld]
+class = "trend_core"
+enabled = true
+weight = 1.0
+standalone = true
+[trend_core_qld.params]
+symbol = "QQQ"
+hold = "QLD"
+sma_days = 170
+size_pct = 0.4
+vol_cap = 0.30
+disaster_stop = 0.40    # 2x fund: wider disaster stop; the trend exit is the real exit

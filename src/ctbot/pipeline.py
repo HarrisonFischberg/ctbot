@@ -1,0 +1,464 @@
+"""One cycle: alt data -> strategies -> ensemble -> Claude -> risk -> execute.
+
+The executor is injected by the entrypoint. This module must not import ctbot.live.
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta
+from typing import Any
+from uuid import uuid4
+
+from ctbot import allocations, market_hours
+from ctbot.aggregation.ensemble import combine
+from ctbot.config import Settings
+from ctbot.decision.engine import ClaudeDecisionEngine
+from ctbot.execution.base import OrderExecutor
+from ctbot.market_data.base import MarketDataProvider
+from ctbot.models import Candidate, Decision, Direction, Quote, Side, Signal
+from ctbot.providers.base import AltDataProvider
+from ctbot.providers.registry import fetch_all
+from ctbot.risk.manager import AccountState, RiskManager, RiskVerdict
+from ctbot.strategies.base import StrategyContext
+from ctbot.strategies.registry import WeightedStrategy, required_event_kinds
+
+log = logging.getLogger(__name__)
+
+EVENT_LOOKBACK_DAYS = 90
+
+
+@dataclass
+class Components:
+    settings: Settings
+    market_data: MarketDataProvider
+    providers: list[AltDataProvider]
+    strategies: list[WeightedStrategy]
+    engine: ClaudeDecisionEngine
+    risk: RiskManager
+    executor: OrderExecutor
+    universe: list[str]
+    # Receives one dict per evaluated candidate ("trade idea"); the paper entrypoint
+    # appends them to a JSONL file the dashboard reads.
+    recorder: Callable[[dict[str, Any]], None] = field(default=lambda idea: None)
+    # (trading day, symbol, strategies) already sent to Claude: re-sending the same setup
+    # every cycle would only multiply API cost.
+    reviewed: set = field(default_factory=set)
+    # Optional MarketContext: time, index moves, earnings and analyst data for reviews,
+    # and the earnings guard.
+    context: Any = None
+    reviews_today: dict = field(default_factory=dict)  # trading day -> Claude reviews used
+    # strategies as configured in strategies.toml; `strategies` is this, as the launcher sees it
+    configured: list[WeightedStrategy] | None = None
+    launched: tuple | None = None  # last applied launcher state: (in use, {name: capital})
+
+
+def apply_launcher(c: Components, state: AccountState, positions: dict, now: datetime) -> None:
+    """Paper launcher (ctbot.allocations). Running strategies trade alone, sized off their own
+    capital; every other model is shadow. Stopping strategies sell what they opened. Once you
+    have invested through the launcher it stays in charge, so a stopped strategy stays stopped;
+    an empty data/allocations.json hands control back to strategies.toml."""
+    if c.configured is None:
+        c.configured = list(c.strategies)
+    path = c.settings.allocations_path
+    used: dict[str, float] = {}
+    open_gain: dict[str, float] = {}
+    for sym, p in positions.items():  # what each strategy holds now (at cost) and its open gain
+        owner = (state.brackets.get(sym) or {}).get("model")
+        if owner:
+            used[owner] = used.get(owner, 0.0) + p.quantity * p.avg_cost
+            q = c.market_data.quotes([sym]).get(sym)
+            mark = q.mid if q and q.mid else p.avg_cost
+            open_gain[owner] = open_gain.get(owner, 0.0) + (mark - p.avg_cost) * p.quantity
+    for name, run in allocations.load(path).items():  # max loss / take profit, before anything trades
+        if run.get("status") != allocations.RUNNING:
+            continue
+        gain = float(run.get("realized", 0.0)) + open_gain.get(name, 0.0)
+        cap = float(run["capital"])
+        if run.get("max_loss_pct") and gain <= -run["max_loss_pct"] * cap:
+            allocations.stop(path, name, f"max loss reached ({gain:+.2f})")
+            log.warning("launcher: %s hit its max loss (%+.2f on $%.0f): stopping and selling", name, gain, cap)
+        elif run.get("take_profit_pct") and gain >= run["take_profit_pct"] * cap:
+            allocations.stop(path, name, f"profit target reached ({gain:+.2f})")
+            log.info("launcher: %s hit its take-profit (%+.2f on $%.0f): stopping and selling", name, gain, cap)
+
+    in_use = bool(allocations.load(path))
+    runs = allocations.running(path)
+    if (in_use, runs) != c.launched:
+        c.strategies = [
+            replace(ws, mode="trade", standalone=True) if ws.strategy.name in runs else replace(ws, mode="shadow")
+            for ws in c.configured
+        ] if in_use else list(c.configured)
+        c.launched = (in_use, runs)
+        log.info("launcher: %s", ", ".join(f"{k} ${v:,.0f}" for k, v in runs.items())
+                 or ("nothing invested: every strategy only suggests ideas" if in_use else "off (strategies.toml)"))
+    state.sleeves = dict(runs)
+    state.sleeve_used = {n: used.get(n, 0.0) for n in runs}
+    # each strategy's unspent money is kept for it: no other strategy may buy with it
+    state.sleeve_reserve = {n: max(0.0, cap - used.get(n, 0.0)) for n, cap in runs.items()}
+
+    today = market_hours.trading_date(now)
+    for name in allocations.stopping(c.settings.allocations_path):
+        owned = [s for s in positions if (state.brackets.get(s) or {}).get("model") == name]
+        for sym in owned:
+            quote = c.market_data.quotes([sym]).get(sym)
+            sig = Signal(name, sym, Direction.EXIT, 1.0, 0, {"reason": "stopped_on_dashboard"})
+            verdict = c.risk.check_exit(Candidate(sym, Direction.EXIT, -1.0, (sig,)), positions[sym], state, quote, today)
+            if verdict.allowed:
+                for order in verdict.orders:
+                    if _submit(c, state, order, positions, today, tag="stopped"):
+                        log.info("launcher: sold %s for stopped strategy %s", sym, name)
+        positions.clear()
+        positions.update({p.symbol: p for p in c.executor.positions()})
+        if not any((state.brackets.get(s) or {}).get("model") == name for s in positions):
+            allocations.mark_stopped(c.settings.allocations_path, name)
+            log.info("launcher: %s stopped", name)
+
+
+def _book_sleeve_gain(c: Components, state: AccountState, symbol: str, avg_cost: float, fill) -> None:
+    """Launcher: add a sale's gain/loss to its strategy's run (for max loss / take profit)."""
+    owner = (state.brackets.get(symbol) or {}).get("model")
+    if owner in state.sleeves or owner in allocations.stopping(c.settings.allocations_path):
+        allocations.add_realized(c.settings.allocations_path, owner, (fill.price - avg_cost) * fill.quantity)
+
+
+def _sleeve_signals(ws: WeightedStrategy, sigs: list[Signal], sleeves: dict[str, float]) -> list[Signal]:
+    """A launched core (a model with size_pct, e.g. the trend core) fills its whole capital:
+    its size_pct, set as a share of the full book, becomes a share of its own capital."""
+    base = getattr(ws.strategy, "size_pct", None)
+    if ws.strategy.name not in sleeves or not base or not hasattr(ws.strategy, "target_weight"):
+        return sigs
+    return [replace(s, evidence={**s.evidence, "size_pct": round(min(1.0, s.evidence["size_pct"] / base), 4)})
+            if "size_pct" in s.evidence else s for s in sigs]
+
+
+def _idea(
+    now: datetime, cand: Candidate, quote: Quote | None, decision: Decision | None, verdict, status: str
+) -> dict[str, Any]:
+    return {
+        "id": uuid4().hex,
+        "ts": now.isoformat(),
+        "symbol": cand.symbol,
+        "direction": cand.direction.value,
+        "score": cand.score,
+        "strategies": list(cand.strategies),
+        "signals": [
+            {"strategy": s.strategy, "direction": s.direction.value, "strength": round(s.strength, 3),
+             "horizon_days": s.horizon_days, "evidence": s.evidence}
+            for s in cand.signals
+        ],
+        "quote": {"bid": quote.bid, "ask": quote.ask, "last": quote.last} if quote else None,
+        "decision": None if decision is None else {
+            "approve": decision.approve, "confidence": decision.confidence,
+            "rationale": decision.rationale, "suggested_notional": decision.suggested_notional,
+            "stop_loss_pct": decision.stop_loss_pct, "take_profit_pct": decision.take_profit_pct,
+        },
+        "risk": None if verdict is None else {
+            "allowed": verdict.allowed, "reasons": list(verdict.reasons),
+            "notional": verdict.orders[0].notional if verdict.orders else None,
+        },
+        "status": status,
+    }
+
+
+def avg_dollar_volume(md: MarketDataProvider, symbol: str, days: int = 20) -> float:
+    bars = md.daily_bars(symbol, days)
+    return sum(b.close * b.volume for b in bars) / len(bars) if bars else 0.0
+
+
+def _submit(c: Components, state: AccountState, order, positions, today, decision=None,
+            plan=None, tag: str | None = None) -> bool:
+    if tag:
+        order = replace(order, candidate_ref=tag)
+    fill = c.executor.submit(order)
+    log.info("submitted %s live=%s fill=%s", order, c.executor.is_live, fill)
+    if fill is None:
+        return False
+    if order.side is Side.SELL:
+        _book_sleeve_gain(c, state, order.symbol, positions[order.symbol].avg_cost, fill)
+        c.risk.record_exit_fill(state, positions[order.symbol], today, fill.price)
+    else:
+        c.risk.set_bracket(state, order.symbol, fill.price, decision, plan)
+        bracket = state.brackets.get(order.symbol)
+        launched = [m for m in (tag or "").split(",") if m in state.sleeves]
+        if bracket is not None and not bracket.get("model") and launched:
+            bracket["model"] = launched[0]  # launcher: the position counts against that strategy
+        owner = (bracket or {}).get("model")
+        if owner in state.sleeves:  # its spent money is no longer held back for it this cycle
+            state.sleeve_used[owner] = state.sleeve_used.get(owner, 0.0) + fill.quantity * fill.price
+            state.sleeve_reserve[owner] = max(0.0, state.sleeves[owner] - state.sleeve_used[owner])
+    state.cash = c.executor.cash()
+    state.open_positions = len(c.executor.positions())
+    return True
+
+
+def _maybe_top_up(c: Components, state: AccountState, cand: Candidate, pos, quote, now: datetime) -> None:
+    """Systematic core only: rebalance to its target size when it is off by more than 5% of
+    equity. Buys respect the kill switch and the daily-loss halt; trims (partial sells, used
+    by the volatility-capped core) always may run and keep the position's exit plan."""
+    sig = next((s for s in cand.signals if s.direction is Direction.LONG and s.evidence.get("rebalance")), None)
+    owner = (state.brackets.get(cand.symbol) or {}).get("model")
+    if sig is None or owner != sig.strategy or quote is None or not quote.ask:
+        return
+    if not any(ws.strategy.name == owner and ws.mode == "trade" for ws in c.strategies):
+        return  # shadow (e.g. another strategy is running in the launcher): leave the size alone
+    L = c.settings.risk
+    from ctbot.models import OrderRequest
+
+    sleeve = state.sleeves.get(owner)
+    base = sleeve or min(state.equity, L.max_trading_capital)
+    target = base * min(sig.evidence["size_pct"], 1.0 if sleeve else L.max_core_pct)
+    band = 0.05 * (sleeve or state.equity)
+    gap = target - pos.quantity * quote.mid
+    if gap < -band and quote.bid:
+        trim = OrderRequest(cand.symbol, Side.SELL, round(-gap, 2), limit_price=quote.bid, candidate_ref="rebalance")
+        fill = c.executor.submit(trim)
+        if fill:  # partial: bracket and day-trade count untouched
+            _book_sleeve_gain(c, state, cand.symbol, pos.avg_cost, fill)
+            log.info("trim %s: -$%.2f to its target $%.0f", cand.symbol, -gap, target)
+            state.cash = c.executor.cash()
+        return
+    if state.kill_switch or state.equity <= state.day_start_equity * (1 - L.max_daily_loss_pct):
+        return
+    cash = state.cash - sum(v for k, v in state.sleeve_reserve.items() if k != owner)  # others' money stays theirs
+    if gap <= band or cash < 1:
+        return
+
+    order = OrderRequest(cand.symbol, Side.BUY, round(min(gap, cash), 2), limit_price=quote.ask,
+                         candidate_ref=sig.strategy)
+    fill = c.executor.submit(order)
+    if fill:
+        if sleeve:
+            state.sleeve_used[owner] = state.sleeve_used.get(owner, 0.0) + fill.quantity * fill.price
+            state.sleeve_reserve[owner] = max(0.0, sleeve - state.sleeve_used[owner])
+        log.info("top-up %s: +$%.2f to its target $%.0f", cand.symbol, order.notional, target)
+        state.cash = c.executor.cash()
+
+
+def manage_positions(c: Components, state: AccountState, now: datetime) -> None:
+    """Stops, targets, exit times and swings for open positions. Runs at the start of every
+    cycle and, from the paper loop, every ~30 s in between (tight stops need it). Bypasses
+    strategies, the ensemble and Claude."""
+    if c.settings.respect_market_hours and not market_hours.session_open(now):
+        return
+    today = market_hours.trading_date(now)
+    positions = {p.symbol: p for p in c.executor.positions()}
+    for sym, pos in list(positions.items()):
+        quote = c.market_data.quotes([sym]).get(sym)
+        report = c.context.next_earnings(sym) if c.context else None
+        if quote and c.risk.maybe_swing(state, pos, quote, now, report):
+            b = state.brackets[sym]
+            log.info("swing %s: up %.2f%%, holding to %s with stop raised to %.2f (swing %d)", sym,
+                     (quote.bid / pos.avg_cost - 1) * 100, b["exit_at"], b["stop"], b["swings"])
+        reason = c.risk.bracket_hit(state, pos, quote, now) if quote else None
+        if reason is None:
+            continue
+        sig = Signal("risk", sym, Direction.EXIT, 1.0, 0, {"reason": reason})
+        cand = Candidate(sym, Direction.EXIT, -1.0, (sig,))
+        verdict = c.risk.check_exit(cand, pos, state, quote, today)
+        if not verdict.allowed:
+            log.warning("%s exit blocked for %s: %s", reason, sym, ", ".join(verdict.reasons))
+            continue
+        log.info("%s triggered for %s", reason, sym)
+        for order in verdict.orders:
+            _submit(c, state, order, positions, today, tag=reason)
+
+
+def run_cycle(c: Components, state: AccountState, now: datetime) -> None:
+    """Caller must set state.equity to the current value before each cycle. `now` is tz-aware."""
+    today = market_hours.trading_date(now)
+    c.risk.refresh(state, today)
+    if c.settings.respect_market_hours and not market_hours.session_open(now):
+        log.info("market closed at %s; skipping cycle", now.isoformat())
+        return
+    allow_entries = not c.settings.respect_market_hours or (
+        market_hours.minutes_to_close(now) > c.settings.risk.no_entries_last_minutes
+    )
+    if hasattr(c.market_data, "warm"):
+        c.market_data.warm(c.universe)
+    manage_positions(c, state, now)
+    positions = {p.symbol: p for p in c.executor.positions()}
+    apply_launcher(c, state, positions, now)
+    held = frozenset(positions)
+
+    kinds = required_event_kinds(c.strategies)
+    events = fetch_all(c.providers, kinds, today - timedelta(days=EVENT_LOOKBACK_DAYS))
+    ctx = StrategyContext(c.market_data, tuple(c.universe), tuple(events), today, held, now)
+
+    signals: list[Signal] = []
+    for ws in c.strategies:
+        if c.risk.model_paused(state, ws.strategy.name):
+            continue  # too many losses in a row today
+        try:
+            signals.extend(_sleeve_signals(ws, ws.strategy.generate(ctx), state.sleeves))
+        except Exception:
+            log.exception("strategy %s failed", ws.strategy.name)
+    weights = {ws.strategy.name: ws.weight for ws in c.strategies}
+    standalone = frozenset(ws.strategy.name for ws in c.strategies if ws.standalone)
+    shadow_models = frozenset(ws.strategy.name for ws in c.strategies if ws.mode == "shadow")
+    candidates = combine(signals, weights, c.settings.ensemble, standalone)
+    log.info("%d events, %d signals, %d candidates", len(events), len(signals), len(candidates))
+
+    for cand in candidates:
+        decision = None
+        quote = c.market_data.quotes([cand.symbol]).get(cand.symbol)
+        if cand.direction is Direction.EXIT:
+            if cand.symbol not in held:
+                continue
+            owner = (state.brackets.get(cand.symbol) or {}).get("model")
+            if owner and owner not in cand.strategies:
+                continue  # opened by another model: only its owner's exits (or its plan) apply
+            verdict = c.risk.check_exit(cand, positions[cand.symbol], state, quote, today)
+        else:
+            if not allow_entries:
+                log.info("skipping entry %s: within %s min of close", cand.symbol,
+                         c.settings.risk.no_entries_last_minutes)
+                c.recorder(_idea(now, cand, quote, None, None, "too_close_to_close"))
+                continue
+            if cand.symbol in held:
+                _maybe_top_up(c, state, cand, positions[cand.symbol], quote, now)
+                continue  # one position per symbol: no point paying for a review
+            buyers = tuple(sorted({s.strategy for s in cand.signals if s.direction is Direction.LONG}))
+            longs = [s for s in cand.signals if s.direction is Direction.LONG]
+            systematic = bool(longs) and all(s.evidence.get("systematic") for s in longs)
+            key = (today, cand.symbol, buyers)
+            if key in c.reviewed and not systematic:
+                continue  # same setup already reviewed today (rule-based entries are free: they retry)
+            c.reviewed.add(key)
+            report = c.context.next_earnings(cand.symbol) if c.context else None
+            plan = c.risk.exit_plan(cand)
+            if report and plan and now < report < datetime.fromisoformat(plan["exit_at"]):
+                # the hard rule would refuse it anyway: skip the paid review
+                verdict = RiskVerdict(False, ("earnings_before_exit",))
+                log.info("rejected long %s: earnings_before_exit (%s)", cand.symbol, report.isoformat())
+                c.recorder(_idea(now, cand, quote, None, verdict, "rejected"))
+                continue
+            account = {
+                "equity": state.equity,
+                "cash": state.cash,
+                "open_positions": state.open_positions,
+                "max_open_positions": c.settings.risk.max_open_positions,
+                "held_symbols": sorted(held),
+            }
+            if systematic:
+                # mechanical allocation rule: no Claude review; every hard risk check still runs
+                decision = Decision(True, 1.0, "systematic rule (no review)", 0.0)
+                adv = avg_dollar_volume(c.market_data, cand.symbol)
+                verdict = c.risk.check_entry(cand, decision, state, quote, adv, held, today, report, now)
+                if not verdict.allowed:
+                    log.info("rejected long %s: %s", cand.symbol, ", ".join(verdict.reasons))
+                    c.recorder(_idea(now, cand, quote, decision, verdict, "rejected"))
+                    continue
+                if set(buyers) <= shadow_models:
+                    log.info("shadow long %s (%s): systematic, passed risk, not executed", cand.symbol, ",".join(buyers))
+                    c.recorder(_idea(now, cand, quote, decision, verdict, "shadow"))
+                    continue
+                c.recorder(_idea(now, cand, quote, decision, verdict, "auto_submitted"))
+                plan = c.risk.exit_plan(cand)
+                for order in verdict.orders:
+                    if _submit(c, state, order, positions, today, decision, plan, ",".join(cand.strategies)):
+                        positions = {p.symbol: p for p in c.executor.positions()}
+                        held = frozenset(positions)
+                continue
+            used = c.reviews_today.get(today, 0)
+            per_model = [c.reviews_today.get((today, m), 0) for m in buyers]
+            if used >= c.settings.max_claude_reviews_per_day or (
+                per_model and min(per_model) >= c.settings.max_reviews_per_model_per_day
+            ):
+                log.info("skipping review of %s (%s): daily Claude budget used", cand.symbol, ",".join(buyers))
+                c.recorder(_idea(now, cand, quote, None, None, "review_budget_used"))
+                continue
+            c.reviews_today[today] = used + 1
+            for m in buyers:
+                c.reviews_today[(today, m)] = c.reviews_today.get((today, m), 0) + 1
+            if c.context:
+                account["market_context"] = c.context.for_symbol(cand.symbol)
+            decision = c.engine.evaluate(cand, account)
+            adv = avg_dollar_volume(c.market_data, cand.symbol)
+            verdict = c.risk.check_entry(cand, decision, state, quote, adv, held, today, report, now)
+
+        if not verdict.allowed:
+            log.info("rejected %s %s: %s", cand.direction.value, cand.symbol, ", ".join(verdict.reasons))
+            c.recorder(_idea(now, cand, quote, decision, verdict, "rejected"))
+            continue
+        if cand.direction is Direction.LONG and shadow_models and {
+            s.strategy for s in cand.signals if s.direction is Direction.LONG
+        } <= shadow_models:
+            log.info("shadow long %s (%s): reviewed and passed risk, not executed",
+                     cand.symbol, ",".join(cand.strategies))
+            c.recorder(_idea(now, cand, quote, decision, verdict, "shadow"))
+            continue
+        if cand.direction is Direction.LONG and c.settings.entry_mode == "manual":
+            log.info("recommended long %s: awaiting your approval on the dashboard", cand.symbol)
+            c.recorder(_idea(now, cand, quote, decision, verdict, "recommended"))
+            continue
+        c.recorder(_idea(now, cand, quote, decision, verdict, "auto_submitted"))
+        plan = c.risk.exit_plan(cand) if cand.direction is Direction.LONG else None
+        tag = ",".join(cand.strategies) if cand.direction is Direction.LONG else "signal_exit"
+        for order in verdict.orders:
+            if _submit(c, state, order, positions, today, decision, plan, tag):
+                # Keep later candidates in this cycle checked against post-fill positions.
+                positions = {p.symbol: p for p in c.executor.positions()}
+                held = frozenset(positions)
+
+
+def process_manual_order(
+    c: Components, state: AccountState, order: dict[str, Any], now: datetime
+) -> tuple[str, list[str], dict[str, Any] | None]:
+    """Execute one dashboard click in the paper process. Returns (status, reasons, fill).
+
+    A click replaces Claude's approval (you are the approver), but every hard risk rule
+    still applies: kill switch, loss limits, caps, PDT guard, spread, liquidity, market hours.
+    """
+    from ctbot.manual_queue import ORDER_TTL_SECONDS
+
+    today = market_hours.trading_date(now)
+    c.risk.refresh(state, today)
+    age = (now - datetime.fromisoformat(order["ts"])).total_seconds()
+    if age > ORDER_TTL_SECONDS:
+        return "expired", [f"click is {int(age)}s old; prices may have moved"], None
+    if c.settings.respect_market_hours and not market_hours.session_open(now):
+        return "rejected", ["market_closed"], None
+
+    sym = order["symbol"].upper()
+    positions = {p.symbol: p for p in c.executor.positions()}
+    quote = c.market_data.quotes([sym]).get(sym)
+    names = order.get("strategies") or ["manual"]
+
+    if order["side"] == "sell":
+        sig = Signal("manual", sym, Direction.EXIT, 1.0, 0, {"source": "dashboard"})
+        verdict = c.risk.check_exit(Candidate(sym, Direction.EXIT, -1.0, (sig,)),
+                                    positions.get(sym), state, quote, today)
+        decision = None
+    elif order["side"] == "buy":
+        if c.settings.respect_market_hours and (
+            market_hours.minutes_to_close(now) <= c.settings.risk.no_entries_last_minutes
+        ):
+            return "rejected", ["too_close_to_close"], None
+        sigs = tuple(Signal(n, sym, Direction.LONG, 1.0, 0, {"source": "dashboard"}) for n in names)
+        notional = order.get("notional") or state.equity * c.settings.risk.max_position_pct
+        decision = Decision(
+            approve=True, confidence=1.0, rationale="approved by you on the dashboard",
+            suggested_notional=float(notional), stop_loss_pct=order.get("stop_loss_pct"),
+            take_profit_pct=order.get("take_profit_pct"),
+        )
+        adv = avg_dollar_volume(c.market_data, sym)
+        report = c.context.next_earnings(sym) if c.context else None
+        verdict = c.risk.check_entry(Candidate(sym, Direction.LONG, 1.0, sigs), decision, state,
+                                     quote, adv, frozenset(positions), today, report, now)
+    else:
+        return "rejected", [f"unknown side {order['side']!r}"], None
+
+    if not verdict.allowed:
+        return "rejected", list(verdict.reasons), None
+    fill = None
+    for o in verdict.orders:
+        before = len(state.day_trade_dates)
+        if _submit(c, state, o, positions, today, decision, tag="manual"):
+            fill = {"symbol": o.symbol, "side": o.side.value, "notional": o.notional,
+                    "day_trade": len(state.day_trade_dates) > before}
+    if fill is None:
+        return "rejected", ["no_fill (no quote or no cash)"], None
+    return "filled", [], fill
