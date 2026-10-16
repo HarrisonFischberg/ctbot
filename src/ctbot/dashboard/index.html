@@ -174,7 +174,8 @@ body { min-height: 100vh; }
 .tbl .r { text-align: right; }
 .tbl .sym { color: var(--ink); font-weight: 600; }
 .scroll { overflow: auto; max-height: 380px; }
-.scroll::-webkit-scrollbar { width: 8px; height: 8px; } .scroll::-webkit-scrollbar-thumb { background: rgba(var(--tint), .1); border-radius: 8px; }
+.xscroll { overflow-x: auto; }  /* wide table scrolls inside its card on phones, not the page */
+:is(.scroll, .xscroll)::-webkit-scrollbar { width: 8px; height: 8px; } :is(.scroll, .xscroll)::-webkit-scrollbar-thumb { background: rgba(var(--tint), .1); border-radius: 8px; }
 .tag { display: inline-block; white-space: nowrap; padding: 3px 9px; border-radius: 999px; font: 500 11.5px var(--sans); background: rgba(var(--tint), .06); color: var(--ink-2); }
 .tag.buy { color: var(--neon-ink); background: var(--neon-soft); }
 .tag.sell { color: var(--warn); background: rgba(240,180,76,.1); }
@@ -253,9 +254,13 @@ body { min-height: 100vh; }
 .tabs button:hover { color: var(--ink); }
 .tabs button.on { background: var(--ink); color: var(--bg); }
 .tabs button:focus-visible { outline: 2px solid var(--neon); outline-offset: 2px; }
+@media (max-width: 640px) {  /* phone: the tab bar scrolls inside itself instead of widening the page */
+  .tabs { display: flex; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button { flex: none; padding: 8px 12px; font-size: 13.5px; } }  /* last tab peeks past the edge as a scroll hint */
 [data-tab][hidden], .tab-off { display: none !important; }
 /* ---- catalog ---- */
-.catalog { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+.catalog { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); }
 .model { border-radius: 16px; padding: 18px; background: var(--panel-2); display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; border: 1px solid transparent; }
 .model.trade { border-color: var(--neon-dim); }
 .model .hd { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; } .model .hd .spark { margin-left: auto; max-width: 100%; } .model .hd .n { font: 400 17px var(--serif); }
@@ -403,7 +408,7 @@ code { font: 12px var(--code); background: rgba(var(--tint), .06); padding: 1px 
 .hrow b { font-size: 15px; font-weight: 600; }
 .hrow .hr span { font-size: 12.5px; }
 /* ---- discover ---- */
-.discover { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.discover { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); }
 .disc { background: var(--panel-2); border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .disc.is-off { opacity: .72; }
 .disc .dh { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
@@ -509,7 +514,7 @@ main:focus { outline: none; }
     </div>
     <div data-tab="home" class="card span-12">
       <h2>Your strategies <span class="count" id="runMeta"></span></h2>
-      <div id="runs"></div>
+      <div id="runs" class="xscroll"></div>
     </div>
     <div data-tab="discover" class="card span-12">
       <h2>Discover strategies <span class="count" id="discMeta"></span><span class="spacer"></span>
@@ -525,13 +530,13 @@ main:focus { outline: none; }
       <div class="seg ideaseg" role="group" aria-label="Show ideas" id="ideaSeg"></div>
       <p class="explain" id="ideaSum"></p>
       <div class="scroll" id="ideas" style="max-height:420px"></div>
-      <div class="clicks" id="clicks"></div>
+      <div class="clicks xscroll" id="clicks"></div>
     </div>
 
     <div data-tab="activity" class="card span-12">
       <h2>Results by strategy <span class="count" id="modelCount"></span></h2>
       <div class="scroll" id="models"></div>
-      <div class="clicks" id="filterScore"></div>
+      <div class="clicks xscroll" id="filterScore"></div>
     </div>
 
     <div data-tab="activity" class="card span-12">
@@ -609,7 +614,7 @@ main:focus { outline: none; }
     <div data-tab="settings" class="card span-12">
       <h2>Check connections <span class="count">read-only: a quote from Robinhood, the Claude model, the bot's heartbeat, live off</span>
         <span class="spacer"></span><button class="btn" id="runChecks" type="button">Run check</button></h2>
-      <div id="checks"><div class="note">Not run yet.</div></div>
+      <div id="checks" class="xscroll"><div class="note">Not run yet.</div></div>
     </div>
 
     <div data-tab="none" class="card span-4" hidden>
@@ -701,6 +706,8 @@ main:focus { outline: none; }
       if (el.tagName === "BUTTON") el.classList.toggle("on", el.dataset.tab === tab);
       else el.classList.toggle("tab-off", el.dataset.tab !== tab);
     });
+    const onTab = document.querySelector(".tabs .on"), bar = onTab.parentElement;  // phone: keep the open tab in view
+    if (bar.scrollWidth > bar.clientWidth) bar.scrollLeft = onTab.offsetLeft - bar.offsetLeft - (bar.clientWidth - onTab.offsetWidth) / 2;
     if (S) renderAll();
     if (tab === "settings" || tab === "home") loadSettings();
   }
