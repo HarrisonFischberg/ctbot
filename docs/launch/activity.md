@@ -18,3 +18,4 @@
 - `.venv/bin/pytest -q`: 110 passed.
 - Scans: logs and data for key/token values: none. Outbound hosts in code: Robinhood MCP,
   Anthropic (SDK), Collective2.
+- `pip-audit --skip-editable` (2.10.1): no known vulnerabilities in installed packages.

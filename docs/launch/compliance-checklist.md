@@ -13,7 +13,7 @@ Checked 2026-10-15.
 | 5 | Cookie consent banner | NOT APPLICABLE | No optional tracking, analytics, pixels or third-party scripts in the dashboard or the site; only functional preference storage. |
 | 6 | Form consents | PASS | Forms: Settings key fields (purpose stated, values never echoed), Invest sheet (amount, max loss with a "No limit" option, take profit default "No target"), confirm dialogs. No marketing or optional consents; nothing prechecked. |
 | 7 | No unnecessary data | PASS | Dashboard shows only the account's last 4 digits; Claude receives no account identifiers; logs and data scanned for key/token values: none (2026-10-15). |
-| 8 | Audit third-party SDKs | NEEDS REVIEW | Inventory in `docs/launch/asset-licenses.md`; outbound hosts: Robinhood MCP, Anthropic, Collective2 only. `pip-audit` not installed (BLOCKED pending install approval). vectorbt Commons Clause noted. |
+| 8 | Audit third-party SDKs | PASS | Inventory in `docs/launch/asset-licenses.md`; outbound hosts: Robinhood MCP, Anthropic, Collective2 only. `pip-audit` 2.10.1 on 2026-10-15 over every installed package (incl. optional research extras): no known vulnerabilities. vectorbt Commons Clause noted. |
 | 9 | Remove dark patterns | PASS | Invest/Stop/Settings/Disconnect reviewed: plain labels, one confirm to stop, no urgency or guilt copy, summary shown before investing, defaults favour safety (15% max loss, removable). |
 | 10 | Remove hidden fees | PASS | README "What it costs": Anthropic usage, Robinhood, Collective2. CTbot itself is free. Dashboard header shows Claude reviews used vs the daily cap. |
 | 11 | Remove fake reviews | PASS | No testimonials, ratings, logos or user counts in repo, dashboard or site page. |

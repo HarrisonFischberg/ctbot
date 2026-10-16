@@ -63,6 +63,7 @@ the scanner model needs it running from 9:36 ET, the trend core trades 15:30-15:
 | Tearsheet for a lab strategy | `.venv/bin/ctbot-tearsheet --lab "lev: trend QQQ 170d -> QLD capped at 30% vol"` |
 | Intraday backtest (5-minute data) | `.venv/bin/ctbot-backtest` |
 | Tests | `.venv/bin/pytest -q` |
+| Known-vulnerability scan of installed packages | `.venv/bin/pip-audit --skip-editable` |
 
 ## Scheduled job (optional)
 
