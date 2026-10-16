@@ -271,6 +271,35 @@ body { min-height: 100vh; }
 a { color: var(--neon); text-decoration: none; } a:hover { text-decoration: underline; }
 
 footer { margin-top: 32px; display: flex; gap: 14px; flex-wrap: wrap; justify-content: space-between; color: var(--muted); font-size: 12.5px; }
+/* ---- minimize / close / drawer ---- */
+.card-ctl { display: inline-flex; gap: 2px; margin-left: auto; opacity: .55; transition: opacity .15s; }
+.card .spacer ~ .card-ctl { margin-left: 0; }
+.card:hover .card-ctl, .card-ctl:focus-within, .card-min .card-ctl { opacity: 1; }
+.kpi > .card-ctl { position: absolute; top: 14px; right: 12px; }
+.cbtn { width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 8px; background: transparent;
+  color: var(--ink-2); cursor: pointer; padding: 0; }
+.cbtn svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+.cbtn:hover { background: rgba(var(--tint), .08); color: var(--ink); }
+.cbtn:focus-visible { outline: 2px solid var(--neon); outline-offset: 1px; }
+.card-closed { display: none !important; }
+.card.card-min { height: auto !important; min-height: 0 !important; }
+.card.card-min > :not(h2):not(.label):not(.card-ctl):not(.grip) { display: none !important; }
+.card.card-min > h2 { margin-bottom: 0; }
+.card.card-min.kpi { padding-bottom: 18px; }
+.drawer-wrap { position: relative; }
+.drawer-wrap > .btn { padding: 7px 14px; }
+.dcount { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 4px; border-radius: 999px;
+  background: rgba(var(--tint), .1); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+#drawerBtn.has .dcount { background: var(--neon); color: var(--on-neon); }
+.drawer { position: absolute; left: 0; top: calc(100% + 8px); width: min(340px, calc(100vw - 32px)); z-index: 40; background: var(--pop);
+  border: 1px solid var(--line); border-radius: 16px; padding: 14px; box-shadow: 0 18px 50px rgba(0, 0, 0, .35); }
+.drawer-hd { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13.5px; }
+.drawer ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 60vh; overflow: auto; }
+.drawer li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 4px; border-top: 1px solid var(--line); }
+.drawer li:first-child { border-top: 0; }
+.drawer li span { display: grid; gap: 1px; min-width: 0; font-size: 13.5px; }
+.drawer li small { color: var(--muted); font-size: 12px; }
+.drawer .drawer-empty { color: var(--muted); font-size: 13px; line-height: 1.5; }
 /* ---- movable + resizable cards ---- */
 #cards > .card > h2 { cursor: grab; touch-action: none; }
 #cards > .card > h2 button, #cards > .card > h2 .seg { cursor: pointer; }
@@ -394,6 +423,13 @@ main:focus { outline: none; }
       <div><h1>CT<span>bot</span></h1><small id="sub">connecting…</small></div>
     </div>
     <div class="chips" id="chips"></div>
+    <div class="drawer-wrap">
+      <button class="btn" type="button" id="drawerBtn" aria-expanded="false" aria-controls="drawer">Drawer <span class="dcount" id="drawerCount">0</span></button>
+      <div class="drawer" id="drawer" hidden>
+        <div class="drawer-hd"><b>Closed cards</b><button class="linkish" type="button" id="drawerAll">Reopen all</button></div>
+        <ul id="drawerList"></ul>
+      </div>
+    </div>
     <span class="seg" role="group" aria-label="Theme" id="theme"><button data-theme="auto">Auto</button><button data-theme="light">Light</button><button data-theme="dark">Dark</button></span>
   </header>
   <nav class="tabs" role="tablist" aria-label="Views">
@@ -678,6 +714,7 @@ main:focus { outline: none; }
     toast(S && S.bot.running ? "Saved. The bot picks it up within a few seconds." : "Saved. In use now."); renderSettings(j);
   });
   document.addEventListener("click", async (e) => {
+    if (!(e.target instanceof Element)) return;
     const rm = e.target.closest(".krow [data-remove]");
     if (rm) {
       const f = rm.closest(".krow");
@@ -1301,6 +1338,7 @@ main:focus { outline: none; }
     load();
   });
   document.addEventListener("click", async (e) => {
+    if (!(e.target instanceof Element)) return;
     const inv = e.target.closest("[data-invest]");
     if (inv) return openInvest(inv.dataset.invest);
     const go = e.target.closest("[data-goto]");
@@ -1479,7 +1517,7 @@ main:focus { outline: none; }
   if (Array.isArray(layout)) layout = { cards: layout };  // older format: card order only
   const sizes = readJSON(SIZES, {});
   const cardsOf = (grid) => [...grid.children].filter((c) => c.classList.contains("card"));
-  const shownOf = (grid) => cardsOf(grid).filter((c) => !c.hidden && !c.classList.contains("tab-off"));
+  const shownOf = (grid) => cardsOf(grid).filter((c) => !c.hidden && !c.classList.contains("tab-off") && !c.classList.contains("card-closed"));
   const GRIP = `<svg viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><circle cx="4" cy="2.5" r="1.1"/><circle cx="8" cy="2.5" r="1.1"/><circle cx="4" cy="6" r="1.1"/><circle cx="8" cy="6" r="1.1"/><circle cx="4" cy="9.5" r="1.1"/><circle cx="8" cy="9.5" r="1.1"/></svg>`;
 
   function applySize(c) {
@@ -1490,14 +1528,92 @@ main:focus { outline: none; }
     c.classList.toggle("sized-min", !!z.h && !scrolls);
     if (z.h) c.style.setProperty("--h", z.h + "px"); else c.style.removeProperty("--h");
   }
-  function decorate(c) {  // ⠿ handle + resize corner, once per card
-    if (c.querySelector(":scope > .grip")) return;
+  const cardTitle = (c) => {
     const h = c.querySelector(":scope > h2, :scope > .label");
-    const title = h && h.firstChild ? h.firstChild.textContent.trim() : "card";
+    return h && h.firstChild ? h.firstChild.textContent.trim() : "card";
+  };
+  function decorate(c) {  // ⠿ handle, minimize/close buttons, resize corner; once per card
+    if (c.querySelector(":scope > .grip")) return;
+    const title = cardTitle(c);
     c.insertAdjacentHTML("afterbegin", `<button class="grip" type="button" aria-label="Move ${esc(title)} (arrow keys)" title="Drag to move · arrow keys when focused">${GRIP}</button>`);
+    const ctl = `<span class="card-ctl"><button type="button" class="cbtn" data-min aria-label="Minimize ${esc(title)}" title="Minimize"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6h7"/></svg></button><button type="button" class="cbtn" data-close aria-label="Close ${esc(title)}" title="Close (reopen it from the Drawer)"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg></button></span>`;
+    const h2 = c.querySelector(":scope > h2");
+    if (h2) h2.insertAdjacentHTML("beforeend", ctl); else c.insertAdjacentHTML("afterbegin", ctl);
     c.insertAdjacentHTML("beforeend", `<span class="sizer" title="Drag to resize · double-click to reset" aria-hidden="true"></span>`);
     applySize(c);
+    applyShown(c);
   }
+  // ---- minimize / close, and the Drawer that keeps closed cards ----
+  const CLOSED = "ctbot.closed", MINI = "ctbot.min";
+  const closed = new Set(readJSON(CLOSED, [])), mini = new Set(readJSON(MINI, []));
+  const TAB_NAME = { home: "Home", discover: "Discover", activity: "Activity", research: "Research", settings: "Settings" };
+  function applyShown(c) {
+    const k = c.dataset.card, isMin = mini.has(k);
+    c.classList.toggle("card-closed", closed.has(k));
+    c.classList.toggle("card-min", isMin);
+    const b = c.querySelector(".card-ctl [data-min]");
+    if (b) {
+      b.setAttribute("aria-label", `${isMin ? "Expand" : "Minimize"} ${cardTitle(c)}`);
+      b.title = isMin ? "Expand" : "Minimize";
+      b.setAttribute("aria-expanded", String(!isMin));
+      b.innerHTML = `<svg viewBox="0 0 12 12" aria-hidden="true"><path d="${isMin ? "M2.5 6h7M6 2.5v7" : "M2.5 6h7"}"/></svg>`;
+    }
+  }
+  const allCards = () => [...document.querySelectorAll("#kpis > .card, #cards > .card")].filter((c) => c.dataset.card && !c.hidden);
+  function renderDrawer() {
+    const list = allCards().filter((c) => closed.has(c.dataset.card));
+    $("drawerCount").textContent = list.length;
+    $("drawerBtn").classList.toggle("has", list.length > 0);
+    $("drawerAll").hidden = list.length < 2;
+    $("drawerList").innerHTML = list.length ? list.map((c) => {
+      const where = c.parentElement.id === "kpis" ? "Summary tile, every tab" : (TAB_NAME[c.dataset.tab] || "");
+      return `<li><span><b>${esc(cardTitle(c))}</b><small>${esc(where)}</small></span><button class="btn" type="button" data-reopen="${esc(c.dataset.card)}">Reopen</button></li>`;
+    }).join("") : `<li class="drawer-empty">Nothing here. Press × on a card to put it away; it waits here until you reopen it.</li>`;
+  }
+  function setClosed(c, isClosed) {
+    const k = c.dataset.card;
+    if (isClosed) closed.add(k); else closed.delete(k);
+    writeJSON(CLOSED, [...closed]); applyShown(c); renderDrawer();
+  }
+  function openDrawer(open) {
+    $("drawer").hidden = !open; $("drawerBtn").setAttribute("aria-expanded", String(open));
+    if (open) { renderDrawer(); ($("drawerList").querySelector("button") || $("drawerBtn")).focus(); }
+  }
+  $("drawerBtn").addEventListener("click", () => openDrawer($("drawer").hidden));
+  document.addEventListener("click", (e) => {
+    if (!(e.target instanceof Element)) return;  // e.g. a click dispatched on the document itself
+    if (!$("drawer").hidden && !e.target.closest(".drawer-wrap")) openDrawer(false);
+    const ctl = e.target.closest(".card-ctl button");
+    if (ctl) {
+      const c = ctl.closest(".card"), k = c.dataset.card;
+      if (ctl.hasAttribute("data-close")) {
+        setClosed(c, true);
+        toast(`${cardTitle(c)} closed. Reopen it from the Drawer at the top.`);
+        $("drawerBtn").focus();
+      } else {
+        if (mini.has(k)) mini.delete(k); else mini.add(k);
+        writeJSON(MINI, [...mini]); applyShown(c); ctl.focus(); redrawCharts();
+      }
+      return;
+    }
+    const re = e.target.closest("[data-reopen]");
+    if (re) {
+      const c = allCards().find((x) => x.dataset.card === re.dataset.reopen);
+      if (!c) return;
+      setClosed(c, false);
+      if (c.dataset.tab && c.dataset.tab !== tab) { tab = c.dataset.tab; try { localStorage.setItem("ctbot.tab", tab); } catch (err) {} applyTab(); }
+      openDrawer(false); redrawCharts();
+      c.scrollIntoView({ block: "center", behavior: "smooth" });
+      const f = c.querySelector(".card-ctl button"); if (f) f.focus({ preventScroll: true });
+    }
+  });
+  $("drawerAll").addEventListener("click", () => {
+    allCards().forEach((c) => { if (closed.has(c.dataset.card)) { closed.delete(c.dataset.card); applyShown(c); } });
+    writeJSON(CLOSED, [...closed]); renderDrawer(); openDrawer(false); redrawCharts();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("drawer").hidden) { openDrawer(false); $("drawerBtn").focus(); }
+  });
   function restoreOrder(grid) {  // saved order first; cards added since keep their place after it
     const order = layout[grid.id] || [];
     const byKey = new Map(cardsOf(grid).map((c) => [c.dataset.card, c]));
@@ -1509,6 +1625,7 @@ main:focus { outline: none; }
 
   cardsOf($("cards")).forEach((c) => { const inner = c.querySelector("[id]"); c.dataset.card = inner ? inner.id : ""; decorate(c); });
   restoreOrder($("cards"));
+  renderDrawer();
 
   // FLIP: move in the DOM, then animate every other card from where it was
   function flip(grid, mutate, skip) {
@@ -1608,7 +1725,7 @@ main:focus { outline: none; }
     g.focus(); saveOrder(grid); redrawCharts();
   });
   $("resetLayout").addEventListener("click", () => {
-    try { localStorage.removeItem(LAYOUT); localStorage.removeItem(SIZES); } catch (e) {}
+    try { [LAYOUT, SIZES, CLOSED, MINI].forEach((k) => localStorage.removeItem(k)); } catch (e) {}
     location.reload();
   });
 
