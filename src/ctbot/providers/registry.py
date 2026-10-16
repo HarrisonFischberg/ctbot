@@ -58,6 +58,25 @@ def _cboe_options(env: dict[str, str]) -> AltDataProvider:
     return CboeOptionsFlowProvider(symbols, Path(env.get("OPTIONS_FLOW_DIR", "data/options_flow")), exclude)
 
 
+def _tradingflow_options(env: dict[str, str]) -> AltDataProvider:
+    from pathlib import Path
+
+    from ctbot.config import load_universe
+    from ctbot.market_data.tradingflow_client import KEY_ENV, TradingFlowClient
+    from ctbot.providers.cboe_options import DEFAULT_EXCLUDE
+    from ctbot.providers.tradingflow_options import TradingFlowOptionsFlowProvider
+
+    if not env.get(KEY_ENV, "").strip():
+        raise ProviderNotConfigured(f"{KEY_ENV} is not set")
+    symbols = load_universe(Path(env.get("UNIVERSE_FILE", "config/universe.txt")))
+    raw = env.get("CBOE_OPTIONS_EXCLUDE")  # one exclusion list for both options-flow sources
+    exclude = DEFAULT_EXCLUDE if raw is None else frozenset(
+        s.strip().upper() for s in raw.split(",") if s.strip())
+    return TradingFlowOptionsFlowProvider(
+        symbols, TradingFlowClient(env[KEY_ENV].strip()).call_many,
+        Path(env.get("TRADINGFLOW_FLOW_DIR", "data/options_flow_tradingflow")), exclude)
+
+
 PROVIDER_FACTORIES: dict[str, Callable[[dict[str, str]], AltDataProvider]] = {
     "json_file": _json_file,
     "quiver": _quiver,
@@ -65,10 +84,14 @@ PROVIDER_FACTORIES: dict[str, Callable[[dict[str, str]], AltDataProvider]] = {
     "robinhood_mcp": _robinhood_mcp,
     "collective2": _collective2,
     "cboe_options": _cboe_options,
+    "tradingflow_options": _tradingflow_options,
 }
 
 
 def build_providers(names: list[str], env: dict[str, str]) -> list[AltDataProvider]:
+    if {"cboe_options", "tradingflow_options"} <= set(names):
+        log.warning("cboe_options and tradingflow_options are both on: the same options flow "
+                    "is counted twice; keep one")
     out: list[AltDataProvider] = []
     for name in names:
         factory = PROVIDER_FACTORIES.get(name)

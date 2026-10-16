@@ -136,8 +136,8 @@ STRATEGIES: dict[str, dict[str, Any]] = {
     "options_flow": {"title": "Big Options Bets", "risk": "High", "holds": "Days",
                      "tagline": "Follows unusually large options purchases (needs an options-flow data feed).",
                      "how": ["Watches for large call-option purchases, $100k or more each, in the last 3 days.",
-                             ("Needs an options-flow data provider (the free Cboe one, cboe_options, or a paid "
-                              "feed); without one it never signals.")]},
+                             ("Needs an options-flow data provider (TradingFlow, tradingflow_options; the free Cboe one, "
+                              "cboe_options; or a paid feed); without one it never signals.")]},
     "trend_template": {"title": "Strong Uptrends", "risk": "Medium", "holds": "Weeks",
                        "tagline": "Backs stocks in a steady long-term uptrend near their yearly high.",
                        "how": [("Needs the price above its 50-, 150- and 200-day averages, stacked in that order, "

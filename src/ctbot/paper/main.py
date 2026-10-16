@@ -78,8 +78,13 @@ def main() -> None:
         from ctbot.market_data.robinhood_mcp_client import ReadOnlyRobinhoodClient
         from ctbot.market_data.robinhood_readonly import RobinhoodReadOnlyMarketData
 
+        from ctbot.market_data.failover import DailyBarFailover, TradingFlowDailyBars
+        from ctbot.market_data.tradingflow_client import TradingFlowClient
+
         rh = ReadOnlyRobinhoodClient(interactive=False)
-        md = RobinhoodReadOnlyMarketData(rh.call_many)
+        # TradingFlow backs up completed daily bars once TRADINGFLOW_API_KEY is set (read per call).
+        md = DailyBarFailover(RobinhoodReadOnlyMarketData(rh.call_many),
+                              TradingFlowDailyBars(TradingFlowClient().call_many))
         context = _market_context(settings, rh.call_many, md)
     elif settings.market_data == "csv":
         md, context = CsvMarketData(settings.bars_dir), None

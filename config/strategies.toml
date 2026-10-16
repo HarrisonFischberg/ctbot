@@ -63,7 +63,7 @@ min_share_price = 1.0
 min_avg_dollar_volume = 1000000
 
 [options_flow]
-enabled = true                 # needs an options-flow provider: ALT_DATA_PROVIDERS=...,cboe_options (free) or Unusual Whales
+enabled = true                 # needs an options-flow provider: ALT_DATA_PROVIDERS=...,tradingflow_options (key), cboe_options (free) or Unusual Whales
 mode = "shadow"           # suggests ideas only until you invest in it on the dashboard
 weight = 0.75
 [options_flow.params]

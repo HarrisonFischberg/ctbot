@@ -30,6 +30,15 @@ def run_checks(settings) -> list[dict[str, Any]]:
             add("robinhood sign-in", True, f"SPY last {float(last):.2f}")
         except Exception as e:  # noqa: BLE001
             add("robinhood sign-in", False, f"{type(e).__name__}: {e} -> run ctbot-robinhood-login")
+    from ctbot.market_data.tradingflow_client import TradingFlowClient
+
+    tf = TradingFlowClient()
+    if tf.configured:  # optional backup source: only checked once a key is set
+        try:
+            bars = tf.call("symbol_daily_candles", {"symbol": "SPY", "lookback": 20})["bars"]
+            add("tradingflow", True, f"SPY close {float(bars[-1]['close']):.2f} on {bars[-1]['date']}")
+        except Exception as e:  # noqa: BLE001
+            add("tradingflow", False, f"{e} -> check TRADINGFLOW_API_KEY")
     try:
         import anthropic
 

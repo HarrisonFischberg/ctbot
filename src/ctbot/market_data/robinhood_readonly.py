@@ -203,6 +203,9 @@ class RobinhoodReadOnlyMarketData:
         if hit and time.monotonic() - hit[0] < ttl_s:
             return hit[1]
         start = datetime.combine(key[0], market_hours.OPEN, tzinfo=market_hours.ET)
+        if now < start + timedelta(minutes=5):
+            # Robinhood rejects a window shorter than one bar ("end must be after start").
+            return {}
         bars = self.intraday_bars(list(key[1]), start)
         for k in [k for k in cache if k[0] != key[0]]:
             del cache[k]  # drop earlier days

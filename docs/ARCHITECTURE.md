@@ -31,6 +31,8 @@ src/ctbot/
   pipeline.py                  one cycle; executor injected
   net.py                       guarded HTTP for public sources: timeout, retry, circuit breaker
   market_data/                 price data: CSV (offline), Robinhood MCP read-only
+    tradingflow_client.py      TradingFlow MCP (API key): allowlisted read tools, circuit breaker
+    failover.py                Robinhood daily bars with TradingFlow as the backup source
     context.py                 review context + earnings guard (Robinhood, then public extras)
     tradingview.py             public TradingView scanner: earnings dates, technical rating
     news.py                    Marketaux news sentiment (optional key; numbers only)
@@ -42,6 +44,7 @@ src/ctbot/
     unusual_whales.py          Unusual Whales stub (options flow, congress)
     robinhood_mcp.py           Robinhood MCP stub (get_politician_trades, ...)
     cboe_options.py            free Cboe delayed chains -> unusual-volume OPTIONS_FLOW events
+    tradingflow_options.py     TradingFlow trade-level flow (ask/bid side) -> OPTIONS_FLOW events
   strategies/
     base.py                    Strategy protocol + StrategyContext
     registry.py                load strategies.toml, build enabled strategies
@@ -92,6 +95,12 @@ tests/                         isolation, config, risk, strategies/ensemble/prov
   failures) and every caller treats a miss as "no data". Check each site's terms before any
   use beyond personal research. Cboe options flow infers direction from the last trade vs the
   mid, so it is much weaker evidence than a paid sweep/block feed.
+- **TradingFlow is a second source, not a replacement**: with `TRADINGFLOW_API_KEY` set it
+  backs up Robinhood's completed daily bars and feeds `tradingflow_options`. Its candles run
+  about 15 minutes behind and are not split-adjusted, so quotes and intraday bars stay
+  Robinhood-only (no Robinhood quote, no entry), and a daily series is cut at any jump its own
+  previous close cannot explain. Its options flow is still flow: hedges and spreads look like
+  directional bets.
 - **Robinhood MCP is reachable via Claude, not plain Python**: live wiring and the
   read-only MCP data paths must go through the Claude API MCP connector.
 
