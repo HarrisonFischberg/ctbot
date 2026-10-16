@@ -172,3 +172,23 @@ def test_each_strategy_keeps_its_own_cash_and_rule_entries_retry():
         st.cash = broker.cash()
         run_cycle(c, st, NOW + timedelta(minutes=5))  # same 15:30-15:44 window: rule entries retry
         assert sorted((f.symbol, round(f.quantity * f.price)) for f in broker._fills) == [("QQQ", 1000), ("SPY", 1000)]
+
+
+def test_dashboard_shows_each_runs_idle_cash(tmp_path):
+    """Cash a running strategy has not spent is held for it, not free: the dashboard says so."""
+    from ctbot.dashboard.state import _launcher
+
+    s = Settings.from_env({"MAX_TRADING_CAPITAL": "5000"})
+    allocations.start(s.allocations_path, "orb", 2000, 5000)
+    allocations.start(s.allocations_path, "trend_core", 1000, 5000)
+    allocations.start(s.allocations_path, "rsi2_etf", 1000, 5000)
+    allocations.stop(s.allocations_path, "rsi2_etf")
+    positions = [{"symbol": "GE", "model": "orb", "quantity": 2.0, "avg_cost": 300.0, "market_value": 610.0, "pnl": 10.0},
+                 {"symbol": "QQQ", "model": "trend_core", "quantity": 2.0, "avg_cost": 520.0, "market_value": 1030.0,
+                  "pnl": -10.0}]
+    L = _launcher(s, positions)
+    runs = {r["strategy"]: r for r in L["runs"]}
+    assert runs["orb"]["cost"] == 600.0 and runs["orb"]["waiting"] == 1400.0
+    assert runs["trend_core"]["waiting"] == 0.0  # spent a little over its amount: never negative
+    assert runs["rsi2_etf"]["waiting"] == 0.0  # selling: its money is not held back
+    assert L["reserved"] == 1400.0 and L["allocated"] == 3000.0

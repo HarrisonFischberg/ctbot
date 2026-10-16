@@ -251,13 +251,15 @@ def _launcher(settings: Settings, positions: list[dict[str, Any]]) -> dict[str, 
         held = [p for p in positions if p.get("model") == name]
         open_pnl = sum(p["pnl"] for p in held)
         gain = float(r.get("realized", 0.0)) + open_pnl
+        cost = sum(p["quantity"] * p["avg_cost"] for p in held)
+        # cash promised to a running strategy but not spent yet (the bot sizes off cost, as here)
+        waiting = max(0.0, float(r["capital"]) - cost) if r.get("status") == allocations.RUNNING else 0.0
         runs.append({"strategy": name, **r, "positions": len(held), "value": sum(p["market_value"] for p in held),
+                     "cost": cost, "waiting": waiting,
                      "pnl": open_pnl, "gain": gain, "gain_pct": gain / float(r["capital"]) if r.get("capital") else 0.0})
     allocated = sum(float(r["capital"]) for r in runs if r.get("status") == allocations.RUNNING)
-    # cash promised to running strategies but not spent yet: not free for a new investment
-    reserved = sum(max(0.0, float(r["capital"]) - sum(p["quantity"] * p["avg_cost"] for p in positions
-                                                       if p.get("model") == r["strategy"]))
-                   for r in runs if r.get("status") == allocations.RUNNING)
+    # cash held for running strategies: not free for a new investment
+    reserved = sum(r["waiting"] for r in runs)
     return {"runs": runs, "allocated": allocated, "reserved": reserved, "max_total": settings.risk.max_trading_capital}
 
 

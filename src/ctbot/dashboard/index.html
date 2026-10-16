@@ -852,6 +852,13 @@ main:focus { outline: none; }
     const lossUsed = Math.max(0, -a.day_pnl_pct) / L.max_daily_loss_pct;
     const ddUsed = Math.max(0, -a.drawdown_pct) / L.max_total_drawdown_pct;
     const capUsed = a.deployed / L.max_trading_capital;
+    const LR = S.launcher || { runs: [], reserved: 0 };
+    const held = Math.min(a.cash, LR.reserved || 0), free = freeCash();
+    const sameDay = (LR.runs || []).filter((r) => r.waiting > 1 && isSameDay(r.strategy))
+      .reduce((t, r) => t + r.waiting, 0);
+    const cashSub = held > 1
+      ? `${usd(held, 0)} held for your strategies · ${usd(free, 0)} free to invest`
+      : "cash ready to trade";
     const tiles = [
       ["Portfolio value", `<div class="value hero">${usd(a.equity)}</div>
         <div class="sub ${dir(a.total_pnl)}">${arrow(a.total_pnl)} ${sgnUsd(a.total_pnl)} · ${sgnPct(a.total_pnl / a.starting_capital)} vs ${usd(a.starting_capital, 0)}</div>`],
@@ -859,20 +866,21 @@ main:focus { outline: none; }
         <div class="sub">${sgnPct(a.day_pnl_pct)} · bot pauses at −${pct(L.max_daily_loss_pct, 0)}</div>${meter(lossUsed, lossUsed >= 1 ? "crit" : lossUsed > .6 ? "warn" : "")}`],
       ["Down from high", `<div class="value ${a.drawdown_pct < -1e-9 ? "down" : "flat"}">${sgnPct(a.drawdown_pct)}</div>
         <div class="sub">high ${usd(a.peak_equity)} · bot stops at −${pct(L.max_total_drawdown_pct, 0)}</div>${meter(ddUsed, ddUsed >= 1 ? "crit" : ddUsed > .6 ? "warn" : "")}`],
-      ["Buying power", `<div class="value">${usd(a.cash)}</div>
-        <div class="sub">cash ready to trade${a.unsettled ? " · " + usd(a.unsettled) + " settling" : ""}</div>`],
+      ["Cash", `<div class="value">${usd(a.cash)}</div>
+        <div class="sub">${cashSub}${a.unsettled ? " · " + usd(a.unsettled) + " settling" : ""}</div>`, "Buying power"],
       ["Invested", `<div class="value">${usd(a.deployed)}</div>
-        <div class="sub">${pct(capUsed, 0)} of ${usd(L.max_trading_capital, 0)} paper money</div>${meter(capUsed, capUsed >= 1 ? "warn" : "")}`],
+        <div class="sub">${pct(capUsed, 0)} of ${usd(L.max_trading_capital, 0)} paper money${sameDay > 1
+          ? ` · ${usd(sameDay, 0)} waits as cash for day trades` : ""}</div>${meter(capUsed, capUsed >= 1 ? "warn" : "")}`],
       ["Positions", `<div class="value">${S.positions.length}<span style="color:var(--muted);font-size:16px">/${L.max_open_positions}</span>
         </div>
         <div class="sub">day trades ${a.day_trades_5d} of ${L.max_day_trades_5d} (last 5 days)</div>${meter(a.day_trades_5d / L.max_day_trades_5d, a.day_trades_5d >= L.max_day_trades_5d ? "crit" : "")}`],
     ];
     const box = $("kpis");
     let added = false;
-    tiles.forEach(([l, body]) => {
-      let t = box.querySelector(`:scope > [data-card="kpi-${l}"]`);
+    tiles.forEach(([l, body, key = l]) => {  // key keeps a renamed tile's saved place and size
+      let t = box.querySelector(`:scope > [data-card="kpi-${key}"]`);
       if (!t) {
-        t = document.createElement("div"); t.className = "card kpi span-2"; t.dataset.card = "kpi-" + l;
+        t = document.createElement("div"); t.className = "card kpi span-2"; t.dataset.card = "kpi-" + key;
         t.innerHTML = `<div class="label">${l}</div><div class="kb"></div>`;
         box.appendChild(t); decorate(t); added = true;
       }
@@ -1258,6 +1266,7 @@ main:focus { outline: none; }
   }
   // ---- strategies in plain words, the invest sheet and "your strategies" -------------
   const plainOf = (name) => ((S.strategies || []).find((x) => x.name === name) || {}).plain || { title: name };
+  const isSameDay = (name) => /same day/i.test(plainOf(name).holds || "");  // day trades: cash between trades, none overnight
   const runOf = (name) => ((S.launcher || {}).runs || []).find((r) => r.strategy === name && r.status !== "stopped");
   const freeCash = () => {  // what a new investment can really use: unassigned AND in buying power
     const L = S.launcher || { allocated: 0, max_total: 0, reserved: 0 };
@@ -1340,7 +1349,7 @@ main:focus { outline: none; }
         st ? `Robinhood ${rh.signed_in ? "✓" : "✕"} · Claude AI key ${keys.ANTHROPIC_API_KEY && keys.ANTHROPIC_API_KEY.set ? "✓" : "✕"} · Collective2 ${keys.C2_API_KEY && keys.C2_API_KEY.set ? "✓" : "(optional)"}` : "Checking…",
         `<button class="btn" type="button" data-goto="settings">Settings</button>`],
       [a.cash > 0, "Your money",
-        `${usd(a.cash)} buying power, ${usd(freeCash(), 0)} of it free to invest.` +
+        `${usd(a.cash)} cash, ${usd(freeCash(), 0)} of it free to invest${(S.launcher || {}).reserved > 1 ? "; the rest is held for your strategies" : ""}.` +
           (a.deployed > 1 && !runs.length ? ` ${usd(a.deployed, 0)} is already in positions from the default setup (see Activity).` : "") +
           ` Practice money: prices are real, trades are simulated, and your real Robinhood account isn't touched.`, ""],
       [runs.length > 0, "Find a strategy you like",
@@ -1358,11 +1367,15 @@ main:focus { outline: none; }
   }
   function renderRuns() {
     const L = S.launcher || { runs: [], allocated: 0, max_total: 0 }, runs = L.runs.filter((r) => r.status !== "stopped");
-    $("runMeta").textContent = `${usd(L.allocated, 0)} invested of ${usd(L.max_total, 0)} paper money`;
+    $("runMeta").textContent = `${usd(L.allocated, 0)} of ${usd(L.max_total, 0)} paper money assigned` +
+      (L.reserved > 1 ? ` · ${usd(Math.min(L.reserved, S.account_summary.cash), 0)} of it still cash` : "");
+    const idle = (r) => r.status !== "running" || !(r.waiting >= 1) ? ""  // why a strategy's money is still cash
+      : `<div class="lm">${usd(r.waiting, 0)} cash ${isSameDay(r.strategy) ? "between day trades"
+        : r.positions ? "for its next buy" : "until its buy signal"}</div>`;
     const limits = (r) => [r.max_loss_pct ? `max loss −${pct(r.max_loss_pct, 0)}` : "", r.take_profit_pct ? `take profit +${pct(r.take_profit_pct, 0)}` : ""].filter(Boolean).join(" · ") || "no limits";
-    $("runs").innerHTML = runs.length ? `<table class="tbl"><thead><tr><th>Strategy</th><th class="r">Invested</th><th class="r">Value now</th>
+    $("runs").innerHTML = runs.length ? `<table class="tbl"><thead><tr><th>Strategy</th><th class="r">Amount</th><th class="r">Value now</th>
       <th class="r">Total return</th><th>Limits</th><th>Since</th><th></th></tr></thead><tbody>${runs.map((r) => `<tr>
-      <td><b>${esc(plainOf(r.strategy).title)}</b>${r.status === "stopping" ? ` <span class="tag q">Selling · ${esc(r.reason || "")}</span>` : ""}</td>
+      <td><b>${esc(plainOf(r.strategy).title)}</b>${r.status === "stopping" ? ` <span class="tag q">Selling · ${esc(r.reason || "")}</span>` : ""}${idle(r)}</td>
       <td class="r">${usd(r.capital, 0)}</td><td class="r">${usd(r.capital + r.gain)}</td>
       <td class="r ${dir(r.gain)}">${sgnUsd(r.gain)} (${sgnPct(r.gain_pct, 1)})</td><td class="lm">${limits(r)}</td>
       <td>${fmtTime(r.started_at)}</td>
