@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Start a paper-trading session from the project folder:  ./run_ctbot.sh
-#   1. the dashboard at http://127.0.0.1:8787 (background; output in logs/dashboard.log)
+#   1. the dashboard at http://127.0.0.1:8787 (background; output in logs/dashboard.log),
+#      opened in your browser once it answers (skip with CTBOT_NO_BROWSER=1)
 #   2. the paper bot, 5-minute cycles, in the foreground
 # On macOS, `caffeinate -di` keeps the display and system from idle-sleeping while it runs
 # (closing the lid still sleeps a laptop unless it has power and an external display).
@@ -15,7 +16,17 @@ fi
 .venv/bin/ctbot-dashboard >> logs/dashboard.log 2>&1 &
 DASH=$!
 trap 'kill $DASH 2>/dev/null' EXIT INT TERM
-echo "dashboard: http://127.0.0.1:8787 (pid $DASH) · paper bot starting · Ctrl+C stops both"
+URL=http://127.0.0.1:8787
+echo "dashboard: $URL (pid $DASH) · paper bot starting · Ctrl+C stops both"
+if [ -z "${CTBOT_NO_BROWSER:-}" ]; then
+  (for _ in $(seq 1 40); do  # wait up to ~20 s for the dashboard, then open it once
+     if curl -s -o /dev/null "$URL"; then
+       if command -v open >/dev/null; then open "$URL"; elif command -v xdg-open >/dev/null; then xdg-open "$URL" >/dev/null 2>&1; fi
+       exit 0
+     fi
+     sleep 0.5
+   done; echo "dashboard didn't answer yet; open $URL yourself") &
+fi
 if command -v caffeinate >/dev/null; then
   caffeinate -di .venv/bin/ctbot-paper --loop --interval 300
 else
