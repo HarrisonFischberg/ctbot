@@ -91,6 +91,8 @@ class Settings:
     # instant: usable at once (Robinhood margin accounts). MCP is "limited margin".
     paper_settlement: str = "t1"
     market_data: str = "csv"  # csv | robinhood (read-only MCP; run ctbot-robinhood-login first)
+    # Public TradingView scanner for earnings dates and review context (robinhood market data only)
+    tradingview_data: bool = True
     paper_ledger_path: Path = Path("data/paper_ledger.json")
     paper_risk_state_path: Path = Path("data/paper_risk_state.json")
     log_dir: Path = Path("logs")
@@ -196,6 +198,7 @@ class Settings:
             universe_file=Path(env.get("UNIVERSE_FILE", "config/universe.txt")),
             bars_dir=Path(env.get("BARS_DIR", "data/bars")),
             market_data=env.get("MARKET_DATA", "csv").strip().lower(),
+            tradingview_data=_bool(env, "TRADINGVIEW_DATA", True),
             entry_mode=env.get("ENTRY_MODE", "manual").strip().lower(),
             paper_settlement=env.get("PAPER_SETTLEMENT", "t1").strip().lower(),
             paper_ledger_path=Path(env.get("PAPER_LEDGER_PATH", "data/paper_ledger.json")),

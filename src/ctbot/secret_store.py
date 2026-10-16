@@ -18,6 +18,7 @@ STORE_PATH = Path.home() / ".ctbot" / "settings.json"
 KEYS: dict[str, tuple[str, re.Pattern[str]]] = {
     "ANTHROPIC_API_KEY": ("Anthropic API key", re.compile(r"[A-Za-z0-9_\-]{20,200}")),
     "C2_API_KEY": ("Collective2 API key", re.compile(r"[A-Za-z0-9_\-]{8,200}")),
+    "MARKETAUX_API_TOKEN": ("Marketaux news API token (optional)", re.compile(r"[A-Za-z0-9_\-]{16,200}")),
     "ROBINHOOD_ACCOUNT_NUMBER": ("Robinhood account number", re.compile(r"[A-Za-z0-9]{4,32}")),
     "ROBINHOOD_ACCOUNT_NICKNAME": ("Robinhood account nickname", re.compile(r"[\w .'\-]{1,50}")),
 }

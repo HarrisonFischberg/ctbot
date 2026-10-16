@@ -46,6 +46,7 @@ PARAMS: dict[str, tuple[str, Any] | None] = {
     "min_return": ("Needs at least", lambda v: f"{_pct(v)} gain over the look-back"),
     "window_days": ("Recent window", lambda v: f"{v} days"),
     "min_actors": ("Needs at least", lambda v: f"{v} buyers"),
+    "min_breakout": ("Breakout strength needed", lambda v: f"{v} of 100"),
 }
 
 STRATEGIES: dict[str, dict[str, Any]] = {
@@ -135,7 +136,14 @@ STRATEGIES: dict[str, dict[str, Any]] = {
     "options_flow": {"title": "Big Options Bets", "risk": "High", "holds": "Days",
                      "tagline": "Follows unusually large options purchases (needs an options-flow data feed).",
                      "how": ["Watches for large call-option purchases, $100k or more each, in the last 3 days.",
-                             "Needs an options-flow data provider; without one it never signals."]},
+                             ("Needs an options-flow data provider (the free Cboe one, cboe_options, or a paid "
+                              "feed); without one it never signals.")]},
+    "trend_template": {"title": "Strong Uptrends", "risk": "Medium", "holds": "Weeks",
+                       "tagline": "Backs stocks in a steady long-term uptrend near their yearly high.",
+                       "how": [("Needs the price above its 50-, 150- and 200-day averages, stacked in that order, "
+                                "with the 200-day average still rising."),
+                               "Scores extra for heavy volume and for being within 25% of the 52-week high.",
+                               "Votes with other models rather than buying alone; votes to sell below the 50-day average."]},
 }
 
 MODES = {"trade": "Active", "shadow": "Watching", "off": "Off"}

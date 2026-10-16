@@ -45,12 +45,26 @@ def _collective2(env: dict[str, str]) -> AltDataProvider:
     return Collective2Provider(env.get("C2_API_KEY"), load_watchlist_ids())
 
 
+def _cboe_options(env: dict[str, str]) -> AltDataProvider:
+    from pathlib import Path
+
+    from ctbot.config import load_universe
+    from ctbot.providers.cboe_options import DEFAULT_EXCLUDE, CboeOptionsFlowProvider
+
+    symbols = load_universe(Path(env.get("UNIVERSE_FILE", "config/universe.txt")))
+    raw = env.get("CBOE_OPTIONS_EXCLUDE")
+    exclude = DEFAULT_EXCLUDE if raw is None else frozenset(
+        s.strip().upper() for s in raw.split(",") if s.strip())
+    return CboeOptionsFlowProvider(symbols, Path(env.get("OPTIONS_FLOW_DIR", "data/options_flow")), exclude)
+
+
 PROVIDER_FACTORIES: dict[str, Callable[[dict[str, str]], AltDataProvider]] = {
     "json_file": _json_file,
     "quiver": _quiver,
     "unusual_whales": _unusual_whales,
     "robinhood_mcp": _robinhood_mcp,
     "collective2": _collective2,
+    "cboe_options": _cboe_options,
 }
 
 

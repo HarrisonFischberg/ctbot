@@ -29,7 +29,11 @@ src/ctbot/
   config.py                    Settings.from_env(); live needs 3 separate flags
   models.py                    Bar, Quote, AltDataEvent, Signal, Candidate, Decision, Order, Fill
   pipeline.py                  one cycle; executor injected
-  market_data/                 price data: CSV (offline), Robinhood MCP read-only stub
+  net.py                       guarded HTTP for public sources: timeout, retry, circuit breaker
+  market_data/                 price data: CSV (offline), Robinhood MCP read-only
+    context.py                 review context + earnings guard (Robinhood, then public extras)
+    tradingview.py             public TradingView scanner: earnings dates, technical rating
+    news.py                    Marketaux news sentiment (optional key; numbers only)
   providers/                   alt data, normalized to AltDataEvent
     base.py                    AltDataProvider protocol
     registry.py                build by name; one failing provider never blocks others
@@ -37,6 +41,7 @@ src/ctbot/
     quiver.py                  Quiver Quantitative stub (congress, Form 4, 13F)
     unusual_whales.py          Unusual Whales stub (options flow, congress)
     robinhood_mcp.py           Robinhood MCP stub (get_politician_trades, ...)
+    cboe_options.py            free Cboe delayed chains -> unusual-volume OPTIONS_FLOW events
   strategies/
     base.py                    Strategy protocol + StrategyContext
     registry.py                load strategies.toml, build enabled strategies
@@ -44,8 +49,10 @@ src/ctbot/
     mean_reversion.py          z-score dips with short half-life, trend-filtered
     event_cluster.py           congressional / institutional / copy_trading
     options_flow.py            net bullish premium of large prints
+    trend_template.py          stage-2 trend template (maverick-mcp supply/demand screen)
   aggregation/ensemble.py      weighted agreement score; min agreeing strategies; caps Claude calls
   analysis/stats.py            z-score, returns, SMA, vol, half-life
+  analysis/regime.py           SPY trend/volatility regime label for reviews
   decision/                    Claude review -> JSON Decision; fails closed
   risk/manager.py              check_entry / check_exit
   execution/                   OrderExecutor protocol + paper-process import guard
@@ -79,6 +86,12 @@ tests/                         isolation, config, risk, strategies/ensemble/prov
 - **Small cash accounts**: no shorting (bearish signals only exit held longs); PDT limit of
   3 day trades / 5 business days; Claude API cost per candidate can exceed expected edge.
 - **Paid data**: Quiver and Unusual Whales need subscriptions and API keys.
+- **Free public data is unofficial**: the TradingView scanner and Cboe's delayed chains are
+  public web endpoints with no API contract or SLA; they can change, rate-limit or vanish.
+  Each source sits behind `net.HttpSource` (one retry, then a 10-minute pause after repeated
+  failures) and every caller treats a miss as "no data". Check each site's terms before any
+  use beyond personal research. Cboe options flow infers direction from the last trade vs the
+  mid, so it is much weaker evidence than a paid sweep/block feed.
 - **Robinhood MCP is reachable via Claude, not plain Python**: live wiring and the
   read-only MCP data paths must go through the Claude API MCP connector.
 

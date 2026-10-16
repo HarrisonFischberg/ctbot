@@ -35,6 +35,27 @@ from ctbot.strategies.registry import (  # noqa: E402
 )
 
 
+def _news():
+    """Marketaux sentiment when a token is set (in .env or on the dashboard's Settings tab)."""
+    if not os.environ.get("MARKETAUX_API_TOKEN"):
+        return None
+    from ctbot.market_data.news import MarketauxSentiment
+
+    return MarketauxSentiment(os.environ["MARKETAUX_API_TOKEN"])
+
+
+def _market_context(settings: Settings, call_many, md):
+    """Robinhood context plus the optional public sources (TradingView, Marketaux)."""
+    from ctbot.market_data.context import MarketContext
+
+    snapshot = None
+    if settings.tradingview_data:
+        from ctbot.market_data.tradingview import TradingViewSnapshot
+
+        snapshot = TradingViewSnapshot()
+    return MarketContext(call_many, md, snapshot=snapshot, news=_news())
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="ctbot paper trading")
     parser.add_argument("--loop", action="store_true", help="repeat every --interval seconds")
@@ -59,9 +80,7 @@ def main() -> None:
 
         rh = ReadOnlyRobinhoodClient(interactive=False)
         md = RobinhoodReadOnlyMarketData(rh.call_many)
-        from ctbot.market_data.context import MarketContext
-
-        context = MarketContext(rh.call_many, md)
+        context = _market_context(settings, rh.call_many, md)
     elif settings.market_data == "csv":
         md, context = CsvMarketData(settings.bars_dir), None
     else:
@@ -112,6 +131,8 @@ def main() -> None:
         if secret_store.reload_if_changed():
             components.engine._client = None  # next review builds a client with the new key
             components.providers = build_providers(list(settings.providers), dict(os.environ))
+            if components.context is not None:
+                components.context.news = _news()
             log.info("settings changed on the dashboard: API keys reloaded")
 
     def handle_clicks() -> None:

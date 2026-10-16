@@ -19,6 +19,7 @@ from ctbot.strategies.intraday import OpeningRangeBreakout, OvernightHold, VwapR
 from ctbot.strategies.mean_reversion import MeanReversionStrategy
 from ctbot.strategies.orb_sip import OrbStocksInPlay
 from ctbot.strategies.swing import Rsi2Etf, TrendCore, TurnOfMonth
+from ctbot.strategies.trend_template import TrendTemplate
 from ctbot.strategies.momentum import MomentumStrategy
 from ctbot.strategies.options_flow import OptionsFlowStrategy
 
@@ -38,6 +39,7 @@ STRATEGY_CLASSES: dict[str, type] = {
     "turn_of_month": TurnOfMonth,
     "trend_core": TrendCore,
     "orb_sip": OrbStocksInPlay,
+    "trend_template": TrendTemplate,
 }
 
 

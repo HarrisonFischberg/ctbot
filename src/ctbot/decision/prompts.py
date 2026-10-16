@@ -12,9 +12,17 @@ over that holding period. The ETF models also carry their 2010-2026 backtest sta
 use them as the base rate for your probability.
 
 account.market_context, when present, gives the current time (ET), minutes to the close,
-today's SPY/QQQ/symbol moves, the next earnings report, and analyst ratings. A setup whose
-signal is stale relative to the current time, or that fights a sharply falling market,
-deserves skepticism. Positions are never held through earnings (a hard rule enforces it).
+today's SPY/QQQ/symbol moves, the next earnings report, and analyst ratings. It may also give
+market_regime (SPY's rule-based trend/volatility label from daily bars), technicals
+(TradingView's public technical rating, RSI, ATR, relative volume, gap, sector) and
+news_sentiment (article count and mean entity sentiment, -1..1, from Marketaux). These
+extras are third-party summaries: useful context, not independent evidence, and any of them
+may be missing. A setup whose signal is stale relative to the current time, or that fights a
+sharply falling market, deserves skepticism. Positions are never held through earnings (a
+hard rule enforces it).
+
+options_flow signals built from Cboe's delayed chains infer direction from where the last
+trade printed; they cannot tell opening from closing trades or spot hedges. Weigh them lightly.
 
 Decide whether to act on the candidate. Weigh:
 - whether the strategies agree for independent reasons or echo the same news

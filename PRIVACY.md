@@ -41,6 +41,13 @@ Only to services you configure, only from your computer:
   positions. Your API key authenticates the request. No account numbers or names are sent.
   See Anthropic's privacy policy and API terms.
 - **Collective2**, if you add a key: read-only requests for public strategy statistics.
+- **TradingView** (its public stock scanner at `scanner.tradingview.com`), unless you set
+  `TRADINGVIEW_DATA=false`: the ticker symbols in your universe and paper positions, to get
+  earnings dates and technical indicators. No account, key, or personal data is sent.
+- **Cboe** (`cdn-api.cboe.com`), if you add `cboe_options` to `ALT_DATA_PROVIDERS`: requests
+  for the delayed option chains of the ticker symbols in your universe. Nothing else is sent.
+- **Marketaux**, if you add a key: the ticker symbol under review, to get a news-sentiment
+  score. Your key authenticates the request.
 
 ## How long it is kept
 

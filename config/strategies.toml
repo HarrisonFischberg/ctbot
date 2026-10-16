@@ -63,7 +63,7 @@ min_share_price = 1.0
 min_avg_dollar_volume = 1000000
 
 [options_flow]
-enabled = true                 # needs an options-flow provider (e.g. Unusual Whales) to signal
+enabled = true                 # needs an options-flow provider: ALT_DATA_PROVIDERS=...,cboe_options (free) or Unusual Whales
 mode = "shadow"           # suggests ideas only until you invest in it on the dashboard
 weight = 0.75
 [options_flow.params]
@@ -173,3 +173,15 @@ sma_days = 170
 size_pct = 0.4
 vol_cap = 0.30
 disaster_stop = 0.40    # 2x fund: wider disaster stop; the trend exit is the real exit
+
+# ---- Stage-2 trend template (maverick-mcp's supply/demand screen, Minervini-style) ----
+# Close above rising 50/150/200-day averages in that order; scored on volume surge and
+# distance from the 52-week high. Confirms other daily models (not standalone); held names
+# closing below the 50-day get an exit vote. Forward test only: not backtested here yet.
+[trend_template]
+enabled = true
+mode = "shadow"           # suggests ideas only until you invest in it on the dashboard
+weight = 0.75
+[trend_template.params]
+min_breakout = 75       # 50 = gate only; 75 adds volume surge OR near the 52-week high
+top_n = 5

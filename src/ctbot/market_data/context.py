@@ -2,6 +2,11 @@
 
 Per trading day it caches the next 14 days of large-cap earnings reports and analyst
 ratings; per call it adds the current ET time and how SPY/QQQ are doing today.
+
+Optional public sources fill gaps: a TradingViewSnapshot adds next-report dates for names
+outside Robinhood's large-cap calendar (the guard uses the earlier of the two) and technical
+context; a MarketauxSentiment adds a numeric news-sentiment summary. The SPY regime comes
+from Robinhood's own daily bars. Every extra is advisory and skipped when unavailable.
 """
 
 from __future__ import annotations
@@ -11,6 +16,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Callable
 
 from ctbot import market_hours
+from ctbot.analysis import regime
 from ctbot.market_hours import ET
 
 log = logging.getLogger(__name__)
@@ -25,20 +31,29 @@ def report_datetime(d: date, timing: str | None) -> datetime:
 
 class MarketContext:
     def __init__(self, call_many: CallMany, market_data=None,
-                 clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc)) -> None:
+                 clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+                 snapshot=None, news=None) -> None:
         self._call_many = call_many
         self.md = market_data
         self.clock = clock
+        self.snapshot = snapshot  # TradingViewSnapshot | None
+        self.news = news  # MarketauxSentiment | None
         self._day: date | None = None
         self._earnings: dict[str, tuple[date, str | None]] = {}
         self._ratings: dict[str, dict[str, Any]] = {}
+        self._regime: dict[str, Any] | None = None
+
+    def warm(self, symbols) -> None:
+        """Register the universe so the TradingView snapshot fetches it in one request."""
+        if self.snapshot is not None:
+            self.snapshot.warm(symbols)
 
     # ---- daily caches ----------------------------------------------------------
     def _roll(self) -> None:
         today = market_hours.trading_date(self.clock())
         if self._day == today:
             return
-        self._day, self._earnings, self._ratings = today, {}, {}
+        self._day, self._earnings, self._ratings, self._regime = today, {}, {}, None
         try:
             (cal,) = self._call_many([("get_earnings_calendar", {"days": 14, "filter": "high_market_cap"})])
             for e in (cal.get("data") or {}).get("results", []):
@@ -53,9 +68,20 @@ class MarketContext:
             log.exception("earnings calendar unavailable")
 
     def next_earnings(self, symbol: str) -> datetime | None:
+        """The earlier of Robinhood's and TradingView's next report, so a gap in either source
+        never lets a position ride through earnings."""
         self._roll()
         hit = self._earnings.get(symbol.upper())
-        return report_datetime(*hit) if hit else None
+        dates = [report_datetime(*hit)] if hit else []
+        if self.snapshot is not None:
+            try:
+                tv = self.snapshot.next_earnings(symbol)
+            except Exception:  # noqa: BLE001 - advisory source
+                log.exception("TradingView earnings date unavailable")
+                tv = None
+            if tv is not None and market_hours.trading_date(tv) >= market_hours.trading_date(self.clock()):
+                dates.append(tv.astimezone(ET))
+        return min(dates) if dates else None
 
     def ratings(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
         self._roll()
@@ -83,6 +109,24 @@ class MarketContext:
         except Exception:  # noqa: BLE001
             return None
 
+    def market_regime(self) -> dict[str, Any] | None:
+        """SPY's rule-based regime from completed daily bars; computed once per trading day."""
+        self._roll()
+        if self._regime is None and self.md is not None:
+            try:
+                self._regime = regime.classify([b.close for b in self.md.daily_bars("SPY", 300)]) or {}
+            except Exception:  # noqa: BLE001
+                log.exception("market regime unavailable")
+                self._regime = {}
+        return self._regime or None
+
+    def _extra(self, name: str, fn: Callable[[], Any]) -> Any:
+        try:
+            return fn()
+        except Exception:  # noqa: BLE001 - extras are advisory; never block a review
+            log.exception("%s unavailable", name)
+            return None
+
     def for_symbol(self, symbol: str) -> dict[str, Any]:
         now = self.clock()
         sym = symbol.upper()
@@ -93,6 +137,11 @@ class MarketContext:
             "qqq_change_today": self._day_change("QQQ"),
             "symbol_change_today": self._day_change(sym),
         }
+        out["market_regime"] = self.market_regime()
+        if self.snapshot is not None:
+            out["technicals"] = self._extra("TradingView technicals", lambda: self.snapshot.technicals(sym))
+        if self.news is not None:
+            out["news_sentiment"] = self._extra("news sentiment", lambda: self.news.for_symbol(sym))
         nxt = self.next_earnings(sym)
         out["next_earnings"] = None if nxt is None else {
             "when_et": nxt.strftime("%Y-%m-%d %H:%M"), "days_away": (nxt.date() - now.astimezone(ET).date()).days}

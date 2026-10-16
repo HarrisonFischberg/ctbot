@@ -278,6 +278,8 @@ def run_cycle(c: Components, state: AccountState, now: datetime) -> None:
     )
     if hasattr(c.market_data, "warm"):
         c.market_data.warm(c.universe)
+    if c.context is not None and hasattr(c.context, "warm"):
+        c.context.warm(c.universe)
     manage_positions(c, state, now)
     positions = {p.symbol: p for p in c.executor.positions()}
     apply_launcher(c, state, positions, now)
