@@ -1072,11 +1072,11 @@ main:focus { outline: none; }
     if (i.status === "shadow") return ["watch", "Watching only", "It passed, but this strategy isn't invested, so nothing was bought."];
     if (i.status === "too_close_to_close") return ["blocked", "Too late", "Too close to the market close to buy."];
     if (i.status === "review_budget_used") return ["blocked", "Skipped", "Claude's review limit for today was used up."];
-    if ((d && !d.approve) || rs.includes("claude_rejected")) return ["no", "Claude said no", d && d.rationale ? d.rationale : "Claude didn't approve it."];
+    if ((d && !d.approve) || rs.includes("claude_rejected")) return ["no", "AI said no", d && d.rationale ? d.rationale : "Claude didn't approve it."];
     if (rs.length) return ["blocked", "Blocked", `A safety check stopped it: ${rs.map(reasonWords).join("; ")}.`];
     return ["blocked", esc(i.status), ""];
   }
-  const IDEA_GROUPS = [["rec", "Recommended"], ["bought", "Bought"], ["no", "Claude said no"], ["blocked", "Blocked"], ["watch", "Watching"], ["all", "All"]];
+  const IDEA_GROUPS = [["all", "All"], ["rec", "Recommended"], ["bought", "Bought"], ["no", "AI said no"], ["blocked", "Blocked"], ["watch", "Watching"]];
   function renderIdeas() {
     const typed = {};
     $("ideas").querySelectorAll("[data-amt]").forEach((el) => (typed[el.dataset.amt] = el.value));
