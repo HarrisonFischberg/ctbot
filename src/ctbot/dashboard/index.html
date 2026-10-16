@@ -851,26 +851,23 @@ main:focus { outline: none; }
     const a = S.account_summary, L = S.limits;
     const lossUsed = Math.max(0, -a.day_pnl_pct) / L.max_daily_loss_pct;
     const ddUsed = Math.max(0, -a.drawdown_pct) / L.max_total_drawdown_pct;
-    const capUsed = a.deployed / L.max_trading_capital;
-    const LR = S.launcher || { runs: [], reserved: 0 };
-    const held = Math.min(a.cash, LR.reserved || 0), free = freeCash();
-    const freeSub = held > 1  // cash a running strategy keeps for its own trades is not yours to spend
-      ? `your strategies hold the other ${usd(held, 0)} of cash for their next trades`
-      : "cash ready to trade";
+    const M = money(), nRuns = M.runs.length;
+    const inv = M.held > 1 ? `${usd(M.stocks, 0)} in stocks · ${usd(M.held, 0)} waiting inside strategies` : "in stocks and funds";
+    const what = nRuns ? `${nRuns} strateg${nRuns === 1 ? "y" : "ies"}${M.inside ? `, holding ${M.inside} stock${M.inside === 1 ? "" : "s"}` : ""}` +
+      (M.loose ? ` + ${M.loose} other stock${M.loose === 1 ? "" : "s"}` : "") : `stock${M.loose === 1 ? "" : "s"} and funds`;
     const tiles = [
-      ["Portfolio value", `<div class="value hero">${usd(a.equity)}</div>
-        <div class="sub ${dir(a.total_pnl)}">${arrow(a.total_pnl)} ${sgnUsd(a.total_pnl)} · ${sgnPct(a.total_pnl / a.starting_capital)} vs ${usd(a.starting_capital, 0)}</div>`],
+      ["Account value", `<div class="value hero">${usd(a.equity)}</div>
+        <div class="sub ${dir(a.total_pnl)}">${arrow(a.total_pnl)} ${sgnUsd(a.total_pnl)} · ${sgnPct(a.total_pnl / a.starting_capital)} vs ${usd(a.starting_capital, 0)}</div>`, "Portfolio value"],
       ["Today's return", `<div class="value ${dir(a.day_pnl)}">${sgnUsd(a.day_pnl)}</div>
         <div class="sub">${sgnPct(a.day_pnl_pct)} · bot pauses at −${pct(L.max_daily_loss_pct, 0)}</div>${meter(lossUsed, lossUsed >= 1 ? "crit" : lossUsed > .6 ? "warn" : "")}`],
       ["Down from high", `<div class="value ${a.drawdown_pct < -1e-9 ? "down" : "flat"}">${sgnPct(a.drawdown_pct)}</div>
         <div class="sub">high ${usd(a.peak_equity)} · bot stops at −${pct(L.max_total_drawdown_pct, 0)}</div>${meter(ddUsed, ddUsed >= 1 ? "crit" : ddUsed > .6 ? "warn" : "")}`],
-      ["Free to invest", `<div class="value">${usd(free)}</div>
-        <div class="sub">${freeSub}${a.unsettled ? " · " + usd(a.unsettled) + " settling" : ""}</div>`, "Buying power"],
-      ["Invested", `<div class="value">${usd(a.deployed)}</div>
-        <div class="sub">in stocks now · ${pct(capUsed, 0)} of ${usd(L.max_trading_capital, 0)} paper money</div>${meter(capUsed, capUsed >= 1 ? "warn" : "")}`],
-      ["Positions", `<div class="value">${S.positions.length}<span style="color:var(--muted);font-size:16px">/${L.max_open_positions}</span>
-        </div>
-        <div class="sub">day trades ${a.day_trades_5d} of ${L.max_day_trades_5d} (last 5 days)</div>${meter(a.day_trades_5d / L.max_day_trades_5d, a.day_trades_5d >= L.max_day_trades_5d ? "crit" : "")}`],
+      ["Cash", `<div class="value">${usd(M.cash)}</div>
+        <div class="sub">free to trade now${M.cash - M.free > 1 ? ` · ${usd(M.cash - M.free, 0)} is over your ${usd(L.max_trading_capital, 0)} limit` : ""}${a.unsettled ? " · " + usd(a.unsettled) + " settling" : ""}</div>`, "Buying power"],
+      ["Invested", `<div class="value">${usd(M.invested)}</div>
+        <div class="sub">${inv}</div>${meter(a.equity ? M.invested / a.equity : 0)}`],
+      ["Positions", `<div class="value">${nRuns + M.loose}</div>
+        <div class="sub">${what} · day trades ${a.day_trades_5d} of ${L.max_day_trades_5d} (5 days)</div>${meter(a.day_trades_5d / L.max_day_trades_5d, a.day_trades_5d >= L.max_day_trades_5d ? "crit" : "")}`],
     ];
     const box = $("kpis");
     let added = false;
@@ -959,10 +956,12 @@ main:focus { outline: none; }
     const P = (S.positions || []).slice().sort((a, b) => b.market_value - a.market_value);
     const total = P.reduce((t, p) => t + p.market_value, 0), gain = P.reduce((t, p) => t + p.pnl, 0);
     $("posCount").textContent = `${P.length} of ${S.limits.max_open_positions} max`;
+    const M = money();
     $("ownSum").innerHTML = `<div><span class="lm">Stocks &amp; funds</span><b>${usd(total)}</b></div>
       <div><span class="lm">Gain / loss on them</span><b class="${dir(gain)}">${sgnUsd(gain)}</b></div>
-      <div><span class="lm">Cash</span><b>${usd(S.account_summary.cash)}</b></div>
-      <div><span class="lm">Total</span><b>${usd(total + S.account_summary.cash)}</b></div>`;
+      ${M.held > 1 ? `<div><span class="lm">Waiting inside strategies</span><b>${usd(M.held)}</b></div>` : ""}
+      <div><span class="lm">Cash</span><b>${usd(M.cash)}</b></div>
+      <div><span class="lm">Account value</span><b>${usd(S.account_summary.equity)}</b></div>`;
     if (!P.length) { $("positions").innerHTML = `<div class="empty-row"><p>You don't own any stocks right now: it's all cash. Invest in a strategy and the bot buys for you.</p><button class="btn" type="button" data-goto="discover">Discover strategies</button></div>`; return; }
     $("positions").innerHTML = `<table class="tbl"><thead><tr>
       <th>Stock</th><th>Bought by</th><th class="r">Shares</th><th class="r">Paid (avg)</th><th class="r">Price now</th><th class="r">Worth</th>
@@ -1269,6 +1268,17 @@ main:focus { outline: none; }
     const L = S.launcher || { allocated: 0, max_total: 0, reserved: 0 };
     return Math.max(0, Math.min(L.max_total - L.allocated, S.account_summary.cash - (L.reserved || 0)));
   };
+  // One picture of the account, used by every card. Money you hand a strategy counts as invested,
+  // like buying a fund, even while that strategy holds it as cash between trades:
+  // account value = cash + settling + invested.
+  function money() {
+    const a = S.account_summary, LR = S.launcher || { runs: [], reserved: 0 };
+    const runs = (LR.runs || []).filter((r) => r.status !== "stopped");
+    const names = new Set(runs.map((r) => r.strategy)), P = S.positions || [];
+    const held = Math.min(a.cash, LR.reserved || 0), inside = P.filter((p) => names.has(p.model)).length;
+    return { runs, held, inside, loose: P.length - inside, stocks: a.market_value, cash: a.cash - held,
+             invested: a.market_value + held, free: freeCash() };
+  }
   const PERIOD_LABEL = { "3M": "past 3 months", "6M": "past 6 months", "1Y": "past year" };
   let period = "1Y";
   try { period = localStorage.getItem("ctbot.period") || period; } catch (e) {}
@@ -1304,7 +1314,7 @@ main:focus { outline: none; }
     const over = L.allocated >= L.max_total - 9;
     return over
       ? `All ${usd(L.max_total, 0)} of paper money is already in your strategies. Stop one on Home to free its money, then invest it here.`
-      : `Your buying power (${usd(S.account_summary.cash, 0)}) is already promised to strategies you invested in that haven't bought yet. Stop one on Home to free it.`;
+      : `Your cash is already handed to strategies you invested in that haven't bought yet. Stop one on Home to free it.`;
   }
   function renderDiscover() {
     const fn = freeNote(); $("discFree").hidden = !fn; $("discFree").innerHTML = fn ? `${esc(fn)} <button class="btn" type="button" data-goto="home">Go to Home</button>` : "";
@@ -1346,7 +1356,7 @@ main:focus { outline: none; }
         st ? `Robinhood ${rh.signed_in ? "✓" : "✕"} · Claude AI key ${keys.ANTHROPIC_API_KEY && keys.ANTHROPIC_API_KEY.set ? "✓" : "✕"} · Collective2 ${keys.C2_API_KEY && keys.C2_API_KEY.set ? "✓" : "(optional)"}` : "Checking…",
         `<button class="btn" type="button" data-goto="settings">Settings</button>`],
       [a.cash > 0, "Your money",
-        `${usd(a.cash)} cash, ${usd(freeCash(), 0)} of it free to invest${(S.launcher || {}).reserved > 1 ? "; the rest is held for your strategies" : ""}.` +
+        `${usd(money().cash)} cash free to trade${money().held > 1 ? `, plus ${usd(money().held, 0)} waiting inside your strategies` : ""}.` +
           (a.deployed > 1 && !runs.length ? ` ${usd(a.deployed, 0)} is already in positions from the default setup (see Activity).` : "") +
           ` Practice money: prices are real, trades are simulated, and your real Robinhood account isn't touched.`, ""],
       [runs.length > 0, "Find a strategy you like",
@@ -1365,7 +1375,7 @@ main:focus { outline: none; }
   function renderRuns() {
     const L = S.launcher || { runs: [], allocated: 0, max_total: 0 }, runs = L.runs.filter((r) => r.status !== "stopped");
     $("runMeta").textContent = `${usd(L.allocated, 0)} of ${usd(L.max_total, 0)} paper money assigned` +
-      (L.reserved > 1 ? ` · ${usd(Math.min(L.reserved, S.account_summary.cash), 0)} of it still cash` : "");
+      (money().held > 1 ? ` · ${usd(money().held, 0)} of it waiting as cash` : "");
     const idle = (r) => r.status !== "running" || !(r.waiting >= 1) ? ""  // why a strategy's money is still cash
       : `<div class="lm">${usd(r.waiting, 0)} cash ${isSameDay(r.strategy) ? "between day trades"
         : r.positions ? "for its next buy" : "until its buy signal"}</div>`;
