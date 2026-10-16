@@ -141,9 +141,9 @@ body { min-height: 100vh; }
 @media (max-width: 640px) { .wrap { padding: 20px 16px; } .span-2 { grid-column: span 6; } .card { padding: 18px; border-radius: 16px; } }
 
 /* ---- KPI tiles ---- */
-.kpi .label { font-size: 12.5px; color: var(--muted); }
-.kpi .value { font: 400 30px/1.15 var(--serif); margin: 8px 0 4px; letter-spacing: -.01em; font-variant-numeric: tabular-nums lining-nums; }
-.kpi .value.hero { color: var(--ink); font-size: 34px; }
+.kpi .label { font-size: 12.5px; color: var(--muted); padding-right: 60px; }  /* clear of the – × buttons */
+.kpi .value { font: 400 min(30px, 6.8vw)/1.15 var(--serif); margin: 8px 0 4px; letter-spacing: -.01em; font-variant-numeric: tabular-nums lining-nums; }
+.kpi .value.hero { color: var(--ink); font-size: min(34px, 7.2vw); }  /* phones: numbers stay inside the tile */
 .kpi .sub { font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .up { color: var(--good); } .down { color: var(--crit); } .flat { color: var(--ink-2); }
 .meter { height: 6px; border-radius: 999px; background: rgba(var(--tint), .06); margin-top: 12px; overflow: hidden; }
