@@ -854,10 +854,8 @@ main:focus { outline: none; }
     const capUsed = a.deployed / L.max_trading_capital;
     const LR = S.launcher || { runs: [], reserved: 0 };
     const held = Math.min(a.cash, LR.reserved || 0), free = freeCash();
-    const sameDay = (LR.runs || []).filter((r) => r.waiting > 1 && isSameDay(r.strategy))
-      .reduce((t, r) => t + r.waiting, 0);
-    const cashSub = held > 1
-      ? `${usd(held, 0)} held for your strategies · ${usd(free, 0)} free to invest`
+    const freeSub = held > 1  // cash a running strategy keeps for its own trades is not yours to spend
+      ? `your strategies hold the other ${usd(held, 0)} of cash for their next trades`
       : "cash ready to trade";
     const tiles = [
       ["Portfolio value", `<div class="value hero">${usd(a.equity)}</div>
@@ -866,11 +864,10 @@ main:focus { outline: none; }
         <div class="sub">${sgnPct(a.day_pnl_pct)} · bot pauses at −${pct(L.max_daily_loss_pct, 0)}</div>${meter(lossUsed, lossUsed >= 1 ? "crit" : lossUsed > .6 ? "warn" : "")}`],
       ["Down from high", `<div class="value ${a.drawdown_pct < -1e-9 ? "down" : "flat"}">${sgnPct(a.drawdown_pct)}</div>
         <div class="sub">high ${usd(a.peak_equity)} · bot stops at −${pct(L.max_total_drawdown_pct, 0)}</div>${meter(ddUsed, ddUsed >= 1 ? "crit" : ddUsed > .6 ? "warn" : "")}`],
-      ["Cash", `<div class="value">${usd(a.cash)}</div>
-        <div class="sub">${cashSub}${a.unsettled ? " · " + usd(a.unsettled) + " settling" : ""}</div>`, "Buying power"],
+      ["Free to invest", `<div class="value">${usd(free)}</div>
+        <div class="sub">${freeSub}${a.unsettled ? " · " + usd(a.unsettled) + " settling" : ""}</div>`, "Buying power"],
       ["Invested", `<div class="value">${usd(a.deployed)}</div>
-        <div class="sub">${pct(capUsed, 0)} of ${usd(L.max_trading_capital, 0)} paper money${sameDay > 1
-          ? ` · ${usd(sameDay, 0)} waits as cash for day trades` : ""}</div>${meter(capUsed, capUsed >= 1 ? "warn" : "")}`],
+        <div class="sub">in stocks now · ${pct(capUsed, 0)} of ${usd(L.max_trading_capital, 0)} paper money</div>${meter(capUsed, capUsed >= 1 ? "warn" : "")}`],
       ["Positions", `<div class="value">${S.positions.length}<span style="color:var(--muted);font-size:16px">/${L.max_open_positions}</span>
         </div>
         <div class="sub">day trades ${a.day_trades_5d} of ${L.max_day_trades_5d} (last 5 days)</div>${meter(a.day_trades_5d / L.max_day_trades_5d, a.day_trades_5d >= L.max_day_trades_5d ? "crit" : "")}`],
