@@ -341,6 +341,44 @@ code { font: 12px var(--code); background: rgba(var(--tint), .06); padding: 1px 
 .launch { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; }
 .launch.off { color: var(--ink-2); font-size: 12.5px; }
 .launch .lm { color: var(--muted); font-size: 12.5px; }
+/* ---- what you own (Home) ---- */
+.own-sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 0 0 14px; }
+.own-sum > div { display: grid; gap: 2px; background: var(--panel-2); border-radius: 14px; padding: 12px 14px; }
+.own-sum b { font: 400 22px var(--serif); font-variant-numeric: tabular-nums; }
+.own .sym.big { font-size: 16px; font-weight: 700; }
+.linkish.who { color: var(--ink); text-decoration: underline dotted; text-underline-offset: 3px; }
+/* ---- plain-word helpers ---- */
+.explain { color: var(--ink-2); font-size: 13px; line-height: 1.55; margin: -4px 0 14px; max-width: 80ch; }
+.explain:empty { display: none; }
+.more { color: var(--neon-ink, var(--neon)); font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+[data-detail][tabindex], tr[data-lab] { cursor: pointer; }
+.disc[data-detail]:hover, .model[data-detail]:hover { box-shadow: 0 0 0 1px var(--line-2); }
+.disc[data-detail]:focus-visible, .model[data-detail]:focus-visible, tr[data-lab]:focus-visible { outline: 2px solid var(--neon); outline-offset: 2px; }
+.ideaseg { flex-wrap: wrap; margin: 0 0 10px; }
+.ideaseg .n { opacity: .6; font-variant-numeric: tabular-nums; margin-left: 2px; }
+.ideas td.what { white-space: normal; min-width: 220px; max-width: 420px; }
+.ideas tr.detail div { margin: 2px 0; }
+/* ---- detail sheet ---- */
+.dbody { display: grid; gap: 10px; }
+.dbody:empty { display: none; }
+.dstat { margin: 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.dgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.dgrid > div { background: var(--panel-2); border-radius: 12px; padding: 10px 12px; display: grid; gap: 2px; font-size: 13.5px; }
+.isec { font-weight: 600; font-size: 14px; margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
+.dp { margin: 0; color: var(--ink-2); font-size: 13.5px; line-height: 1.55; }
+.dl { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 13.5px; line-height: 1.6; }
+.dbody .kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin: 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+.dbody .kv dt { color: var(--muted); } .dbody .kv dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+.bigc { margin: 0; } .bigc svg { width: 100%; height: 160px; display: block; }
+.bigc figcaption { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 11.5px; margin-top: 4px; }
+.mini-t td, .mini-t th { padding: 6px 8px; }
+.tech summary { cursor: pointer; color: var(--ink-2); font-size: 13px; }
+.tech[open] summary { margin-bottom: 8px; }
+.ifields { display: grid; gap: 14px; }
+.ifields[hidden] { display: none; }
+.ft-extra { margin-right: auto; display: flex; gap: 8px; }
+.ext { color: var(--neon); }
+@media (max-width: 640px) { .dgrid { grid-template-columns: 1fr; } .sheet-ft { flex-wrap: wrap; } }
 .launch .amt { display: inline-flex; align-items: center; gap: 2px; background: rgba(var(--tint), .05); border-radius: 999px; padding: 0 4px 0 12px; color: var(--ink-2); }
 .launch .amt input { width: 84px; background: transparent; border: 0; color: var(--ink); padding: 7px 6px; font: 13px var(--sans); font-variant-numeric: tabular-nums; }
 .launch .amt input:focus { outline: none; }
@@ -390,7 +428,7 @@ code { font: 12px var(--code); background: rgba(var(--tint), .06); padding: 1px 
 /* ---- invest sheet ---- */
 .modal { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: grid; place-items: center; z-index: 50; padding: 16px; }
 .modal[hidden] { display: none; }
-.sheet { background: var(--panel); border-radius: 22px; padding: 24px; width: min(460px, 100%); display: grid; gap: 14px;
+.sheet { background: var(--panel); border-radius: 22px; padding: 24px; width: min(640px, 100%); display: grid; gap: 14px;
   box-shadow: 0 30px 80px rgba(0, 0, 0, .4); max-height: calc(100vh - 32px); overflow: auto; }
 .sheet-hd { display: flex; justify-content: space-between; align-items: center; }
 .sheet h3 { margin: 0; font: 400 24px var(--serif); }
@@ -437,8 +475,8 @@ main:focus { outline: none; }
   </header>
   <nav class="tabs" role="tablist" aria-label="Views">
     <button role="tab" data-tab="home" class="on">Home</button>
-    <button role="tab" data-tab="discover">Discover</button>
     <button role="tab" data-tab="activity">Activity</button>
+    <button role="tab" data-tab="discover">Discover</button>
     <button role="tab" data-tab="research">Research</button>
     <button role="tab" data-tab="settings">Settings</button>
   </nav>
@@ -449,6 +487,11 @@ main:focus { outline: none; }
   <section class="grid" aria-label="Account summary" id="kpis"></section>
 
   <section class="grid" id="cards" style="margin-top:16px">
+    <div data-tab="home" class="card span-12 own">
+      <h2>What you own <span class="count" id="posCount"></span></h2>
+      <div class="own-sum" id="ownSum"></div>
+      <div class="scroll" id="positions"></div>
+    </div>
     <div data-tab="home" class="card span-12">
       <h2>Get started <span class="count" id="stepsMeta"></span></h2>
       <ol class="steps" id="steps"></ol>
@@ -465,10 +508,6 @@ main:focus { outline: none; }
       <div class="chart" id="chart"></div>
     </div>
     <div data-tab="home" class="card span-12">
-      <h2>Your positions <span class="count" id="homePosMeta"></span></h2>
-      <div class="holdings" id="homePos"></div>
-    </div>
-    <div data-tab="home" class="card span-12">
       <h2>Your strategies <span class="count" id="runMeta"></span></h2>
       <div id="runs"></div>
     </div>
@@ -482,11 +521,9 @@ main:focus { outline: none; }
     </div>
 
     <div data-tab="activity" class="card span-12 ideas">
-      <h2>Bot's trade ideas <span class="count" id="ideaCount"></span><span class="spacer"></span>
-        <span class="seg" role="group" aria-label="Idea filter">
-          <button data-ideas="rec" class="on">Recommended</button><button data-ideas="all">All</button>
-        </span>
-      </h2>
+      <h2>Bot's trade ideas <span class="count" id="ideaCount"></span></h2>
+      <div class="seg ideaseg" role="group" aria-label="Show ideas" id="ideaSeg"></div>
+      <p class="explain" id="ideaSum"></p>
       <div class="scroll" id="ideas" style="max-height:420px"></div>
       <div class="clicks" id="clicks"></div>
     </div>
@@ -497,49 +534,55 @@ main:focus { outline: none; }
       <div class="clicks" id="filterScore"></div>
     </div>
 
-    <div data-tab="activity" class="card span-4">
+    <div data-tab="activity" class="card span-12">
       <h2>Safety limits</h2>
       <dl class="limits" id="limits"></dl>
     </div>
 
-    <div data-tab="activity" class="card span-8">
-      <h2>Positions <span class="count" id="posCount"></span></h2>
-      <div class="scroll" id="positions"></div>
-    </div>
-
     <div data-tab="research" class="card span-12">
-      <h2>Strategy details (technical) <span class="count" id="catMeta"></span></h2>
+      <h2>Every strategy <span class="count" id="catMeta"></span></h2>
+      <p class="explain">Each strategy's real paper record and its long-term test. Click one for the full story, charts and to invest.</p>
       <div class="catalog" id="catalog"></div>
     </div>
 
     <div data-tab="research" class="card span-12">
-      <h2>Compare <span class="count" id="cmpMeta"></span><span class="spacer"></span>
+      <h2>Growth of $5,000 since 2010 <span class="count" id="cmpMeta"></span><span class="spacer"></span>
         <span class="seg" role="group" aria-label="Scale"><button data-scale="log" class="on">Log</button><button data-scale="lin">Linear</button></span></h2>
+      <p class="explain">What $5,000 would have grown to with each test. Higher is better; a smoother line means fewer scary drops.
+        Pick which lines to show from the leaderboard below. "Log" makes equal percentage moves look the same size.</p>
       <div class="chart" id="cmpChart" style="height:320px"></div>
       <div id="cmpLegend" class="legend"></div>
     </div>
 
     <div data-tab="research" class="card span-6">
-      <h2>Crash stress test <span class="count">synthetic leverage from QQQ, 1999-2026</span></h2>
+      <h2>Crash test <span class="count">1999-2026, including the dot-com crash</span></h2>
+      <p class="explain">How each idea would have survived the 2000-02 crash (Nasdaq fell about 80%), 2008 and 2020.
+        Leveraged funds didn't exist back then, so they're rebuilt from QQQ's daily moves. A red worst drop (60%+) means it nearly wiped out.</p>
       <div class="scroll" id="stress"></div>
     </div>
     <div data-tab="research" class="card span-6">
-      <h2>Walk-forward <span class="count">parameter chosen each year from the prior 5 only</span></h2>
+      <h2>No-hindsight test <span class="count">walk-forward</span></h2>
+      <p class="explain">A fairer test: each year, the setting (how many days of trend to look at) is picked using only the 5 years before it,
+        as if you were living through it. If these numbers stay close to the leaderboard's, the result wasn't just hindsight.</p>
       <div class="scroll" id="wf"></div>
     </div>
 
     <div data-tab="research" class="card span-12">
-      <h2>Research lab <span class="count" id="labMeta"></span></h2>
+      <h2>Backtest leaderboard <span class="count" id="labMeta"></span></h2>
+      <p class="explain">Every idea tested on 16 years of real prices after trading costs, best first. Designed on 2010-19, then judged on 2020-26,
+        which it never saw. Click a row for the full explanation and a chart; tick the box to add it to the growth chart.</p>
       <div class="scroll" id="lab"></div>
       <div id="labNote" style="margin-top:10px;color:var(--muted);font-size:12.5px"></div>
     </div>
 
     <div data-tab="research" class="card span-12">
-      <h2>Collective2 watchlist <span class="count" id="c2Meta"></span><span class="spacer"></span>
+      <h2>Outside traders we track <span class="count" id="c2Meta"></span><span class="spacer"></span>
         <span class="seg" role="group" aria-label="Collective2 view">
           <button data-c2="watch" class="on">Watchlist</button><button data-c2="runners">Runners-up</button>
         </span>
       </h2>
+      <p class="explain">The best-ranked public traders on Collective2, tracked to see if any keeps beating the S&amp;P 500 after its subscription fee.
+        "Since added" is how they've done since we started watching, which is the number that counts.</p>
       <div class="scroll" id="c2"></div>
       <div id="c2Note" style="margin-top:10px;color:var(--muted);font-size:12.5px"></div>
     </div>
@@ -598,6 +641,9 @@ main:focus { outline: none; }
   <form class="sheet" id="invForm" role="dialog" aria-modal="true" aria-labelledby="invTitle">
     <div class="sheet-hd"><h3 id="invTitle">Invest</h3><button class="linkish" type="button" id="invClose" aria-label="Close">✕</button></div>
     <p class="note" id="invTag" style="margin-top:0"></p>
+    <div class="dbody" id="invDetail"></div>
+    <div class="ifields" id="invFields">
+    <div class="isec" id="invHead">Invest in it</div>
     <label class="fld"><span>Amount</span><span class="amt big">$<input id="invAmt" type="number" min="10" step="10" inputmode="decimal" required></span>
       <small id="invFree"></small></label>
     <label class="fld"><span>Max loss</span>
@@ -609,7 +655,9 @@ main:focus { outline: none; }
         <option value="0.3">30%</option><option value="0.5">50%</option><option value="1">100%</option></select>
       <small>If it is up this much in total, the bot sells and locks in the gain.</small></label>
     <div class="sum" id="invSum"></div>
-    <div class="sheet-ft"><button class="btn" type="button" id="invCancel">Cancel</button><button class="btn solid" type="submit" id="invGo">Start investing</button></div>
+    <div class="free-note" id="invWhy" hidden></div>
+    </div>
+    <div class="sheet-ft"><span id="invExtra" class="ft-extra"></span><button class="btn" type="button" id="invCancel">Close</button><button class="btn solid" type="submit" id="invGo">Start investing</button></div>
   </form>
 </div>
 
@@ -628,7 +676,7 @@ main:focus { outline: none; }
   const ET = "America/New_York";
   const fmtTime = (iso) => { if (!iso) return "—"; const d = new Date(iso); return d.toLocaleString("en-US", { timeZone: ET, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) + " ET"; };
 
-  let S = null, range = "all", view = "chart", logFilter = "all", ideaFilter = "rec", c2View = "watch", cmpScale = "log";
+  let S = null, range = "all", view = "chart", logFilter = "all", ideaFilter = "all", c2View = "watch", cmpScale = "log";
   let tab = "home", cmpSel = ["LIVE core: trend QQQ 170d", "hold QQQ", "lev: trend QQQ 170d -> QLD capped at 30% vol"];
   try { tab = ({ trading: "activity", strategies: "discover" })[localStorage.getItem("ctbot.tab")] || localStorage.getItem("ctbot.tab") || tab; cmpSel = JSON.parse(localStorage.getItem("ctbot.cmp")) || cmpSel; } catch (e) {}
   const COLORS = ["#36a558", "#3690e3", "#c97500", "#a272d4", "#d7606e", "#9b9000"]; // OKLCH L 0.64, validated (dataviz)
@@ -903,24 +951,32 @@ main:focus { outline: none; }
 
   // ---- tables ----------------------------------------------------------------
   function renderPositions() {
-    const P = S.positions;
-    $("posCount").textContent = `${P.length}/${S.limits.max_open_positions}`;
-    if (!P.length) { $("positions").innerHTML = `<div class="empty" style="height:80px">Flat. No open paper positions.</div>`; return; }
+    const P = (S.positions || []).slice().sort((a, b) => b.market_value - a.market_value);
+    const total = P.reduce((t, p) => t + p.market_value, 0), gain = P.reduce((t, p) => t + p.pnl, 0);
+    $("posCount").textContent = `${P.length} of ${S.limits.max_open_positions} max`;
+    $("ownSum").innerHTML = `<div><span class="lm">Stocks &amp; funds</span><b>${usd(total)}</b></div>
+      <div><span class="lm">Gain / loss on them</span><b class="${dir(gain)}">${sgnUsd(gain)}</b></div>
+      <div><span class="lm">Cash</span><b>${usd(S.account_summary.cash)}</b></div>
+      <div><span class="lm">Total</span><b>${usd(total + S.account_summary.cash)}</b></div>`;
+    if (!P.length) { $("positions").innerHTML = `<div class="empty-row"><p>You don't own any stocks right now: it's all cash. Invest in a strategy and the bot buys for you.</p><button class="btn" type="button" data-goto="discover">Discover strategies</button></div>`; return; }
     $("positions").innerHTML = `<table class="tbl"><thead><tr>
-      <th>Symbol</th><th class="r">Qty</th><th class="r">Avg cost</th><th class="r">Last</th><th class="r">Value</th>
-      <th class="r">P&amp;L</th><th>Stop ← price → target</th><th>Model · exit</th><th>Opened</th><th></th></tr></thead><tbody>${P.map((p) => {
+      <th>Stock</th><th>Bought by</th><th class="r">Shares</th><th class="r">Paid (avg)</th><th class="r">Price now</th><th class="r">Worth</th>
+      <th class="r">Gain / loss</th><th>Stop-loss ← price → target</th><th>Sells</th><th>Bought</th><th></th></tr></thead><tbody>${P.map((p) => {
         const px = p.last ?? p.avg_cost, stop = p.stop, tgt = p.target ?? p.avg_cost * 1.1;
         const lo = Math.min(stop ?? px, px) , hi = Math.max(tgt, px), f = (v) => ((v - lo) / ((hi - lo) || 1)) * 100;
         const rng = stop == null ? "—" : `<div class="range" title="stop ${usd(stop)} · last ${usd(px)}${p.target ? " · target " + usd(p.target) : ""}">
           <span class="stop" style="left:${f(stop)}%"></span>${p.target ? `<span class="tgt" style="left:${f(p.target)}%"></span>` : ""}
           <span class="pt" style="left:${f(px)}%"></span></div>`;
-        return `<tr><td class="sym">${esc(p.symbol)}</td><td class="r">${qty(p.quantity)}</td><td class="r">${usd(p.avg_cost)}</td>
-          <td class="r">${p.last == null ? "—" : usd(p.last)}</td><td class="r">${usd(p.market_value)}</td>
+        const run = p.model ? runOf(p.model) : null;
+        return `<tr><td class="sym big">${esc(p.symbol)}</td>
+          <td>${p.model ? `<button class="linkish who" type="button" data-detail="${esc(p.model)}">${esc(plainOf(p.model).title)}</button>${run ? "" : ` <span class="tag off" title="Not invested: left from before, it still sells on its own rules">leftover</span>`}` : `<span class="lm">you (by hand)</span>`}</td>
+          <td class="r">${qty(p.quantity)}</td><td class="r">${usd(p.avg_cost)}</td>
+          <td class="r">${p.last == null ? "—" : usd(p.last)}</td><td class="r"><b>${usd(p.market_value)}</b></td>
           <td class="r ${dir(p.pnl)}">${arrow(p.pnl)} ${sgnUsd(p.pnl)} <span style="opacity:.75">${sgnPct(p.pnl_pct)}</span></td>
-          <td>${rng} <span style="color:var(--muted);font-size:11px">${stop == null ? "" : "stop " + usd(stop)}${p.target ? " · tgt " + usd(p.target) : ""}</span></td>
-          <td>${p.model ? `<span class="tag">${esc(p.model)}</span> ` : ""}<span style="color:var(--muted);font-size:11px">${p.exit_at ? "out " + fmtTime(p.exit_at) : ""}${p.swings ? ` · swung ${p.swings}×` : ""}</span></td>
+          <td>${rng} <span style="color:var(--muted);font-size:11px">${stop == null ? "" : "stop " + usd(stop)}${p.target ? " · target " + usd(p.target) : ""}</span></td>
+          <td class="lm">${p.exit_at ? fmtTime(p.exit_at) : p.target || stop != null ? "at stop or target" : "when the strategy says"}${p.swings ? ` · held overnight ${p.swings}×` : ""}</td>
           <td>${fmtTime(p.opened_at)}</td>
-          <td class="r"><button class="btn sell" data-close="${esc(p.symbol)}" ${canTrade() ? "" : "disabled"}>Close</button></td></tr>`;
+          <td class="r"><button class="btn sell" data-close="${esc(p.symbol)}" ${canTrade() ? "" : "disabled"}>Sell</button></td></tr>`;
       }).join("")}</tbody></table>`;
     $("positions").querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", () =>
       sendOrder({ side: "sell", symbol: b.dataset.close }, `SELL all ${b.dataset.close}`)));
@@ -997,40 +1053,74 @@ main:focus { outline: none; }
       shadow: `<span class="tag q">shadow · not traded</span>`,
     })[i.status] || `<span class="tag">${esc(i.status)}</span>`;
   }
+  const REASON = {  // risk-check codes in words
+    claude_rejected: "Claude said no", spread_too_wide: "the bid/ask gap was too wide", price_below_min: "the share price is too low",
+    illiquid: "too little trading volume", already_held: "already owned", max_open_positions: "already holding the most positions allowed",
+    daily_loss_limit: "the daily loss limit was hit", max_drawdown_kill: "the account's max drop was hit", kill_switch_active: "the kill switch is on",
+    trading_capital_cap: "no paper money left to use", notional_too_small: "the trade would be too small", pdt_guard: "day-trade limit (PDT rule)",
+    pdt_budget_used: "day-trade limit used up", earnings_before_exit: "earnings come out before it would sell", no_quote: "no price quote",
+    bad_quote: "the price quote looked wrong", no_position: "nothing to sell", short_not_allowed_in_cash_account: "short selling isn't allowed",
+    model_losing_streak: "this strategy is paused after a losing streak",
+  };
+  const reasonWords = (r) => REASON[r] || (r.startsWith("confidence_") ? `Claude wasn't confident enough (${Math.round(parseFloat(r.split("_")[1]) * 100)}%)`
+    : r.startsWith("not_an_entry_") ? "not a buy signal" : r.replace(/_/g, " "));
+  function ideaOutcome(i) {  // [group, label, sentence]
+    const d = i.decision, rk = i.risk, long = i.direction === "long", rs = rk ? rk.reasons : [];
+    if (i.click && i.click.status === "filled") return ["bought", "You bought", "You bought it from this idea."];
+    if (i.status === "auto_submitted") return ["bought", long ? "Auto-bought" : "Auto-sold", long ? "The bot bought it: every check passed." : "The bot sold it on its exit rule."];
+    if (i.status === "recommended") return ["rec", "★ Recommended", "Passed every check. Buy it below if you want it."];
+    if (i.status === "shadow") return ["watch", "Watching only", "It passed, but this strategy isn't invested, so nothing was bought."];
+    if (i.status === "too_close_to_close") return ["blocked", "Too late", "Too close to the market close to buy."];
+    if (i.status === "review_budget_used") return ["blocked", "Skipped", "Claude's review limit for today was used up."];
+    if ((d && !d.approve) || rs.includes("claude_rejected")) return ["no", "Claude said no", d && d.rationale ? d.rationale : "Claude didn't approve it."];
+    if (rs.length) return ["blocked", "Blocked", `A safety check stopped it: ${rs.map(reasonWords).join("; ")}.`];
+    return ["blocked", esc(i.status), ""];
+  }
+  const IDEA_GROUPS = [["rec", "Recommended"], ["bought", "Bought"], ["no", "Claude said no"], ["blocked", "Blocked"], ["watch", "Watching"], ["all", "All"]];
   function renderIdeas() {
     const typed = {};
     $("ideas").querySelectorAll("[data-amt]").forEach((el) => (typed[el.dataset.amt] = el.value));
     const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.amt : null;
-    const all = S.ideas, rec = all.filter((i) => i.status === "recommended");
-    let rows = ideaFilter === "rec" ? rec : all;
-    $("ideaCount").textContent = `${rec.length} recommended · ${all.length} total`;
+    const all = S.ideas, groups = { all: all.length };
+    all.forEach((i) => { const g = ideaOutcome(i)[0]; groups[g] = (groups[g] || 0) + 1; });
+    $("ideaSeg").innerHTML = IDEA_GROUPS.map(([k, label]) => `<button data-ideas="${k}" class="${ideaFilter === k ? "on" : ""}">${label} <span class="n">${groups[k] || 0}</span></button>`).join("");
+    const rows = ideaFilter === "all" ? all : all.filter((i) => ideaOutcome(i)[0] === ideaFilter);
+    $("ideaCount").textContent = `${all.length} ideas`;
+    $("ideaSum").innerHTML = all.length ? `The bot looked at <b>${all.length}</b> ideas: <b>${groups.bought || 0}</b> bought, <b>${groups.rec || 0}</b> recommended to you,
+      <b>${groups.no || 0}</b> turned down by Claude, <b>${groups.blocked || 0}</b> blocked by a safety check, and <b>${groups.watch || 0}</b> from strategies you're only watching.
+      Click a row for the reasons.` : "";
     if (!rows.length) {
       $("ideas").innerHTML = `<div class="empty" style="height:90px">${ideaFilter === "rec"
         ? "No recommended trades right now. They appear here when strategies agree, Claude approves and every risk check passes."
-        : "No trade ideas yet. They appear after the paper bot runs a cycle during market hours."}</div>`;
+        : all.length ? "Nothing in this group. Try All." : "No trade ideas yet. They appear after the paper bot runs a cycle during market hours."}</div>`;
     } else {
-      $("ideas").innerHTML = `<table class="tbl"><thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th>Strategies</th>
-        <th class="r">Score</th><th>Claude</th><th>Risk</th><th>Status</th><th class="r">Paper trade</th></tr></thead><tbody>${rows.map((i) => {
+      $("ideas").innerHTML = `<table class="tbl"><thead><tr><th>Time</th><th>Stock</th><th>Idea</th><th>From</th><th>What happened</th>
+        <th title="Claude's verdict and how sure it was">Claude</th><th class="r">Paper trade</th></tr></thead><tbody>${rows.map((i) => {
         const d = i.decision, rk = i.risk, open = openIdeas.has(i.id), long = i.direction === "long";
+        const [g, label, why] = ideaOutcome(i);
         const amt = rk && rk.notional ? rk.notional : d && d.suggested_notional ? Math.min(d.suggested_notional, S.limits.max_trading_capital) : 50;
         const filled = i.click && i.click.status === "filled";
-        const claude = d ? `<span class="${d.approve ? "up" : "down"}">${d.approve ? "✓" : "✗"} ${(d.confidence * 100).toFixed(0)}%</span>` : `<span class="flat">—</span>`;
-        const risk = !rk ? `<span class="flat">—</span>` : rk.allowed ? `<span class="up">✓ ${usd(rk.notional)}</span>`
-          : `<span class="down" title="${esc(rk.reasons.join(", "))}">✗ ${esc(rk.reasons[0] || "")}${rk.reasons.length > 1 ? " +" + (rk.reasons.length - 1) : ""}</span>`;
+        const claude = d ? `<span class="${d.approve ? "up" : "down"}">${d.approve ? "✓ yes" : "✗ no"} · ${(d.confidence * 100).toFixed(0)}% sure</span>` : `<span class="flat">not asked</span>`;
+        const tagc = { rec: "rec", bought: "on", no: "rej", blocked: "sell", watch: "q" }[g] || "";
         const act = !long ? `<span class="flat" style="font-size:11px">exits run automatically</span>` : filled ? `<span class="up">✓ filled</span>`
           : `<span class="act"><input type="number" min="1" max="${S.limits.max_trading_capital}" step="1" value="${Math.round(amt)}" aria-label="Dollar amount for ${esc(i.symbol)}" data-amt="${esc(i.id)}">
              <button class="btn ${i.status === "recommended" ? "solid" : ""}" data-buy="${esc(i.id)}" data-sym="${esc(i.symbol)}" ${canTrade() ? "" : "disabled"}>Buy</button></span>`;
-        const sig = i.signals.map((s) => `${esc(s.strategy)} ${esc(s.direction)} ${(s.strength * 100).toFixed(0)}% · ${esc(JSON.stringify(s.evidence))}`).join("<br>");
-        return `<tr class="idea ${i.status === "recommended" ? "rec" : ""}" data-idea="${esc(i.id)}">
+        const sig = i.signals.map((s) => `<li><b>${esc(plainOf(s.strategy).title)}</b> said ${esc(s.direction === "long" ? "buy" : s.direction)} (strength ${(s.strength * 100).toFixed(0)}%)
+          <span class="lm">${esc(Object.entries(s.evidence || {}).map(([k, v]) => `${k.replace(/_/g, " ")} ${typeof v === "number" ? +v.toFixed(4) : v}`).join(" · "))}</span></li>`).join("");
+        return `<tr class="idea ${g === "rec" ? "rec" : ""}" data-idea="${esc(i.id)}" aria-expanded="${open}">
           <td>${fmtTime(i.ts)}</td><td class="sym">${esc(i.symbol)}</td>
-          <td><span class="tag ${long ? "buy" : "sell"}">${long ? "Buy" : "Exit"}</span></td>
-          <td>${esc(i.strategies.join(", "))}</td><td class="r ${dir(i.score)}">${i.score.toFixed(2)}</td>
-          <td>${claude}</td><td>${risk}</td><td>${ideaStatus(i)}</td><td class="r">${act}</td></tr>
-          ${open ? `<tr class="detail"><td colspan="9"><div class="why">${d ? "Claude: " + esc(d.rationale || "(no rationale)") : "Exit signal: no Claude review."}</div>
-            ${i.quote ? `Quote at idea: bid ${usd(i.quote.bid)} · ask ${usd(i.quote.ask)}<br>` : ""}
-            ${d && d.stop_loss_pct ? `Claude stop −${pct(d.stop_loss_pct, 1)}${d.take_profit_pct ? " · target +" + pct(d.take_profit_pct, 1) : ""}<br>` : ""}
-            ${rk && !rk.allowed ? "Risk: " + esc(rk.reasons.join(", ")) + "<br>" : ""}
-            ${i.click && i.click.reasons.length ? "Your click: " + esc(i.click.reasons.join(", ")) + "<br>" : ""}${sig}</td></tr>` : ""}`;
+          <td><span class="tag ${long ? "buy" : "sell"}">${long ? "Buy" : "Sell"}</span></td>
+          <td>${esc(i.strategies.map((n) => plainOf(n).title).join(", "))}</td>
+          <td class="what"><span class="tag ${tagc}">${label}</span> <span class="lm">${esc(why.length > 90 ? why.slice(0, 88) + "…" : why)}</span></td>
+          <td>${claude}</td><td class="r">${act}</td></tr>
+          ${open ? `<tr class="detail"><td colspan="7"><div class="why"><b>${label}.</b> ${esc(why)}</div>
+            ${d ? `<div><b>Claude:</b> ${d.approve ? "approved" : "turned it down"}, ${(d.confidence * 100).toFixed(0)}% sure. ${esc(d.rationale || "")}</div>` : `<div><b>Claude:</b> not asked${long ? "" : " (sells don't need a review)"}.</div>`}
+            ${d && d.stop_loss_pct ? `<div>Claude's plan: stop-loss −${pct(d.stop_loss_pct, 1)}${d.take_profit_pct ? ", take profit +" + pct(d.take_profit_pct, 1) : ""}.</div>` : ""}
+            ${rk ? `<div><b>Safety checks:</b> ${rk.allowed ? `all passed${rk.notional ? `, size ${usd(rk.notional)}` : ""}` : rk.reasons.map(reasonWords).join("; ")}.</div>` : ""}
+            ${i.quote ? `<div>Price when the idea came up: bid ${usd(i.quote.bid)} · ask ${usd(i.quote.ask)}.</div>` : ""}
+            ${i.click && i.click.reasons.length ? `<div>Your click: ${esc(i.click.reasons.map(reasonWords).join("; "))}.</div>` : ""}
+            <div><b>Why it came up:</b></div><ul class="dl">${sig}</ul>
+            <div class="lm">Score ${i.score.toFixed(2)} (how strongly the strategies agreed, −1 to 1).</div></td></tr>` : ""}`;
       }).join("")}</tbody></table>`;
       $("ideas").querySelectorAll("[data-amt]").forEach((el) => {
         if (typed[el.dataset.amt] !== undefined) el.value = typed[el.dataset.amt];
@@ -1065,9 +1155,9 @@ main:focus { outline: none; }
     }
     const p0 = (v) => v == null ? "—" : sgnPct(v, 0);
     const fwdCols = c2View === "watch";
-    $("c2").innerHTML = rows.length ? `<table class="tbl"><thead><tr><th>Strategy</th><th class="r">$/mo</th><th class="r">3m</th><th class="r">6m</th>
-      <th class="r">12m</th><th class="r">Max DD</th><th class="r">Sharpe</th><th class="r">Trades/yr</th><th class="r">Long</th><th class="r">Hold</th>
-      ${fwdCols ? `<th class="r">Since added</th><th class="r">SPY</th><th class="r">Fee drag</th><th class="r">Edge after fees</th>` : ""}</tr></thead><tbody>${
+    $("c2").innerHTML = rows.length ? `<table class="tbl"><thead><tr><th>Trader</th><th class="r">Cost / month</th><th class="r">3 mo</th><th class="r">6 mo</th>
+      <th class="r">12 mo</th><th class="r">Worst drop</th><th class="r" title="Sharpe: above 1 is smooth">Smoothness</th><th class="r">Trades / yr</th><th class="r" title="Share of trades that are buys (not short sales)">Buys</th><th class="r">Typical hold</th>
+      ${fwdCols ? `<th class="r">Since added</th><th class="r">S&amp;P 500 same time</th><th class="r" title="Subscription paid so far, as a share of a $250 account">Fee cost</th><th class="r" title="Since added, minus fees, minus the S&P 500">Beat the S&amp;P after fees?</th>` : ""}</tr></thead><tbody>${
       rows.map((r) => `<tr><td><span class="sym">${esc(r.name)}</span> <span style="color:var(--muted);font-size:11px">${esc(r.strategy_id)}</span></td>
         <td class="r" style="color:${(r.monthly_cost || 0) * 12 > 250 ? "var(--warn)" : "var(--ink-2)"}">${r.monthly_cost == null ? "—" : usd(r.monthly_cost, 0)}</td>
         <td class="r ${dir(r.r3m)}">${p0(r.r3m)}</td><td class="r ${dir(r.r6m)}">${p0(r.r6m)}</td><td class="r ${dir(r.r12m)}">${p0(r.r12m)}</td>
@@ -1119,34 +1209,24 @@ main:focus { outline: none; }
     $("labMeta").textContent = L.generated_at ? `ranked by 2020-26 Sharpe · cash yield ${pct(L.cash_apy || 0, 1)} · ${fmtTime(L.generated_at)}` : "";
     if (!rows.length) { $("lab").innerHTML = `<div class="empty" style="height:80px">No lab results yet. Run ctbot-lab --cash-apy 0.035.</div>`; return; }
     const reports = new Set(R.reports || []);
-    const slug = (n) => "lab_" + n.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") + ".html";
     const p0 = (v) => v == null ? "—" : sgnPct(v, 1);
-    $("lab").innerHTML = `<table class="tbl"><thead><tr><th>Strategy</th><th>2010-26</th><th class="r">CAGR 20-26</th><th class="r">Max DD</th>
-      <th class="r">Sharpe</th><th class="r" title="Deflated Sharpe: chance the Sharpe beats the best of this many tries by luck">DSR</th>
-      <th class="r" title="Chance the daily excess over holding QQQ is truly positive">vs QQQ</th>
-      <th class="r">Worst yr</th><th class="r">Exposure</th><th class="r">CAGR 10-19</th><th class="r">Sharpe</th><th></th></tr></thead><tbody>${
-      rows.map((r) => { const o = r.out_of_sample, i = r.in_sample, live = r.strategy.startsWith("LIVE");
-        const dsr = (r.deflated || {}).dsr, vq = (r.deflated_vs_qqq || {}).psr0;
-        return `<tr class="clk ${cmpSel.includes(r.strategy) ? "pick" : ""}" data-strat="${esc(r.strategy)}"${live ? ' style="background:rgba(61,255,143,.05)"' : ""}><td class="sym">${esc(r.strategy)}</td>
-        <td>${spark(r.curve)}</td>
-        <td class="r ${dir(o.cagr)}">${p0(o.cagr)}</td><td class="r down">${p0(o.max_dd)}</td><td class="r">${(o.sharpe ?? 0).toFixed(2)}</td>
-        <td class="r" style="color:${dsr >= 0.95 ? "var(--good)" : "var(--ink-2)"}">${dsr == null ? "—" : dsr.toFixed(2)}</td>
-        <td class="r" style="color:${vq >= 0.95 ? "var(--good)" : vq != null && vq < 0.5 ? "var(--muted)" : "var(--ink-2)"}">${vq == null ? "—" : vq.toFixed(2)}</td>
-        <td class="r ${dir(o.worst_year)}">${p0(o.worst_year)}</td><td class="r">${pct(o.exposure, 0)}</td>
-        <td class="r ${dir(i.cagr)}">${p0(i.cagr)}</td><td class="r">${(i.sharpe ?? 0).toFixed(2)}</td>
-        <td>${reports.has(slug(r.strategy)) ? `<a href="/reports/${slug(r.strategy)}" target="_blank" rel="noopener" style="color:var(--neon)">tearsheet ↗</a>` : ""}</td></tr>`; }).join("")
+    $("lab").innerHTML = `<table class="tbl"><thead><tr><th title="Show on the growth chart">Chart</th><th>Test</th><th>2010-26</th>
+      <th class="r" title="Average yearly return, 2020-26 (the unseen years)">Yearly return</th><th class="r" title="Biggest fall from a high, 2020-26">Worst drop</th>
+      <th class="r" title="Worst calendar year, 2020-26">Worst year</th>
+      <th class="r" title="Sharpe ratio: return per unit of bumpiness. Above 1 is smooth, under 0.5 is rough">Smoothness</th>
+      <th class="r" title="Share of days it held something rather than cash">In the market</th><th></th></tr></thead><tbody>${
+      rows.map((r) => { const o = r.out_of_sample, live = r.strategy.startsWith("LIVE"), on = cmpSel.includes(r.strategy);
+        return `<tr class="clk ${on ? "pick" : ""}" data-lab="${esc(r.strategy)}" tabindex="0"${live ? ' style="background:rgba(61,255,143,.05)"' : ""}>
+        <td><input type="checkbox" data-cmp="${esc(r.strategy)}" ${on ? "checked" : ""} aria-label="Show ${esc(r.strategy)} on the growth chart"></td>
+        <td class="sym">${esc(r.strategy)}</td><td>${spark(r.curve)}</td>
+        <td class="r ${dir(o.cagr)}">${p0(o.cagr)}</td><td class="r down">${p0(o.max_dd)}</td><td class="r ${dir(o.worst_year)}">${p0(o.worst_year)}</td>
+        <td class="r">${(o.sharpe ?? 0).toFixed(2)}</td><td class="r">${pct(o.exposure, 0)}</td>
+        <td class="r"><span class="more">Details →</span></td></tr>`; }).join("")
     }</tbody></table>`;
-    $("lab").querySelectorAll("tr.clk").forEach((tr) => tr.addEventListener("click", (ev) => {
-      if (ev.target.closest("a")) return;
-      const n = tr.dataset.strat, k = cmpSel.indexOf(n);
-      if (k >= 0) cmpSel.splice(k, 1); else { cmpSel.push(n); if (cmpSel.length > 6) cmpSel.shift(); }
-      try { localStorage.setItem("ctbot.cmp", JSON.stringify(cmpSel)); } catch (e) {}
-      renderLab(); renderCompare();
-    }));
     const sw = R.sweep || {};
     $("labNote").innerHTML = (sw.symbol ? `Trend sweep (${esc(sw.symbol)}): length chosen on 2010-19 = ${sw.chosen_in_sample}d, its 2020-26 Sharpe ${(sw.oos_sharpe_of_chosen || 0).toFixed(2)}; median across all lengths ${(sw.oos_sharpe_median || 0).toFixed(2)} (a broad plateau = robust). ` : "") +
       (reports.has("paper_book.html") ? `<a href="/reports/paper_book.html" target="_blank" rel="noopener" style="color:var(--neon)">Paper book tearsheet ↗</a> · ` : "") +
-      `Daily closes, dividends excluded, costs included. LIVE rows mirror the running configuration. Click rows to compare (up to 6).`;
+      `Daily closes, dividends excluded, costs included. LIVE rows mirror what the bot runs now. Up to 6 lines on the chart.`;
   }
 
   function renderCatalog() {
@@ -1154,26 +1234,26 @@ main:focus { outline: none; }
     const strats = S.strategies || [], models = Object.fromEntries((S.models || []).map((m) => [m.model, m]));
     const scores = (S.idea_scores || {}).summary || {};
     const labRows = Object.fromEntries((((S.research || {}).lab || {}).rows || []).map((r) => [r.strategy, r]));
-    const order = { trade: 0, shadow: 1 };
-    const rank = (s) => s.enabled ? order[s.mode || "trade"] : 9;
+    const rank = (s) => runOf(s.name) ? 0 : s.enabled ? 1 : 9;
     const list = strats.slice().sort((a, b) => rank(a) - rank(b));
-    $("catMeta").textContent = `${strats.filter((s) => rank(s) === 0).length} trading · ${strats.filter((s) => rank(s) === 1).length} shadow · ${strats.filter((s) => !s.enabled).length} off`;
-    const fmtv = (v) => typeof v === "number" ? String(v) : esc(Array.isArray(v) ? v.join(", ") : typeof v === "string" ? v : JSON.stringify(v));
+    $("catMeta").textContent = `${strats.filter((s) => runOf(s.name)).length} invested · ${strats.filter((s) => !runOf(s.name)).length} watching`;
     $("catalog").innerHTML = list.map((s) => {
-      const mode = !s.enabled ? "off" : (s.mode || "trade"), m = models[s.name], sc = scores[s.name], lab = labRows[LAB_FOR[s.name]];
-      const badge = mode === "trade" ? `<span class="tag on">● Trading</span>` : mode === "shadow" ? `<span class="tag q">◐ Shadow</span>` : `<span class="tag off">○ Off</span>`;
-      const params = Object.entries(s.params || {}).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${fmtv(v)}</dd>`).join("");
-      const live = m ? `<dt>closed trades</dt><dd>${m.closed}</dd><dt>win rate</dt><dd>${m.win_rate == null ? "—" : pct(m.win_rate, 0)}</dd>
-        <dt>realized P&amp;L</dt><dd class="${dir(m.pnl)}">${sgnUsd(m.pnl)}</dd><dt>open</dt><dd>${m.open}${m.open ? " · " + sgnUsd(m.open_pnl) : ""}</dd>`
-        : `<dt>live record</dt><dd style="color:var(--muted)">no trades yet</dd>`;
-      const cell = (x) => x && x.avg_bps != null ? `${x.avg_bps >= 0 ? "+" : ""}${x.avg_bps.toFixed(1)} bps · n=${x.n}` : "—";
-      const filt = sc ? `<dt>Claude-approved ideas</dt><dd>${cell(sc.approved)}</dd><dt>Claude-rejected ideas</dt><dd>${cell(sc.rejected)}</dd>` : "";
-      const bt = lab ? `<dt>backtest 2020-26</dt><dd>${sgnPct(lab.out_of_sample.cagr, 1)}/yr · DD ${pct(lab.out_of_sample.max_dd, 0)}</dd>` : "";
-      return `<div class="model ${mode}"><div class="hd"><span class="n">${esc(s.name)}</span>${badge}${s.standalone ? `<span class="tag">standalone</span>` : ""}
-        <span class="spacer" style="margin-left:auto"></span>${lab ? spark(lab.curve) : ""}</div>
-        <div class="ds">${esc(s.description || "No description.")}</div>
-        <div class="sec">Parameters</div><dl class="kv">${params || "<dt>defaults</dt><dd></dd>"}</dl>
-        <div class="sec">Record</div><dl class="kv">${live}${filt}${bt}</dl>${launchBox(s)}</div>`;
+      const P = s.plain || {}, m = models[s.name], sc = scores[s.name], lab = labRows[LAB_FOR[s.name]], run = runOf(s.name);
+      const badge = run ? `<span class="tag on">● Invested</span>` : s.enabled ? `<span class="tag q">◐ Watching</span>` : `<span class="tag off">○ Off</span>`;
+      const verdict = (x) => !x || x.avg_bps == null ? null : x.avg_bps >= 0 ? `<span class="up">helped</span>` : `<span class="down">didn't help</span>`;
+      const claudeV = sc && sc.approved && sc.rejected && sc.approved.avg_bps != null && sc.rejected.avg_bps != null
+        ? (sc.approved.avg_bps > sc.rejected.avg_bps ? `<span class="up">picked better ideas</span>` : `<span class="down">no better than chance</span>`) : null;
+      const rows = [
+        ["Real paper trades", m ? `${m.closed} done${m.win_rate == null ? "" : ` · won ${pct(m.win_rate, 0)}`}` : "none yet"],
+        m ? ["Profit / loss", `<span class="${dir(m.pnl + (m.open_pnl || 0))}">${sgnUsd(m.pnl + (m.open_pnl || 0))}</span>`] : null,
+        lab ? ["Long test, 2020-26", `${sgnPct(lab.out_of_sample.cagr, 1)} a year · worst drop ${pct(lab.out_of_sample.max_dd, 0)}`] : null,
+        claudeV ? ["Claude's filter", claudeV] : sc ? ["Its ideas, on average", verdict(sc.approved) || "not scored yet"] : null,
+      ].filter(Boolean);
+      return `<div class="model ${run ? "trade" : "shadow"}" data-detail="${esc(s.name)}" tabindex="0" aria-label="${esc(P.title || s.name)}: details and invest">
+        <div class="hd"><span class="n">${esc(P.title || s.name)}</span>${badge}<span class="spacer" style="margin-left:auto"></span>${lab ? spark(lab.curve) : ""}</div>
+        <div class="ds">${esc(P.tagline || s.description || "No description.")}</div>
+        <dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>
+        <span class="more">Full details →</span>${launchBox(s)}</div>`;
     }).join("");
   }
   // ---- strategies in plain words, the invest sheet and "your strategies" -------------
@@ -1186,6 +1266,7 @@ main:focus { outline: none; }
   const PERIOD_LABEL = { "3M": "past 3 months", "6M": "past 6 months", "1Y": "past year" };
   let period = "1Y";
   try { period = localStorage.getItem("ctbot.period") || period; } catch (e) {}
+  try { ideaFilter = localStorage.getItem("ctbot.ideas") || ideaFilter; } catch (e) {}
   function launchBox(s) {  // the technical catalog's action row (Research tab)
     if (!s.enabled) return `<div class="launch off">Off: turn it on in <code>config/strategies.toml</code> to invest in it.</div>`;
     const r = runOf(s.name);
@@ -1239,17 +1320,14 @@ main:focus { outline: none; }
         : `<div class="dret flat">—</div><div class="dlab">${perf.kind === "none" || !perf.windows ? "No simulated history yet" : "Not enough history for this period"}</div>`;
       const act = run ? `<span class="lm">${sgnUsd(run.gain)} so far</span><button class="btn sell" type="button" data-stop="${esc(s.name)}">Stop</button>`
         : s.enabled ? `<button class="btn solid" type="button" data-invest="${esc(s.name)}" ${canTrade() && freeCash() >= 10 ? "" : `disabled title="${esc(freeNote() || "Start the dashboard with ./run_ctbot.sh to invest")}"`}>Invest</button>`
-        : `<span class="lm">Turned off in config</span>`;
-      return `<article class="disc ${s.enabled ? "" : "is-off"}">
+        : `<span class="lm">Off in config/strategies.toml</span>`;
+      return `<article class="disc ${s.enabled ? "" : "is-off"}" data-detail="${esc(s.name)}" tabindex="0" aria-label="${esc(P.title || s.name)}: details and invest">
         <div class="dh"><div><div class="dt">${esc(P.title || s.name)}</div>
           <div class="dmeta">${riskTag(P.risk)}<span class="lm">Holds ${esc((P.holds || "?").toLowerCase())}</span></div></div>${status}</div>
         ${big}
         ${miniChart(perf.curve, (B.SPY || {}).curve, days)}
         <p class="dtag">${esc(P.tagline || s.description || "")}</p>
-        <details><summary>How it works</summary>
-          ${(P.how || []).length ? `<ul>${P.how.map((h) => `<li>${esc(h)}</li>`).join("")}</ul>` : ""}
-          ${(P.settings || []).length ? `<dl class="kv">${P.settings.map((x) => `<dt>${esc(x.label)}</dt><dd>${esc(x.value)}</dd>`).join("")}</dl>` : ""}
-          ${perf.note ? `<p class="note">Simulation: ${esc(perf.note)}.</p>` : ""}</details>
+        <span class="more">Details, chart and how it works →</span>
         <div class="dact">${act}</div></article>`;
     }).join("");
   }
@@ -1278,16 +1356,6 @@ main:focus { outline: none; }
     $("steps").innerHTML = steps.map(([ok, title, text, btn], i) => `<li class="${ok ? "ok" : ""}">
       <span class="sn">${ok ? "✓" : i + 1}</span><div><b>${title}</b><p>${text}</p></div>${btn}</li>`).join("");
   }
-  function renderHomePositions() {
-    const P = (S.positions || []).slice().sort((a, b) => b.market_value - a.market_value);
-    const total = P.reduce((t, p) => t + p.market_value, 0), gain = P.reduce((t, p) => t + p.pnl, 0);
-    $("homePosMeta").textContent = P.length ? `${P.length} · ${usd(total)} · ${sgnUsd(gain)} total return` : "";
-    $("homePos").innerHTML = P.length ? P.map((p) => {
-      const who = p.model ? plainOf(p.model).title : "you";
-      return `<div class="hrow"><div class="hl"><b>${esc(p.symbol)}</b><span class="lm">${qty(p.quantity)} shares · avg ${usd(p.avg_cost)} · bought by ${esc(who)}</span></div>
-        <div class="hr"><b>${usd(p.market_value)}</b><span class="${dir(p.pnl)}">${sgnUsd(p.pnl)} (${sgnPct(p.pnl_pct)})</span></div></div>`;
-    }).join("") : `<div class="empty-row"><p>No positions yet. Invest in a strategy and the bot buys for you.</p><button class="btn" type="button" data-goto="discover">Discover strategies</button></div>`;
-  }
   function renderRuns() {
     const L = S.launcher || { runs: [], allocated: 0, max_total: 0 }, runs = L.runs.filter((r) => r.status !== "stopped");
     $("runMeta").textContent = `${usd(L.allocated, 0)} invested of ${usd(L.max_total, 0)} paper money`;
@@ -1302,17 +1370,113 @@ main:focus { outline: none; }
       : `<div class="empty-row"><p>You haven't invested in a strategy yet.</p><button class="btn solid" type="button" data-goto="discover">Discover strategies</button></div>`;
   }
   let investOpener = null;
-  function openInvest(name) {
-    investOpener = document.activeElement;
-    const P = plainOf(name), free = freeCash(), w = (((S.strategies || []).find((x) => x.name === name) || {}).performance || {}).windows || {};
-    $("invest").dataset.name = name;
-    $("invTitle").textContent = `Invest in ${P.title}`;
-    $("invTag").textContent = P.tagline || "";
-    $("invAmt").value = Math.min(1000, Math.floor(free));
-    $("invAmt").max = Math.floor(free);
-    $("invFree").textContent = `${usd(free, 0)} available to invest`;
-    $("invest").hidden = false; $("invAmt").focus(); invSummary();
-    void w;
+  const stratOf = (name) => (S.strategies || []).find((x) => x.name === name) || { name, plain: { title: name } };
+  function bigChart(curve, bench, days, label) {  // like miniChart, taller, with start/end values
+    if (!curve || curve.length < 2) return `<div class="mini empty" style="height:120px">No chart yet</div>`;
+    const cut = (c) => { if (!days) return c; const end = new Date(c[c.length - 1][0]); const w = c.filter((p) => new Date(p[0]) >= new Date(end - days * 864e5)); return w.length > 1 ? w : c; };
+    const a = cut(curve), b = bench ? cut(bench) : null, W = 600, H = 160;
+    const norm = (c) => c.map((p) => [new Date(p[0]).getTime(), p[1] / c[0][1]]);
+    const A = norm(a), B = b ? norm(b) : [];
+    const lg = !days;  // long histories on a log scale
+    const f = lg ? Math.log : (v) => v;
+    const xs = A.map((p) => p[0]).concat(B.map((p) => p[0])), ys = A.map((p) => f(p[1])).concat(B.map((p) => f(p[1])));
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const pt = (p) => `${((p[0] - x0) / ((x1 - x0) || 1) * W).toFixed(1)},${(H - 6 - (f(p[1]) - y0) / ((y1 - y0) || 1) * (H - 12)).toFixed(1)}`;
+    const end = A[A.length - 1][1], up = end >= 1, d0 = new Date(a[0][0]), d1 = new Date(a[a.length - 1][0]);
+    const fmtD = (d) => d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+    return `<figure class="bigc"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}">
+      ${B.length ? `<polyline points="${B.map(pt).join(" ")}" fill="none" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>` : ""}
+      <polyline points="${A.map(pt).join(" ")}" fill="none" stroke="${up ? "var(--neon)" : "var(--crit)"}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>
+      <figcaption><span>${fmtD(d0)}</span><span>${esc(label)}</span><span>${fmtD(d1)}</span></figcaption></figure>`;
+  }
+  const kv = (rows) => `<dl class="kv">${rows.filter(Boolean).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>`;
+  function strategyBody(s) {  // everything we know about one strategy, in plain words first
+    const P = s.plain || {}, perf = s.performance || {}, W = perf.windows || {}, B = S.benchmarks || {};
+    const m = (S.models || []).find((x) => x.model === s.name), sc = ((S.idea_scores || {}).summary || {})[s.name];
+    const lab = ((((S.research || {}).lab || {}).rows) || []).find((r) => r.strategy === LAB_FOR[s.name]);
+    const run = runOf(s.name), held = (S.positions || []).filter((p) => p.model === s.name);
+    const status = run ? `<span class="tag on">● Invested ${usd(run.capital, 0)}</span> <span class="${dir(run.gain)}">${sgnUsd(run.gain)} so far</span>`
+      : `<span class="tag q">◐ Watching only</span> <span class="lm">It suggests trade ideas on Activity but doesn't buy until you invest in it.</span>`;
+    const per = ["3M", "6M", "1Y"].map((k) => { const r = W[k], sp = ((B.SPY || {}).windows || {})[k];
+      return `<tr><td>${PERIOD_LABEL[k]}</td><td class="r ${r ? dir(r.return) : ""}">${r ? sgnPct(r.return, 1) : "—"}</td>
+        <td class="r">${r ? pct(r.worst_drop, 1) : "—"}</td><td class="r ${sp ? dir(sp.return) : ""}">${sp ? sgnPct(sp.return, 1) : "—"}</td></tr>`; }).join("");
+    const words = (x) => x && x.avg_bps != null ? `${x.avg_bps >= 0 ? "made" : "lost"} ${Math.abs(x.avg_bps / 100).toFixed(2)}% a trade on average (${x.n} ideas)` : "not enough yet";
+    return `<p class="dstat">${status}</p>
+      <div class="dgrid"><div><span class="lm">Risk</span><b>${esc(P.risk || "?")}</b></div><div><span class="lm">Holds for</span><b>${esc(P.holds || "?")}</b></div>
+        <div><span class="lm">Best for</span><b>${P.risk === "Lower" ? "Steady, small gains" : P.risk === "High" ? "Bigger swings, up and down" : "In between"}</b></div></div>
+      <div class="isec">How it did (simulated with $1,000)</div>
+      ${bigChart(perf.curve, (B.SPY || {}).curve, 365, "this strategy vs the S&P 500 (dashed), past year")}
+      <table class="tbl mini-t"><thead><tr><th>Period</th><th class="r">Return</th><th class="r">Worst drop</th><th class="r">S&amp;P 500</th></tr></thead><tbody>${per}</tbody></table>
+      <p class="note">"Worst drop" is the biggest fall from a high along the way: how much you'd have had to sit through.${perf.kind === "stand-in" ? " This is an estimate from a similar test." : ""}${perf.note ? " " + esc(perf.note) + "." : ""}</p>
+      <div class="isec">How it works</div>
+      ${P.tagline ? `<p class="dp">${esc(P.tagline)}</p>` : ""}
+      ${(P.how || []).length ? `<ul class="dl">${P.how.map((h) => `<li>${esc(h)}</li>`).join("")}</ul>` : ""}
+      ${(P.settings || []).length ? kv(P.settings.map((x) => [esc(x.label), esc(x.value)])) : ""}
+      <div class="isec">Its real record here</div>
+      ${m ? kv([["Trades finished", m.closed], ["Won", m.win_rate == null ? "—" : pct(m.win_rate, 0) + " of them"],
+          ["Profit / loss", `<span class="${dir(m.pnl)}">${sgnUsd(m.pnl)}</span>`], ["Open now", m.open ? `${m.open} · ${sgnUsd(m.open_pnl)}` : "none"]])
+        : `<p class="lm">No paper trades yet.</p>`}
+      ${held.length ? `<p class="dp">Holding now: ${held.map((p) => `<b>${esc(p.symbol)}</b> ${usd(p.market_value, 0)} <span class="${dir(p.pnl)}">${sgnUsd(p.pnl)}</span>`).join(" · ")}</p>` : ""}
+      ${sc ? `<p class="dp">When Claude approved its ideas they ${words(sc.approved)}; ideas Claude turned down ${words(sc.rejected)}.</p>` : ""}
+      ${lab ? `<p class="dp">Long test 2020-26: ${sgnPct(lab.out_of_sample.cagr, 1)} a year, worst drop ${pct(lab.out_of_sample.max_dd, 0)}.</p>` : ""}
+      <details class="tech"><summary>Technical settings</summary>
+        ${kv([["config name", `<code>${esc(s.name)}</code>`], ["mode", esc(s.enabled ? s.mode || "trade" : "off")], ["weight", s.weight], ["standalone", s.standalone ? "yes" : "no"],
+          ...Object.entries(s.params || {}).map(([k, v]) => [esc(k), esc(Array.isArray(v) ? v.join(", ") : typeof v === "object" ? JSON.stringify(v) : String(v))])])}
+        ${s.description ? `<p class="lm">${esc(s.description)}</p>` : ""}</details>`;
+  }
+  function labBody(r) {  // one research-lab test, explained
+    const o = r.out_of_sample || {}, i = r.in_sample || {}, rows = ((S.research || {}).lab || {}).rows || [];
+    const qqq = rows.find((x) => x.strategy === "hold QQQ"), dsr = (r.deflated || {}).dsr, vq = (r.deflated_vs_qqq || {}).psr0;
+    const reports = new Set((S.research || {}).reports || []), slug = "lab_" + r.strategy.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") + ".html";
+    const sharpeWord = (v) => v == null ? "" : v >= 1 ? " (smooth)" : v >= 0.5 ? " (bumpy)" : " (rough)";
+    const chance = (v) => v == null ? "—" : `${Math.round(v * 100)}%`;
+    return `${r.strategy.startsWith("LIVE") ? `<p class="dstat"><span class="tag on">LIVE</span> <span class="lm">This test mirrors what the bot runs now.</span></p>` : ""}
+      ${bigChart(r.curve, qqq && qqq !== r ? qqq.curve : null, 0, `growth of $5,000${qqq && qqq !== r ? " vs just holding QQQ (dashed)" : ""}, log scale`)}
+      <div class="isec">2020-2026: the test it never saw while being designed</div>
+      ${kv([["Yearly return", `<span class="${dir(o.cagr)}">${sgnPct(o.cagr, 1)}</span>`], ["Worst drop from a high", pct(o.max_dd, 0)],
+        ["Worst calendar year", `<span class="${dir(o.worst_year)}">${sgnPct(o.worst_year, 1)}</span>`],
+        ["Smoothness (Sharpe)", (o.sharpe ?? 0).toFixed(2) + sharpeWord(o.sharpe)], ["Time in the market", pct(o.exposure, 0)]])}
+      <div class="isec">2010-2019: the years used to design it</div>
+      ${kv([["Yearly return", `<span class="${dir(i.cagr)}">${sgnPct(i.cagr, 1)}</span>`], ["Smoothness (Sharpe)", (i.sharpe ?? 0).toFixed(2) + sharpeWord(i.sharpe)]])}
+      <div class="isec">Could it be luck?</div>
+      ${kv([["Chance the result is real, not luck", chance(dsr)], ["Chance it truly beats holding QQQ", chance(vq)]])}
+      <p class="note">If the 2020-26 numbers are close to the 2010-19 ones, the idea held up on new data. Many variations were tried, so the "luck" check discounts the best one; 95%+ is strong.</p>
+      ${reports.has(slug) ? `<p><a href="/reports/${slug}" target="_blank" rel="noopener" class="ext">Full tearsheet ↗</a></p>` : ""}`;
+  }
+  function showSheet({ title, tag, body, invest, extra }) {
+    if ($("invest").hidden) investOpener = document.activeElement;
+    $("invTitle").textContent = title; $("invTag").textContent = tag || ""; $("invTag").hidden = !tag;
+    $("invDetail").innerHTML = body; $("invExtra").innerHTML = extra || "";
+    $("invest").dataset.name = invest || "";
+    const run = invest ? runOf(invest) : null, free = freeCash(), why = !canTrade() ? "Start the dashboard with ./run_ctbot.sh to invest." : freeNote();
+    $("invFields").hidden = !invest || !!run;
+    $("invGo").hidden = !invest || !!run;
+    if (invest && !run) {
+      $("invHead").textContent = `Invest in ${plainOf(invest).title}`;
+      $("invAmt").value = Math.max(10, Math.min(1000, Math.floor(free)));
+      $("invAmt").max = Math.floor(free);
+      $("invFree").textContent = `${usd(free, 0)} available to invest`;
+      $("invWhy").hidden = !why; $("invWhy").textContent = why || "";
+      $("invGo").disabled = !!why;
+      invSummary();
+    }
+    $("invest").hidden = false; $("invest").querySelector(".sheet").scrollTop = 0;
+    $("invClose").focus();
+  }
+  function openDetail(name) {
+    const s = stratOf(name), run = runOf(name);
+    showSheet({ title: plainOf(name).title, tag: "", body: strategyBody(s), invest: name,
+      extra: run && run.status === "running" ? `<button class="btn sell" type="button" data-stop="${esc(name)}">Stop and sell</button>` : "" });
+  }
+  const openInvest = (name) => { openDetail(name); if (!$("invGo").hidden && !$("invGo").disabled) $("invAmt").focus(); };
+  function openLab(name) {
+    const r = ((((S.research || {}).lab || {}).rows) || []).find((x) => x.strategy === name);
+    if (!r) return;
+    const inv = Object.keys(LAB_FOR).find((k) => LAB_FOR[k] === name && stratOf(k).enabled);
+    const picked = cmpSel.includes(name);
+    showSheet({ title: name, tag: inv ? `The tested version of ${plainOf(inv).title}.` : "A research test. You can't invest in it directly; it's here to compare ideas.",
+      body: labBody(r), invest: inv,
+      extra: `<button class="btn" type="button" data-cmp="${esc(name)}">${picked ? "Remove from" : "Add to"} the compare chart</button>` });
   }
   function invSummary() {
     const name = $("invest").dataset.name, amt = Number($("invAmt").value) || 0;
@@ -1328,7 +1492,7 @@ main:focus { outline: none; }
   };
   $("invest").addEventListener("keydown", (e) => {  // keep Tab inside the open sheet
     if (e.key !== "Tab") return;
-    const f = [...$("invForm").querySelectorAll("button, input, select")].filter((x) => !x.disabled);
+    const f = [...$("invForm").querySelectorAll("button, input, select, summary, a[href]")].filter((x) => !x.disabled && x.offsetParent !== null);
     if (!f.length) return;
     if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
     else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
@@ -1338,9 +1502,14 @@ main:focus { outline: none; }
   $("invCancel").addEventListener("click", closeInvest);
   $("invest").addEventListener("click", (e) => { if (e.target === $("invest")) closeInvest(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("invest").hidden) closeInvest(); });
+  document.addEventListener("keydown", (e) => {  // clickable cards and rows open with Enter or Space too
+    if ((e.key !== "Enter" && e.key !== " ") || !(e.target instanceof Element) || !e.target.matches("[data-detail][tabindex], [data-lab][tabindex]")) return;
+    e.preventDefault(); e.target.dataset.detail ? openDetail(e.target.dataset.detail) : openLab(e.target.dataset.lab);
+  });
   $("invForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const name = $("invest").dataset.name, capital = Number($("invAmt").value);
+    if (!name) return;
     if (!(capital >= 10)) return toast("Enter at least $10.", true);
     $("invGo").disabled = true;
     const [ok, j] = await api("/api/launch", { strategy: name, capital,
@@ -1355,6 +1524,18 @@ main:focus { outline: none; }
     if (!(e.target instanceof Element)) return;
     const inv = e.target.closest("[data-invest]");
     if (inv) return openInvest(inv.dataset.invest);
+    const det = e.target.closest("[data-detail]");
+    if (det && !e.target.closest("[data-stop], a, details")) return openDetail(det.dataset.detail);
+    const cmp = e.target.closest("[data-cmp]");
+    if (cmp) {
+      const n = cmp.dataset.cmp, k = cmpSel.indexOf(n);
+      if (k >= 0) cmpSel.splice(k, 1); else { cmpSel.push(n); if (cmpSel.length > 6) cmpSel.shift(); }
+      try { localStorage.setItem("ctbot.cmp", JSON.stringify(cmpSel)); } catch (err) {}
+      if (cmp.tagName === "BUTTON") cmp.textContent = `${k >= 0 ? "Add to" : "Remove from"} the compare chart`;
+      renderLab(); renderCompare(); return;
+    }
+    const lab = e.target.closest("[data-lab]");
+    if (lab && !e.target.closest("a")) return openLab(lab.dataset.lab);
     const go = e.target.closest("[data-goto]");
     if (go) { tab = go.dataset.goto; try { localStorage.setItem("ctbot.tab", tab); } catch (err) {} applyTab(); scrollTo(0, 0); return; }
     const per = e.target.closest("[data-period]");
@@ -1365,14 +1546,15 @@ main:focus { outline: none; }
     if (!confirm(`Stop ${plainOf(name).title}?\n\nThe bot sells what it bought at the next market check and returns the money to your buying power. Paper money only.`)) return;
     const [ok, j] = await api("/api/launch/stop", { strategy: name });
     if (!ok) return toast("Not stopped: " + (j.error || "error"), true);
+    if (!$("invest").hidden) closeInvest();
     toast(`Stopping ${plainOf(name).title}: it sells at the next market check.`); load();
   });
   function renderCompare() {
     const rows = Object.fromEntries((((S.research || {}).lab || {}).rows || []).map((r) => [r.strategy, r]));
     const sel = cmpSel.filter((n) => rows[n] && rows[n].curve);
     const el = $("cmpChart");
-    $("cmpMeta").textContent = sel.length ? `growth of $5,000 since Nov 2010 · click leaderboard rows to add/remove` : "";
-    if (!sel.length) { el.innerHTML = `<div class="empty">Select strategies in the leaderboard below.</div>`; $("cmpLegend").innerHTML = ""; return; }
+    $("cmpMeta").textContent = sel.length ? `tick tests in the leaderboard below to add or remove lines` : "";
+    if (!sel.length) { el.innerHTML = `<div class="empty">Tick tests in the leaderboard below to draw them here.</div>`; $("cmpLegend").innerHTML = ""; return; }
     const W = el.clientWidth || 900, H = el.clientHeight || 320, pl = 70, pr = 16, pt = 10, pb = 26;
     const series = sel.map((n) => rows[n].curve.map(([d, v]) => [new Date(d).getTime(), v]));
     const all = series.flat(), t0 = Math.min(...all.map((p) => p[0])), t1 = Math.max(...all.map((p) => p[0]));
@@ -1395,23 +1577,23 @@ main:focus { outline: none; }
   function renderStressWF() {
     const L = (S.research || {}).lab || {}, st = L.stress || {}, wf = L.walk_forward || {};
     $("stress").innerHTML = Object.keys(st).length ? Object.entries(st).map(([w, rows]) => `<div class="sec" style="margin:6px 0">${esc(w)}</div>
-      <table class="tbl"><thead><tr><th>Strategy</th><th class="r">CAGR</th><th class="r">Max DD</th><th class="r">Sharpe</th><th class="r">$5k →</th></tr></thead><tbody>${
+      <table class="tbl"><thead><tr><th>Test</th><th class="r">Yearly return</th><th class="r">Worst drop</th><th class="r" title="Sharpe: above 1 is smooth">Smoothness</th><th class="r">$5,000 became</th></tr></thead><tbody>${
       rows.map((r) => `<tr><td class="sym">${esc(r.strategy)}</td><td class="r ${dir(r.cagr)}">${sgnPct(r.cagr, 1)}</td>
         <td class="r" style="color:${r.max_dd <= -0.6 ? "var(--crit)" : "var(--ink-2)"}">${r.max_dd <= -0.6 ? "△ " : ""}${pct(r.max_dd, 0)}</td>
         <td class="r">${(r.sharpe || 0).toFixed(2)}</td><td class="r">${usd(r.growth_of_5000, 0)}</td></tr>`).join("")}</tbody></table>`).join("")
       : `<div class="empty" style="height:80px">Run ctbot-lab to populate.</div>`;
     const wfe = Object.entries(wf);
-    $("wf").innerHTML = wfe.length ? `<table class="tbl"><thead><tr><th>Family</th><th class="r">CAGR</th><th class="r">Max DD</th><th class="r">Sharpe</th><th>Lengths picked</th></tr></thead><tbody>${
+    $("wf").innerHTML = wfe.length ? `<table class="tbl"><thead><tr><th>Idea</th><th class="r">Yearly return</th><th class="r">Worst drop</th><th class="r" title="Sharpe: above 1 is smooth">Smoothness</th><th>Trend length it picked each year (days)</th></tr></thead><tbody>${
       wfe.map(([n, w]) => `<tr><td class="sym">${esc(n)}</td><td class="r ${dir(w.cagr)}">${sgnPct(w.cagr, 1)}</td><td class="r down">${pct(w.max_dd, 0)}</td>
         <td class="r">${(w.sharpe || 0).toFixed(2)}</td><td style="white-space:normal;color:var(--ink-2)">${Object.entries(w.picks).map(([yy, p]) => `${yy}:${p}`).join(" ")}</td></tr>`).join("")
-      }</tbody></table><div style="color:var(--muted);font-size:12px;margin-top:8px">${esc(wfe[0][1].from)} → ${esc(wfe[0][1].to)} · each year traded with the length that scored best on the 5 years before it.</div>`
+      }</tbody></table><div style="color:var(--muted);font-size:12px;margin-top:8px">${esc(wfe[0][1].from)} → ${esc(wfe[0][1].to)} · each year used the trend length that did best over the 5 years before it.</div>`
       : `<div class="empty" style="height:80px">Run ctbot-lab to populate.</div>`;
   }
 
   function renderAll() {
     renderChrome(); renderKpis(); renderIdeas(); renderChart(); renderLimits(); renderPositions();
     renderWatchlist(); renderFills(); renderStrategies(); renderLog(); renderC2(); renderModels(); renderFilterScore(); renderLab();
-    renderRuns(); renderHomePositions(); renderCatalog(); renderCompare(); renderStressWF(); renderDiscover(); renderSteps();
+    renderRuns(); renderCatalog(); renderCompare(); renderStressWF(); renderDiscover(); renderSteps();
     applySorts();
     $("updated").textContent = "updated " + new Date(S.generated_at).toLocaleTimeString("en-US", { timeZone: ET, hour12: false }) + " ET";
   }
@@ -1423,9 +1605,12 @@ main:focus { outline: none; }
   document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => {
     view = b.dataset.view; document.querySelectorAll("[data-view]").forEach((x) => x.classList.toggle("on", x === b)); S && renderChart();
   }));
-  document.querySelectorAll("[data-ideas]").forEach((b) => b.addEventListener("click", () => {
-    ideaFilter = b.dataset.ideas; document.querySelectorAll("[data-ideas]").forEach((x) => x.classList.toggle("on", x === b)); S && renderIdeas();
-  }));
+  $("ideaSeg").addEventListener("click", (e) => {
+    const b = e.target instanceof Element && e.target.closest("[data-ideas]");
+    if (!b) return;
+    ideaFilter = b.dataset.ideas; try { localStorage.setItem("ctbot.ideas", ideaFilter); } catch (err) {}
+    if (S) renderIdeas();
+  });
   document.querySelectorAll(".tabs [data-tab]").forEach((b) => b.addEventListener("click", () => {
     tab = b.dataset.tab; try { localStorage.setItem("ctbot.tab", tab); } catch (e) {} applyTab();
   }));
@@ -1637,6 +1822,11 @@ main:focus { outline: none; }
   const saveOrder = (grid) => { layout[grid.id] = cardsOf(grid).map((c) => c.dataset.card); writeJSON(LAYOUT, layout); };
   const redrawCharts = () => { if (S) { renderChart(); renderCompare(); } };
 
+  if (!layout.ownFirst) {  // once: "What you own" moved to the top of Home
+    if (layout.cards) layout.cards = ["posCount", ...layout.cards.filter((k) => k !== "posCount")];
+    closed.delete("posCount"); mini.delete("posCount"); writeJSON(CLOSED, [...closed]); writeJSON(MINI, [...mini]);
+    layout.ownFirst = true; writeJSON(LAYOUT, layout);
+  }
   cardsOf($("cards")).forEach((c) => { const inner = c.querySelector("[id]"); c.dataset.card = inner ? inner.id : ""; decorate(c); });
   restoreOrder($("cards"));
   renderDrawer();

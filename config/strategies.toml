@@ -2,7 +2,8 @@
 # Weights are relative; candidate score = weighted agreement / total enabled weight.
 
 [momentum]
-enabled = false  # off: no exit plan to score in shadow / no data source
+enabled = true
+mode = "shadow"           # suggests ideas only until you invest in it on the dashboard
 weight = 1.0
 [momentum.params]
 lookback_days = 120
@@ -12,7 +13,8 @@ top_n = 3
 min_return = 0.05
 
 [mean_reversion]
-enabled = false  # off: no exit plan to score in shadow / no data source
+enabled = true
+mode = "shadow"           # suggests ideas only until you invest in it on the dashboard
 weight = 0.75
 [mean_reversion.params]
 z_window = 20
@@ -21,7 +23,8 @@ z_exit = 0.5
 max_half_life_days = 20
 
 [congressional]
-enabled = false  # off: no exit plan to score in shadow / no data source
+enabled = true
+mode = "shadow"           # suggests ideas only until you invest in it on the dashboard
 weight = 0.75
 [congressional.params]
 window_days = 30
@@ -31,7 +34,8 @@ saturation_actors = 5
 min_size_usd = 15000
 
 [institutional]
-enabled = false  # off: no exit plan to score in shadow / no data source
+enabled = true
+mode = "shadow"           # suggests ideas only until you invest in it on the dashboard
 weight = 1.0
 [institutional.params]
 window_days = 45
@@ -43,7 +47,8 @@ saturation_actors = 6
 # (ctbot-c2-rank). Needs ALT_DATA_PROVIDERS=collective2. Without a C2 subscription only
 # exits are visible (open positions return 403), so this only closes positions we hold.
 [copy_trading]
-enabled = false
+enabled = true
+mode = "shadow"           # suggests ideas only until you invest in it on the dashboard
 weight = 0.5
 standalone = true              # a tracked actor's buy can open a LONG without other strategies
 [copy_trading.params]
@@ -58,7 +63,8 @@ min_share_price = 1.0
 min_avg_dollar_volume = 1000000
 
 [options_flow]
-enabled = false                # needs an options-flow provider (e.g. Unusual Whales)
+enabled = true                 # needs an options-flow provider (e.g. Unusual Whales) to signal
+mode = "shadow"           # suggests ideas only until you invest in it on the dashboard
 weight = 0.75
 [options_flow.params]
 window_days = 3
@@ -85,7 +91,9 @@ reward_risk = 2.0       # target = 2x the risk
 [vwap_revert]
 # Disabled 2026-10-14: negative after costs in both periods of the 88-symbol backtest
 # (in-sample -8.1 bps over 1,330 trades, out-of-sample -6.9 bps over 1,127).
-enabled = false
+# Re-enabled 2026-10-16 in shadow so it can be chosen on the dashboard.
+enabled = true
+mode = "shadow"
 weight = 1.0
 standalone = true
 [vwap_revert.params]

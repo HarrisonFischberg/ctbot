@@ -82,9 +82,12 @@ def test_launch_endpoints_validate_and_need_the_token(tmp_path):
     from ctbot.dashboard.server import make_handler
 
     root = Path(__file__).resolve().parents[1]
+    cfg = (root / "config" / "strategies.toml").read_text()
+    i = cfg.index("[vwap_revert]")  # a copy with one strategy switched off
+    (tmp_path / "strategies.toml").write_text(cfg[:i] + cfg[i:].replace("enabled = true", "enabled = false", 1))
     s = Settings.from_env({"PAPER_LEDGER_PATH": str(tmp_path / "ledger.json"), "LOG_DIR": str(tmp_path / "logs"),
                            "MARKET_DATA": "csv", "MAX_TRADING_CAPITAL": "5000",
-                           "STRATEGIES_FILE": str(root / "config" / "strategies.toml")})
+                           "STRATEGIES_FILE": str(tmp_path / "strategies.toml")})
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(s, 0))
     port = httpd.server_address[1]
     httpd.RequestHandlerClass = make_handler(s, port)
@@ -103,7 +106,8 @@ def test_launch_endpoints_validate_and_need_the_token(tmp_path):
 
     try:
         assert post("/api/launch", {"strategy": "trend_core", "capital": 1000}, tok="nope") == 403
-        assert post("/api/launch", {"strategy": "vwap_revert", "capital": 1000}) == 400  # off in strategies.toml
+        assert post("/api/launch", {"strategy": "vwap_revert", "capital": 1000}) == 400  # switched off in the config
+        assert post("/api/launch", {"strategy": "no_such_strategy", "capital": 1000}) == 400
         assert post("/api/launch", {"strategy": "trend_core", "capital": 9000}) == 400   # over the paper cap
         assert post("/api/launch", {"strategy": "trend_core", "capital": "lots"}) == 400
         assert post("/api/launch", {"strategy": "trend_core", "capital": 1000}) == 200
