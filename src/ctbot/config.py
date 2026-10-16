@@ -48,6 +48,9 @@ class RiskLimits:
     max_day_trades_5d: int = 3
     min_claude_confidence: float = 0.65
     max_spread_pct: float = 0.01          # (ask - bid) / mid; entries only
+    # Buy limit = ask at decision time x (1 + this). Room for the price to move during the Claude
+    # review (~10 s); without it, breakouts that keep rising were skipped as unfilled.
+    entry_limit_slack_pct: float = 0.002
     default_stop_loss_pct: float = 0.05   # used when Claude gives no stop
     max_stop_loss_pct: float = 0.10       # caps a wider stop from Claude
     no_entries_last_minutes: float = 15.0 # no new entries this close to the 16:00 ET close
@@ -155,6 +158,7 @@ class Settings:
             max_day_trades_5d=_int(env, "MAX_DAY_TRADES_5D", 3),
             min_claude_confidence=_float(env, "MIN_CLAUDE_CONFIDENCE", 0.65),
             max_spread_pct=_float(env, "MAX_SPREAD_PCT", 0.01),
+            entry_limit_slack_pct=_float(env, "ENTRY_LIMIT_SLACK_PCT", 0.002),
             default_stop_loss_pct=_float(env, "DEFAULT_STOP_LOSS_PCT", 0.05),
             max_stop_loss_pct=_float(env, "MAX_STOP_LOSS_PCT", 0.10),
             no_entries_last_minutes=_float(env, "NO_ENTRIES_LAST_MINUTES", 15.0),

@@ -297,7 +297,7 @@ class RiskManager:
             symbol=candidate.symbol,
             side=Side.BUY,
             notional=round(notional, 2),
-            limit_price=quote.ask,
+            limit_price=round(quote.ask * (1 + L.entry_limit_slack_pct), 4),
         )
         return RiskVerdict(True, (), (order,))
 

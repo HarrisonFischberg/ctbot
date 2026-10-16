@@ -384,6 +384,9 @@ code { font: 12px var(--code); background: rgba(var(--tint), .06); padding: 1px 
 .lm { color: var(--muted); font-size: 12.5px; }
 .mini { width: 100%; height: 64px; display: block; }
 .mini.empty { display: grid; place-items: center; color: var(--muted); font-size: 12px; background: rgba(var(--tint), .03); border-radius: 10px; }
+.free-note { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 16px;
+  padding: 12px 16px; border-radius: 14px; background: rgba(240, 180, 76, .1); color: var(--ink); font-size: 13.5px; }
+.free-note[hidden] { display: none; }
 /* ---- invest sheet ---- */
 .modal { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: grid; place-items: center; z-index: 50; padding: 16px; }
 .modal[hidden] { display: none; }
@@ -474,6 +477,7 @@ main:focus { outline: none; }
         <span class="seg" role="group" aria-label="Period"><button data-period="3M">3M</button><button data-period="6M">6M</button><button data-period="1Y">1Y</button></span></h2>
       <p class="note" style="margin:0 0 16px">How each strategy would have done with $1,000 on its own, simulated on real prices after trading costs.
         Simulated results aren't a promise of future returns.</p>
+      <div class="free-note" id="discFree" hidden></div>
       <div class="discover" id="discover"></div>
     </div>
 
@@ -1187,7 +1191,8 @@ main:focus { outline: none; }
     const r = runOf(s.name);
     if (r) return `<div class="launch"><span class="tag ${r.status === "running" ? "on" : "q"}">${r.status === "running" ? "● Invested" : "Selling"}</span>
       <b>${usd(r.capital, 0)}</b> <span class="lm">${sgnUsd(r.gain)}</span></div>`;
-    return `<div class="launch"><button class="btn solid" type="button" data-invest="${esc(s.name)}" ${canTrade() ? "" : "disabled"}>Invest</button></div>`;
+    const fn = freeNote();
+    return `<div class="launch"><button class="btn solid" type="button" data-invest="${esc(s.name)}" ${canTrade() && !fn ? "" : "disabled"}>Invest</button>${fn ? `<span class="lm">${esc(fn)}</span>` : ""}</div>`;
   }
   function riskTag(risk) {
     return `<span class="tag ${risk === "High" ? "sell" : risk === "Lower" ? "on" : ""}">${esc(risk || "?")} risk</span>`;
@@ -1206,7 +1211,16 @@ main:focus { outline: none; }
       ${B.length ? `<polyline points="${B.map(pt).join(" ")}" fill="none" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>` : ""}
       <polyline points="${A.map(pt).join(" ")}" fill="none" stroke="${up ? "var(--neon)" : "var(--crit)"}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`;
   }
+  function freeNote() {  // why Invest is greyed out, in words
+    const L = S.launcher || { allocated: 0, max_total: 0, reserved: 0 }, f = freeCash();
+    if (f >= 10) return "";
+    const over = L.allocated >= L.max_total - 9;
+    return over
+      ? `All ${usd(L.max_total, 0)} of paper money is already in your strategies. Stop one on Home to free its money, then invest it here.`
+      : `Your buying power (${usd(S.account_summary.cash, 0)}) is already promised to strategies you invested in that haven't bought yet. Stop one on Home to free it.`;
+  }
   function renderDiscover() {
+    const fn = freeNote(); $("discFree").hidden = !fn; $("discFree").innerHTML = fn ? `${esc(fn)} <button class="btn" type="button" data-goto="home">Go to Home</button>` : "";
     document.querySelectorAll("[data-period]").forEach((b) => b.classList.toggle("on", b.dataset.period === period));
     const B = S.benchmarks || {}, w = (x) => ((x || {}).windows || {})[period];
     const bret = (sym) => w(B[sym]) ? `<b class="${dir(w(B[sym]).return)}">${sgnPct(w(B[sym]).return, 1)}</b>` : "—";
@@ -1224,7 +1238,7 @@ main:focus { outline: none; }
           <div class="dlab">${PERIOD_LABEL[period]} · worst drop ${pct(r.worst_drop, 1)}${perf.kind === "stand-in" ? " · estimate" : ""}</div>`
         : `<div class="dret flat">—</div><div class="dlab">${perf.kind === "none" || !perf.windows ? "No simulated history yet" : "Not enough history for this period"}</div>`;
       const act = run ? `<span class="lm">${sgnUsd(run.gain)} so far</span><button class="btn sell" type="button" data-stop="${esc(s.name)}">Stop</button>`
-        : s.enabled ? `<button class="btn solid" type="button" data-invest="${esc(s.name)}" ${canTrade() ? "" : "disabled"}>Invest</button>`
+        : s.enabled ? `<button class="btn solid" type="button" data-invest="${esc(s.name)}" ${canTrade() && freeCash() >= 10 ? "" : `disabled title="${esc(freeNote() || "Start the dashboard with ./run_ctbot.sh to invest")}"`}>Invest</button>`
         : `<span class="lm">Turned off in config</span>`;
       return `<article class="disc ${s.enabled ? "" : "is-off"}">
         <div class="dh"><div><div class="dt">${esc(P.title || s.name)}</div>

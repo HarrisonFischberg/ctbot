@@ -177,3 +177,15 @@ def test_size_by_risk_ignores_claude_suggestion():
     by_risk = RiskManager(RiskLimits(max_trading_capital=5000, max_position_pct=0.25, size_by="risk"))
     assert by_claude.check_entry(_cand(), d, big, QUOTE, ADV).orders[0].notional == 40.0
     assert by_risk.check_entry(_cand(), d, big, QUOTE, ADV).orders[0].notional == 1250.0
+
+
+def test_entry_limit_leaves_room_for_the_price_to_move():
+    from ctbot.config import Settings
+    from ctbot.models import Candidate, Decision, Direction, Quote, Signal
+    from ctbot.risk.manager import AccountState, RiskManager
+
+    s = Settings.from_env({"MAX_TRADING_CAPITAL": "5000", "ENTRY_LIMIT_SLACK_PCT": "0.002"})
+    cand = Candidate("KO", Direction.LONG, 1.0, (Signal("orb", "KO", Direction.LONG, 1.0, 0.2),))
+    v = RiskManager(s.risk).check_entry(cand, Decision(True, 0.9, "ok", 100.0), AccountState(5000, 5000, 5000, 5000, 0),
+                                        Quote("KO", 99.99, 100.0, 100.0), 1e9)
+    assert v.allowed and v.orders[0].limit_price == 100.2  # 0.2% above the ask it saw
