@@ -58,3 +58,13 @@ def test_next_open():
     # across the DST change: Fri Oct 30 EDT -> Mon Nov 2 9:30 EST = 14:30 UTC
     assert mh.next_open(datetime(2026, 10, 30, 21, 0, tzinfo=timezone.utc)) == datetime(
         2026, 11, 2, 14, 30, tzinfo=timezone.utc)
+
+
+def test_last_close():
+    et = mh.ET
+    assert mh.last_close(datetime(2026, 10, 17, 15, 0, tzinfo=timezone.utc)) == datetime(2026, 10, 16, 16, 0, tzinfo=et)
+    assert mh.last_close(datetime(2026, 10, 16, 20, 30, tzinfo=timezone.utc)) == datetime(2026, 10, 16, 16, 0, tzinfo=et)
+    assert mh.last_close(datetime(2026, 10, 16, 19, 0, tzinfo=timezone.utc)) == datetime(2026, 10, 15, 16, 0, tzinfo=et)
+    # Thanksgiving: the last close was Wednesday's
+    assert mh.last_close(datetime(2026, 11, 26, 16, 0, tzinfo=timezone.utc)) == datetime(2026, 11, 25, 16, 0, tzinfo=et)
+    assert mh.last_close(datetime(2026, 11, 27, 19, 0, tzinfo=timezone.utc)) == datetime(2026, 11, 27, 13, 0, tzinfo=et)

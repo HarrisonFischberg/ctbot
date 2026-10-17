@@ -114,6 +114,18 @@ def next_business_day(d: date) -> date:
     return d
 
 
+def last_close(now: datetime) -> datetime:
+    """When the most recent session ended: today's close once it has passed, else the previous
+    trading day's."""
+    et = now.astimezone(ET)
+    d = et.date()
+    if not (is_trading_day(d) and et.time() >= close_time(d)):
+        d -= timedelta(days=1)
+        while not is_trading_day(d):
+            d -= timedelta(days=1)
+    return datetime.combine(d, close_time(d), tzinfo=ET)
+
+
 def next_open(now: datetime) -> datetime:
     """When the next session opens: today's 9:30 if it's still ahead, else the next trading day's."""
     et = now.astimezone(ET)

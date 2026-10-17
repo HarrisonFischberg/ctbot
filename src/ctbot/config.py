@@ -121,6 +121,11 @@ class Settings:
         return self.paper_ledger_path.with_name("paper_manual_results.jsonl")
 
     @property
+    def last_quotes_path(self) -> Path:
+        """The dashboard's last fetched prices, shown while the market is closed."""
+        return self.paper_ledger_path.with_name("last_quotes.json")
+
+    @property
     def heartbeat_path(self) -> Path:
         return self.paper_ledger_path.with_name("paper_heartbeat.json")
 

@@ -87,7 +87,7 @@ class CandleSource:
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ) -> None:
         self._rh, self._wb, self._root, self._clock = robinhood, webull, cache_root, clock
-        self._memo: dict[tuple[str, str], tuple[float, dict[str, Any]]] = {}
+        self._memo: dict[tuple[str, str], tuple[float, datetime, dict[str, Any]]] = {}
         self._lock = threading.Lock()
 
     def _robinhood(self, sym: str, span: str) -> list[Bar]:
@@ -118,8 +118,10 @@ class CandleSource:
         with self._lock:
             hit = self._memo.get((sym, span))
             ttl = 300.0 if SPANS[span][0] == "day" else 60.0
-            if hit and time.monotonic() - hit[0] < ttl:
-                return hit[1]
+            now = self._clock()
+            if hit and (time.monotonic() - hit[0] < ttl or (  # fetched after the close: final until the open
+                    not market_hours.session_open(now) and hit[1] >= market_hours.last_close(now))):
+                return hit[2]
             sources = []
             if self._rh is not None:
                 sources.append(("Robinhood", self._robinhood))
@@ -144,5 +146,5 @@ class CandleSource:
                           "c": b.close, "v": b.volume} for b in bars],
             }
             if used:  # a failure is retried on the next request; only results are cached
-                self._memo[(sym, span)] = (time.monotonic(), out)
+                self._memo[(sym, span)] = (time.monotonic(), now, out)
             return out

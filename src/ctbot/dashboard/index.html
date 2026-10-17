@@ -892,7 +892,9 @@ main:focus { outline: none; }
     chips.push(m.open
       ? `<span class="chip neon"><span class="dot on"></span>market open · ${Math.floor(mins / 60)}h ${mins % 60}m to close</span>`
       : `<span class="chip"><span class="dot off"></span>market closed · opens ${esc(m.next_open)}</span>`);
-    chips.push(`<span class="chip">prices <b>${esc(m.data_source === "robinhood" ? "live" : m.data_source)}</b></span>`);
+    chips.push(!m.open && m.prices_as_of
+      ? `<span class="chip">prices <b>as of ${esc(m.prices_as_of)}</b></span>`
+      : `<span class="chip">prices <b>${esc(m.data_source === "robinhood" ? "live" : m.data_source)}</b></span>`);
     chips.push(S.bot.running && S.bot.asleep_until
       ? `<span class="chip"><span class="dot on"></span>bot on · resting until the open</span>`
       : S.bot.running

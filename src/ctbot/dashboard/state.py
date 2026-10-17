@@ -323,6 +323,9 @@ def build_state(
             "open": market_hours.session_open(now),
             "minutes_to_close": market_hours.minutes_to_close(now),
             "next_open": market_hours.next_open(now).strftime("%a %b %d · %H:%M ET"),
+            # closed: the dashboard shows saved prices (dashboard/last_quotes.py); say how old
+            "prices_as_of": max(q.ts for q in quotes.values()).astimezone(market_hours.ET).strftime(
+                "%a %b %d · %H:%M ET") if quotes and not market_hours.session_open(now) else None,
             "et_time": now.astimezone(market_hours.ET).strftime("%a %b %d · %H:%M:%S ET"),
             "data_source": settings.market_data,
             "data_error": data_error,

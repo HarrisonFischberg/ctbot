@@ -39,6 +39,7 @@ from urllib.parse import parse_qs
 
 from ctbot import allocations, manual_queue, secret_store
 from ctbot.config import Settings
+from ctbot.dashboard.last_quotes import SessionQuotes
 from ctbot.dashboard.state import _read_history, build_state
 
 INDEX = Path(__file__).with_name("index.html")
@@ -61,7 +62,7 @@ def make_handler(settings: Settings, port: int):
     from ctbot.market_data.webull_client import WebullClient
 
     md = _robinhood_md(settings)
-    quotes = md.quotes if md is not None else None
+    quotes = SessionQuotes(md.quotes, settings.last_quotes_path) if md is not None else None
     webull = WebullClient()
     candles = CandleSource(md, webull)
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
