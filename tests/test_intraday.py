@@ -273,3 +273,38 @@ def test_registry_rejects_bad_mode():
 
     with pytest.raises(ValueError):
         build_strategies({"orb": {"enabled": True, "mode": "live"}})
+
+
+class _FlakyMD(_MD):
+    """today_bars raises `fails` times (a data outage at the open), then serves bars."""
+
+    def __init__(self, fails):
+        super().__init__()
+        self.fails, self.calls = fails, 0
+
+    def today_bars(self, symbols):
+        self.calls += 1
+        if self.calls <= self.fails:
+            raise ConnectionError("robinhood timed out")
+        return super().today_bars(symbols)
+
+
+def test_bar_load_retries_a_transient_outage(monkeypatch):
+    import ctbot.strategies.intraday as intraday
+
+    waits = []
+    monkeypatch.setattr(intraday._time, "sleep", waits.append)
+    at = OPEN + timedelta(minutes=5 * 19)  # 11:05 ET, dip bar completed
+    md = _FlakyMD(fails=2)
+    sigs = VwapReversion().generate(StrategyContext(md, ("KO",), (), DAY, frozenset(), at))
+    assert len(sigs) == 1 and md.calls == 3 and waits == list(intraday.BAR_RETRY_WAITS_S)
+
+
+def test_bar_load_gives_up_after_bounded_attempts(monkeypatch):
+    import ctbot.strategies.intraday as intraday
+
+    monkeypatch.setattr(intraday._time, "sleep", lambda s: None)
+    at = OPEN + timedelta(minutes=5 * 19)
+    md = _FlakyMD(fails=99)
+    assert VwapReversion().generate(StrategyContext(md, ("KO",), (), DAY, frozenset(), at)) == []
+    assert md.calls == len(intraday.BAR_RETRY_WAITS_S) + 1  # skips this cycle, next cycle tries again

@@ -146,6 +146,34 @@ def test_orb_sip_breakout_signal():
     assert OrbStocksInPlay(scanner=_Scan()).generate(ctx) == []
 
 
+def test_orb_sip_keeps_the_opening_range_through_a_bar_outage(monkeypatch):
+    import ctbot.strategies.intraday as intraday
+    from ctbot.strategies.orb_sip import OrbStocksInPlay
+
+    monkeypatch.setattr(intraday._time, "sleep", lambda s: None)
+
+    class _Scan:
+        def today(self):
+            return [{"symbol": "XYZ", "rvol_ratio": 0.2, "atr14": 2.0, "last": 50}]
+
+    t0 = datetime(2026, 10, 14, 13, 30, tzinfo=timezone.utc)  # 9:30 ET
+    green = [Bar("XYZ", t0, 50.0, 51.0, 49.8, 50.8, 1e5), Bar("XYZ", t0 + timedelta(minutes=5), 50.8, 51.2, 50.7, 51.1, 1e5)]
+
+    class _Flaky:
+        calls = 0
+
+        def today_bars(self, syms):
+            self.calls += 1
+            if self.calls == 1:
+                raise TimeoutError("historicals timed out")
+            return {"XYZ": green}
+
+    now = t0 + timedelta(minutes=11)  # 9:41 ET: the breakout bar this cycle must not be lost
+    md = _Flaky()
+    (sig,) = OrbStocksInPlay(scanner=_Scan()).generate(StrategyContext(md, ("SPY",), (), now.date(), frozenset(), now))
+    assert sig.evidence["trigger"] == 51.0 and md.calls == 2
+
+
 def test_vol_capped_core_holds_other_fund_and_trims_when_vol_rises():
     import tempfile
     from pathlib import Path
