@@ -13,7 +13,8 @@ cd path/to/ctbot
 | What | Command |
 |---|---|
 | Everything at once: dashboard + paper bot (Ctrl+C stops both) | `./run_ctbot.sh` |
-| Paper bot only (macOS: kept awake while the market is open) | `.venv/bin/ctbot-paper --loop --interval 300` |
+| The same in the background, restarted if it stops (optional, macOS) | see [Run in the background](#run-in-the-background-optional) |
+| Paper bot only (macOS: kept awake from 45 minutes before the open to the close) | `.venv/bin/ctbot-paper --loop --interval 300` |
 | Dashboard only | `.venv/bin/ctbot-dashboard` then open http://127.0.0.1:8787 |
 | Pre-open health check | `.venv/bin/ctbot-preflight` |
 | Robinhood sign-in (when preflight says it expired) | `.venv/bin/ctbot-robinhood-login` |
@@ -25,19 +26,81 @@ You can leave it running. Outside the session (nights, weekends, NYSE holidays; 
 half days) it does no analysis and fetches no quotes: it records the closing equity, lets the
 Mac sleep, and resumes at the next open. The dashboard stops polling too: while the market is
 closed it shows the last saved prices with their time ("prices as of ..."), fetching once after
-the close only if it wasn't running near the bell. A sleeping Mac doesn't wake itself, so schedule a
-weekday wake before the open, e.g. 06:55 Mountain (covers the 07:00 refresh job too):
+the close only if it wasn't running near the bell. From 45 minutes before the open the bot holds
+the Mac awake again (`caffeinate -dis`). A sleeping Mac doesn't wake itself, so schedule a weekday
+wake inside that window, between 08:45 and 09:25 ET, e.g. 06:55 Mountain (covers the 07:00
+refresh job too):
 
 ```bash
 sudo pmset repeat wakeorpoweron MTWRF 06:55:00
 ```
+
+Keep the Mac plugged in, with the lid open (or closed with an external display attached). With
+the lid closed and no display, the scheduled wake is only a dark wake (display off), and Apple
+says `-d` and `-i` have no effect then. `-s` is the one assertion that can keep it running, and
+macOS honors it on AC power only. Closed-lid running on AC hasn't been tested yet. On
+battery with the lid closed the Mac goes back to sleep and the bot misses the open.
+
+## Run in the background (optional)
+
+`./run_ctbot.sh` runs only while its Terminal window is open, and nothing restarts the bot if it
+stops. On macOS, two per-user LaunchAgents can run it instead:
+
+- `com.ctbot.paper` (`scripts/com.ctbot.paper.plist.example`) runs
+  `ctbot-paper --loop --interval 300`. It starts when you log in and restarts after it stops for
+  any reason, at most once a minute. Its log is `logs/ctbot-paper.log`, as before, plus any
+  startup errors and tracebacks.
+- `com.ctbot.dashboard` (`scripts/com.ctbot.dashboard.plist.example`) runs the dashboard, with
+  the same rules, logging to `logs/dashboard.log`. It's optional: the bot trades without it, so
+  skip it if you'd rather start `.venv/bin/ctbot-dashboard` only when you want it.
+
+Use the agents or `./run_ctbot.sh`, never both: only one paper bot can hold the ledger lock.
+While `com.ctbot.paper` is loaded, `./run_ctbot.sh` says so and exits (with only the dashboard
+agent loaded, it starts just the bot). If you load the agent while `./run_ctbot.sh` is still
+running, the agent's bot is refused once a minute until that one stops, then takes over.
+
+Stop `./run_ctbot.sh` first (Ctrl+C), then install both and start them:
+
+```bash
+mkdir -p ~/Library/LaunchAgents
+for job in paper dashboard; do sed "s#/path/to/ctbot#$PWD#g" scripts/com.ctbot.$job.plist.example > ~/Library/LaunchAgents/com.ctbot.$job.plist; done
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ctbot.paper.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ctbot.dashboard.plist
+```
+
+`bootstrap` starts an agent right away; after that it starts at every login. Then:
+
+```bash
+launchctl print gui/$(id -u)/com.ctbot.paper | grep -E '^.(state|pid|last exit code) = '  # is it running?
+tail -f logs/ctbot-paper.log                                                                # follow the bot
+launchctl kickstart -k gui/$(id -u)/com.ctbot.paper                                        # restart it (after editing .env or config/)
+launchctl bootout gui/$(id -u)/com.ctbot.paper                                             # stop it
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ctbot.paper.plist              # start it again
+```
+
+The same commands work for `com.ctbot.dashboard`. `kill` doesn't stop an agent, because launchd
+starts it again within a minute. `bootout` stops it until your next login. To remove the agents
+for good:
+
+```bash
+for job in paper dashboard; do launchctl bootout gui/$(id -u)/com.ctbot.$job; rm ~/Library/LaunchAgents/com.ctbot.$job.plist; done
+```
+
+Limits:
+
+- The agents run only while you're logged in. After a restart they start when you log in. With
+  FileVault on, macOS can't log in by itself, so a restart (an overnight update, say) leaves the
+  bot stopped until you log in. Logging out stops them too.
+- They don't wake a sleeping Mac. The `pmset` schedule above does that.
+- If you move the project folder, install them again.
 
 ## Dashboard: Settings and the strategy launcher
 
 - **Settings tab**: paste API keys (Anthropic, Collective2) and the Robinhood account number and
   nickname. They are saved in `~/.ctbot/settings.json` (only your user can read it), override
   `.env`, and are never shown again or committed. **Connect Robinhood** opens the read-only
-  sign-in in your browser; **Run check** tests every connection. Restart the bot after a change.
+  sign-in in your browser; **Run check** tests every connection. Restart the bot after a change (with the background
+  agent: `launchctl kickstart -k gui/$(id -u)/com.ctbot.paper`).
 - **Home**: portfolio value, a 4-step *Get started* checklist, and *Your strategies* (what you
   invested, value now, total return, Stop).
 - **Discover**: every strategy in plain words with its simulated return over the past 3, 6 or 12

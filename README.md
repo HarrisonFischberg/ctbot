@@ -58,7 +58,8 @@ cp .env.example .env              # optional: you can also add keys in the dashb
 
 Open `http://127.0.0.1:8787`, go to **Settings**, add your keys and press **Connect Robinhood**.
 Then pick a strategy on **Discover**. The bot trades during US market hours while
-`./run_ctbot.sh` is running.
+`./run_ctbot.sh` is running, or in the background with the optional LaunchAgents
+([docs/COMMANDS.md](docs/COMMANDS.md#run-in-the-background-optional)).
 
 More commands, including backtests and the research lab: [docs/COMMANDS.md](docs/COMMANDS.md).
 How it fits together: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

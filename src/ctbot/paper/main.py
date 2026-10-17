@@ -12,6 +12,7 @@ import argparse  # noqa: E402
 import json  # noqa: E402
 import logging  # noqa: E402
 import os  # noqa: E402
+import sys  # noqa: E402
 import time  # noqa: E402
 from datetime import datetime, timezone  # noqa: E402
 
@@ -20,7 +21,7 @@ from ctbot.decision.engine import ClaudeDecisionEngine  # noqa: E402
 from ctbot.market_data.csv_provider import CsvMarketData  # noqa: E402
 from ctbot.paper.simulator import PaperBroker  # noqa: E402
 from ctbot import manual_queue, market_hours  # noqa: E402
-from ctbot.keep_awake import KeepAwake  # noqa: E402
+from ctbot.keep_awake import PRE_OPEN, KeepAwake, idle_until_open  # noqa: E402
 from ctbot.pipeline import Components, manage_positions, process_manual_order, run_cycle  # noqa: E402
 from ctbot.providers.registry import build_providers  # noqa: E402
 from ctbot.risk.manager import (  # noqa: E402
@@ -67,10 +68,13 @@ def main() -> None:
     assert not settings.live_trading_enabled, "paper process must have live disabled"
     lock = _single_instance(settings)  # noqa: F841 - held for the life of the process
     settings.log_dir.mkdir(parents=True, exist_ok=True)
+    handlers: list[logging.Handler] = [logging.FileHandler(settings.paper_log_path)]
+    if sys.stderr.isatty():  # under launchd stderr is this same log file: don't write it twice
+        handlers.append(logging.StreamHandler())
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
-        handlers=[logging.StreamHandler(), logging.FileHandler(settings.paper_log_path)],
+        handlers=handlers,
     )
     for noisy in ("httpx", "httpx2"):  # one line per API call is noise
         logging.getLogger(noisy).setLevel(logging.WARNING)
@@ -185,18 +189,21 @@ def main() -> None:
         save_account_state(state, settings.paper_risk_state_path)
         _record_equity(settings, broker)
 
+    def check_positions() -> None:
+        """Stops and take-profits between cycles; skips the quotes when nothing is held."""
+        if broker.positions():
+            refresh_state()
+            manage_positions(components, state, datetime.now(timezone.utc))
+            save_account_state(state, settings.paper_risk_state_path)
+
     def wait_for_open() -> None:
-        """Market closed: no cycles, no quotes, and the Mac may sleep. Dashboard clicks are still
-        answered (rejected as market_closed). Checks the wall clock, so it resumes on time after
-        the Mac sleeps."""
+        """Market closed: no cycles, no quotes, and the Mac may sleep until shortly before the
+        open. Dashboard clicks are still answered (rejected as market_closed)."""
         nonlocal asleep_until
         asleep_until = market_hours.next_open(datetime.now(timezone.utc))
-        keep_awake.release()
-        log.info("market closed: sleeping until %s (no quotes; the Mac may sleep)",
-                 asleep_until.strftime("%a %b %d %H:%M ET"))
-        while datetime.now(timezone.utc) < asleep_until:
-            guarded(handle_clicks, "dashboard clicks")
-            time.sleep(2)
+        log.info("market closed: sleeping until %s (no quotes; the Mac may sleep until %d minutes "
+                 "before)", asleep_until.strftime("%a %b %d %H:%M ET"), PRE_OPEN.total_seconds() // 60)
+        idle_until_open(asleep_until, keep_awake, lambda: guarded(handle_clicks, "dashboard clicks"))
         asleep_until = None
         log.info("market open: resuming")
 
@@ -215,9 +222,8 @@ def main() -> None:
             next_check = time.monotonic() + 30
             while time.monotonic() < deadline and market_open():  # dashboard clicks run within ~2s
                 guarded(handle_clicks, "dashboard clicks")
-                if time.monotonic() >= next_check and broker.positions():
-                    guarded(lambda: (refresh_state(), manage_positions(components, state, datetime.now(timezone.utc)),
-                                     save_account_state(state, settings.paper_risk_state_path)), "position check")
+                if time.monotonic() >= next_check:
+                    guarded(check_positions, "position check")
                     next_check = time.monotonic() + 30
                 time.sleep(2)
     finally:

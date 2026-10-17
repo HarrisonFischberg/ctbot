@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Dashboard at http://127.0.0.1:8787 (this Mac only), started at login and restarted if it
+       stops. Optional: the paper bot trades without it. Install it with the paper bot's agent
+       (docs/COMMANDS.md); ./run_ctbot.sh then doesn't start its own. -->
+  <key>Label</key><string>com.ctbot.dashboard</string>
+  <key>ProgramArguments</key>
+  <array><string>/path/to/ctbot/.venv/bin/ctbot-dashboard</string></array>
+  <key>WorkingDirectory</key><string>/path/to/ctbot</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>60</integer>
+  <key>EnvironmentVariables</key>
+  <dict><key>PYTHONUNBUFFERED</key><string>1</string></dict>
+  <key>StandardOutPath</key><string>/path/to/ctbot/logs/dashboard.log</string>
+  <key>StandardErrorPath</key><string>/path/to/ctbot/logs/dashboard.log</string>
+</dict>
+</plist>

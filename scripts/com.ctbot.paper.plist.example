@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Paper bot in the background: starts at login, restarted if it stops. Paper only.
+       Install and remove it with the commands in docs/COMMANDS.md. While it is loaded,
+       ./run_ctbot.sh refuses to start a second bot (only one can hold the ledger lock). -->
+  <key>Label</key><string>com.ctbot.paper</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/path/to/ctbot/.venv/bin/ctbot-paper</string>
+    <string>--loop</string>
+    <string>--interval</string><string>300</string>
+  </array>
+  <!-- .env, config/ and data/ are read relative to the project folder. -->
+  <key>WorkingDirectory</key><string>/path/to/ctbot</string>
+  <key>RunAtLoad</key><true/>
+  <!-- Restart after any exit: a crash, a kill, or "another ctbot-paper is already running"
+       (then it retries until that one stops). At most one start a minute. -->
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>60</integer>
+  <key>EnvironmentVariables</key>
+  <dict><key>PYTHONUNBUFFERED</key><string>1</string></dict>
+  <!-- The bot writes this log itself; launchd adds what logging can't catch (startup errors,
+       tracebacks). -->
+  <key>StandardOutPath</key><string>/path/to/ctbot/logs/ctbot-paper.log</string>
+  <key>StandardErrorPath</key><string>/path/to/ctbot/logs/ctbot-paper.log</string>
+</dict>
+</plist>
