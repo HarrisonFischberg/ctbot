@@ -11,15 +11,14 @@ a fixed sleeve (size_pct of equity per trade).
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime, time, timedelta
 
 from ctbot import market_hours
 from ctbot.market_hours import ET
 from ctbot.models import Direction, EventKind, Signal
 from ctbot.strategies.base import StrategyContext
+from ctbot.strategies.intraday import load_today_bars
 
-log = logging.getLogger(__name__)
 BAR = timedelta(minutes=5)
 
 
@@ -45,10 +44,8 @@ class OrbStocksInPlay:
         if not rows:
             return []
         atr = {r["symbol"]: r["atr14"] for r in rows}
-        try:
-            bars = md.today_bars(list(atr))
-        except Exception:  # noqa: BLE001
-            log.exception("orb_sip: could not load today's bars")
+        bars = load_today_bars(md, list(atr), self.name)
+        if bars is None:
             return []
         exit_at = datetime.combine(ctx.today, time(15, 50), tzinfo=ET).isoformat()
         out = []
