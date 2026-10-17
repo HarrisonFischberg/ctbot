@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Runs ./run_ctbot.sh (dashboard + paper bot) at login and restarts it if it stops.
+       Installed by scripts/autostart.sh, which replaces /path/to/ctbot with the project folder. -->
+  <key>Label</key><string>com.ctbot.bot</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/bash</string><string>/path/to/ctbot/run_ctbot.sh</string></array>
+  <key>WorkingDirectory</key><string>/path/to/ctbot</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <!-- Wait at least 30 s between restarts so a start-up error doesn't spin. -->
+  <key>ThrottleInterval</key><integer>30</integer>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <!-- No browser tab on every (re)start; the dashboard stays at http://127.0.0.1:8787. -->
+    <key>CTBOT_NO_BROWSER</key><string>1</string>
+    <key>PYTHONUNBUFFERED</key><string>1</string>
+    <!-- Paper only. Set here, this wins over .env (python-dotenv doesn't override). -->
+    <key>LIVE_TRADING_ENABLED</key><string>false</string>
+  </dict>
+  <key>StandardOutPath</key><string>/path/to/ctbot/logs/bot.log</string>
+  <key>StandardErrorPath</key><string>/path/to/ctbot/logs/bot.log</string>
+</dict>
+</plist>
