@@ -3,8 +3,9 @@
 #   1. the dashboard at http://127.0.0.1:8787 (background; output in logs/dashboard.log),
 #      opened in your browser once it answers (skip with CTBOT_NO_BROWSER=1)
 #   2. the paper bot, 5-minute cycles, in the foreground
-# On macOS, `caffeinate -di` keeps the display and system from idle-sleeping while it runs
-# (closing the lid still sleeps a laptop unless it has power and an external display).
+# While the market is open the bot holds macOS `caffeinate -di` itself, so the Mac stays awake
+# (closing the lid still sleeps a laptop unless it has power and an external display). After the
+# close it releases it and waits for the next open without fetching anything; the Mac may sleep.
 # If you set up the optional launchd refresh job (docs/COMMANDS.md), it is kicked off too.
 # Ctrl+C stops the bot and the dashboard together.
 set -u
@@ -27,8 +28,4 @@ if [ -z "${CTBOT_NO_BROWSER:-}" ]; then
      sleep 0.5
    done; echo "dashboard didn't answer yet; open $URL yourself") &
 fi
-if command -v caffeinate >/dev/null; then
-  caffeinate -di .venv/bin/ctbot-paper --loop --interval 300
-else
-  .venv/bin/ctbot-paper --loop --interval 300
-fi
+.venv/bin/ctbot-paper --loop --interval 300

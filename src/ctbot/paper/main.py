@@ -19,7 +19,8 @@ from ctbot.config import Settings, load_universe  # noqa: E402
 from ctbot.decision.engine import ClaudeDecisionEngine  # noqa: E402
 from ctbot.market_data.csv_provider import CsvMarketData  # noqa: E402
 from ctbot.paper.simulator import PaperBroker  # noqa: E402
-from ctbot import manual_queue  # noqa: E402
+from ctbot import manual_queue, market_hours  # noqa: E402
+from ctbot.keep_awake import KeepAwake  # noqa: E402
 from ctbot.pipeline import Components, manage_positions, process_manual_order, run_cycle  # noqa: E402
 from ctbot.providers.registry import build_providers  # noqa: E402
 from ctbot.risk.manager import (  # noqa: E402
@@ -143,11 +144,18 @@ def main() -> None:
                 components.context.news = _news()
             log.info("settings changed on the dashboard: API keys reloaded")
 
+    keep_awake = KeepAwake()
+    asleep_until: datetime | None = None
+
+    def market_open() -> bool:
+        return not settings.respect_market_hours or market_hours.session_open(datetime.now(timezone.utc))
+
     def handle_clicks() -> None:
         reload_keys()
-        _heartbeat(settings, args.interval)
+        _heartbeat(settings, args.interval, asleep_until)
         for order in manual_queue.pending(settings.manual_orders_path, settings.manual_results_path):
-            refresh_state()
+            if market_open():  # a closed market rejects the click before prices matter
+                refresh_state()
             try:
                 status, reasons, fill = process_manual_order(
                     components, state, order, datetime.now(timezone.utc))
@@ -177,21 +185,43 @@ def main() -> None:
         save_account_state(state, settings.paper_risk_state_path)
         _record_equity(settings, broker)
 
-    while True:
-        guarded(handle_clicks, "dashboard clicks")
-        guarded(cycle, "cycle")
-        if not args.loop:
+    def wait_for_open() -> None:
+        """Market closed: no cycles, no quotes, and the Mac may sleep. Dashboard clicks are still
+        answered (rejected as market_closed). Checks the wall clock, so it resumes on time after
+        the Mac sleeps."""
+        nonlocal asleep_until
+        asleep_until = market_hours.next_open(datetime.now(timezone.utc))
+        keep_awake.release()
+        log.info("market closed: sleeping until %s (no quotes; the Mac may sleep)",
+                 asleep_until.strftime("%a %b %d %H:%M ET"))
+        while datetime.now(timezone.utc) < asleep_until:
             guarded(handle_clicks, "dashboard clicks")
-            break
-        deadline = time.monotonic() + args.interval
-        next_check = time.monotonic() + 30
-        while time.monotonic() < deadline:  # dashboard clicks run within ~2s
-            guarded(handle_clicks, "dashboard clicks")
-            if time.monotonic() >= next_check and broker.positions():
-                guarded(lambda: (refresh_state(), manage_positions(components, state, datetime.now(timezone.utc)),
-                                 save_account_state(state, settings.paper_risk_state_path)), "position check")
-                next_check = time.monotonic() + 30
             time.sleep(2)
+        asleep_until = None
+        log.info("market open: resuming")
+
+    try:
+        while True:
+            guarded(handle_clicks, "dashboard clicks")
+            guarded(cycle, "cycle")  # after the close this one only records the closing equity
+            if not args.loop:
+                guarded(handle_clicks, "dashboard clicks")
+                break
+            if not market_open():
+                wait_for_open()
+                continue
+            keep_awake.hold()
+            deadline = time.monotonic() + args.interval
+            next_check = time.monotonic() + 30
+            while time.monotonic() < deadline and market_open():  # dashboard clicks run within ~2s
+                guarded(handle_clicks, "dashboard clicks")
+                if time.monotonic() >= next_check and broker.positions():
+                    guarded(lambda: (refresh_state(), manage_positions(components, state, datetime.now(timezone.utc)),
+                                     save_account_state(state, settings.paper_risk_state_path)), "position check")
+                    next_check = time.monotonic() + 30
+                time.sleep(2)
+    finally:
+        keep_awake.release()
 
 
 def _single_instance(settings: Settings):
@@ -212,8 +242,9 @@ def _single_instance(settings: Settings):
     return fh
 
 
-def _heartbeat(settings: Settings, interval: int) -> None:
-    data = {"ts": datetime.now(timezone.utc).isoformat(), "pid": os.getpid(), "interval": interval}
+def _heartbeat(settings: Settings, interval: int, asleep_until: datetime | None = None) -> None:
+    data = {"ts": datetime.now(timezone.utc).isoformat(), "pid": os.getpid(), "interval": interval,
+            "asleep_until": asleep_until.isoformat() if asleep_until else None}
     settings.heartbeat_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = settings.heartbeat_path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data))

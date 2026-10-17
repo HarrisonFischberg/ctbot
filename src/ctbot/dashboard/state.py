@@ -148,9 +148,9 @@ def _research() -> dict[str, Any]:
 def _bot_status(settings: Settings, now: datetime) -> dict[str, Any]:
     hb = _read_json(settings.heartbeat_path)
     if not hb.get("ts"):
-        return {"running": False, "age_s": None}
+        return {"running": False, "age_s": None, "asleep_until": None}
     age = (now - datetime.fromisoformat(hb["ts"])).total_seconds()
-    return {"running": age <= HEARTBEAT_GRACE_S, "age_s": age}
+    return {"running": age <= HEARTBEAT_GRACE_S, "age_s": age, "asleep_until": hb.get("asleep_until")}
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -322,6 +322,7 @@ def build_state(
         "market": {
             "open": market_hours.session_open(now),
             "minutes_to_close": market_hours.minutes_to_close(now),
+            "next_open": market_hours.next_open(now).strftime("%a %b %d · %H:%M ET"),
             "et_time": now.astimezone(market_hours.ET).strftime("%a %b %d · %H:%M:%S ET"),
             "data_source": settings.market_data,
             "data_error": data_error,

@@ -13,13 +13,22 @@ cd path/to/ctbot
 | What | Command |
 |---|---|
 | Everything at once: dashboard + paper bot (Ctrl+C stops both) | `./run_ctbot.sh` |
-| Paper bot only (macOS: kept awake while running) | `caffeinate -di .venv/bin/ctbot-paper --loop --interval 300` |
+| Paper bot only (macOS: kept awake while the market is open) | `.venv/bin/ctbot-paper --loop --interval 300` |
 | Dashboard only | `.venv/bin/ctbot-dashboard` then open http://127.0.0.1:8787 |
 | Pre-open health check | `.venv/bin/ctbot-preflight` |
 | Robinhood sign-in (when preflight says it expired) | `.venv/bin/ctbot-robinhood-login` |
 
 Only one paper bot can run at a time (a lock refuses a second). Start it before 9:30 ET;
 the scanner model needs it running from 9:36 ET, the trend core trades 15:30-15:44 ET.
+
+You can leave it running. Outside the session (nights, weekends, NYSE holidays; 13:00 ET on
+half days) it does no analysis and fetches no quotes: it records the closing equity, lets the
+Mac sleep, and resumes at the next open. A sleeping Mac doesn't wake itself, so schedule a
+weekday wake before the open, e.g. 06:55 Mountain (covers the 07:00 refresh job too):
+
+```bash
+sudo pmset repeat wakeorpoweron MTWRF 06:55:00
+```
 
 ## Dashboard: Settings and the strategy launcher
 

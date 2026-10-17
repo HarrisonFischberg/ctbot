@@ -891,9 +891,11 @@ main:focus { outline: none; }
     const mins = Math.round(m.minutes_to_close);
     chips.push(m.open
       ? `<span class="chip neon"><span class="dot on"></span>market open · ${Math.floor(mins / 60)}h ${mins % 60}m to close</span>`
-      : `<span class="chip"><span class="dot off"></span>market closed</span>`);
+      : `<span class="chip"><span class="dot off"></span>market closed · opens ${esc(m.next_open)}</span>`);
     chips.push(`<span class="chip">prices <b>${esc(m.data_source === "robinhood" ? "live" : m.data_source)}</b></span>`);
-    chips.push(S.bot.running
+    chips.push(S.bot.running && S.bot.asleep_until
+      ? `<span class="chip"><span class="dot on"></span>bot on · resting until the open</span>`
+      : S.bot.running
       ? `<span class="chip neon"><span class="dot on"></span>bot on · ${S.entry_mode === "auto" ? "trades on its own" : "asks before buying"}</span>`
       : `<span class="chip warn"><span class="dot off"></span>bot off · start ./run_ctbot.sh</span>`);
     $("chips").innerHTML = chips.join("");
