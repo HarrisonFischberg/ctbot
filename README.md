@@ -14,25 +14,28 @@ Free and open source ([MIT](LICENSE)) by [Rare Creatures](https://rarecreatures.
 no servers, no tracking: your keys and data stay on your machine.
 
 <p align="center">
-  <img src="docs/images/home.png" alt="CTbot Home screen in dark mode: portfolio value, today's return and other summary tiles, a completed four-step setup checklist, a portfolio value chart and a QQQ position" width="790">
+  <img src="docs/images/home.png" alt="CTbot Home screen in dark mode: account value, today's return, cash and other summary tiles, and What you own: QQQ, QLD and IWM with the strategy that bought each, gain or loss and a stop-loss bar" width="790">
 </p>
 
 | Discover: strategies with simulated 3/6/12-month returns | Invest: amount, max loss, take-profit |
 |---|---|
-| <img src="docs/images/discover.png" alt="Discover tab: strategy cards with past-year simulated returns, worst drop and a small chart against the S&P 500" width="400"> | <img src="docs/images/invest.png" alt="Invest sheet: $1,000 into Overnight Hold with a 15% max loss and a 20% take-profit, and a plain-English summary" width="400"> |
+| <img src="docs/images/discover.png" alt="Discover tab: strategy cards with past-year simulated returns, worst drop, a small chart against the S&P 500 and Stop buttons on the ones you invested in" width="400"> | <img src="docs/images/invest.png" alt="Invest section of a strategy sheet: $1,000 into Overnight Hold with a 15% max loss and a 20% take-profit, and a plain-English summary" width="400"> |
 | **Your strategies: what each one holds and returns** | **Research: backtests since 2010** |
-| <img src="docs/images/strategies.png" alt="Your strategies table: five strategies with $1,000 each, value now, total return, limits and Stop buttons" width="400"> | <img src="docs/images/research.png" alt="Research compare chart: growth of $5,000 since 2010 for the Nasdaq-100 trend, holding QQQ, and the 2x volatility-capped trend, on a log scale" width="400"> |
+| <img src="docs/images/strategies.png" alt="Your strategies table: four strategies with the amount in each, value now, total return, cash waiting for the next buy, limits and Stop buttons" width="400"> | <img src="docs/images/research.png" alt="Research chart: growth of $5,000 since 2010 for the Nasdaq-100 trend, holding QQQ, and the 2x volatility-capped trend, on a log scale" width="400"> |
 
-<sub>Screenshots: dark mode with demo data (paper account, anonymised Robinhood account). Returns shown are simulated or paper results, not a promise of anything.</sub>
+<sub>Screenshots: dark mode with made-up demo data (generated prices and a paper account; no real account). Every number comes from those made-up prices, so none of it is a real result or a promise of anything.</sub>
 
 ## What you get
 
 - **A local dashboard** at `http://127.0.0.1:8787`, in light or dark:
-  - **Home**: portfolio value, positions, your strategies, and a 4-step setup checklist.
+  - **Home**: account value, what you own (with each stop-loss), a 4-step setup checklist, a
+    portfolio value chart, a stock chart and your strategies.
+  - **Activity**: the bot's trade ideas, results by strategy, safety limits, a watchlist, order
+    history and a live log.
   - **Discover**: every strategy in plain English, with simulated returns over the past 3, 6 and 12
     months next to the S&P 500. Press **Invest** to start one.
-  - **Activity**: the bot's trade ideas, orders, safety limits and a live log.
-  - **Research**: backtests, a strategy lab and stress tests.
+  - **Research**: every strategy's paper record, growth of $5,000 since 2010, a crash test back to
+    1999, a no-hindsight (walk-forward) test and the backtest leaderboard.
   - **Settings**: add your API keys, connect Robinhood, run a health check.
 - **Strategies** you can run alone or together: Nasdaq-100 trend (plain and 2× leveraged), buy the
   dip on index funds, turn of the month, and same-day breakout models. Each is described, with its
