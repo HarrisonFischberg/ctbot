@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import statistics
+import time as _time
 from datetime import date, datetime, time, timedelta
 
 from ctbot import market_hours
@@ -33,6 +34,25 @@ def _completed(bars: list[Bar], now: datetime) -> list[Bar]:
     return [b for b in sorted(bars, key=lambda b: b.ts) if b.ts + BAR <= now]
 
 
+# Waits between attempts when today's bars fail to load. A cycle runs every 5 minutes, so a
+# blip at the open would otherwise cost the breakout bar; a few seconds usually clears it.
+BAR_RETRY_WAITS_S: tuple[float, ...] = (2.0, 5.0)
+
+
+def load_today_bars(md, symbols: list[str], who: str) -> dict[str, list[Bar]] | None:
+    """md.today_bars(symbols), retried after each of BAR_RETRY_WAITS_S; None if every attempt fails."""
+    for attempt, wait in enumerate((*BAR_RETRY_WAITS_S, None), start=1):
+        try:
+            return md.today_bars(symbols)
+        except Exception as e:  # noqa: BLE001 - data hiccup: retry, then skip this cycle
+            if wait is None:
+                log.exception("%s: could not load today's bars after %d attempts", who, attempt)
+                return None
+            log.warning("%s: today's bars failed (%s: %s); retrying in %.0fs", who, type(e).__name__, e, wait)
+            _time.sleep(wait)
+    return None
+
+
 def _uptrend(ctx: StrategyContext, sym: str, n: int = 50) -> bool:
     closes = [b.close for b in ctx.market_data.daily_bars(sym, n + 1)]
     return len(closes) == n + 1 and closes[-1] > sum(closes[-n - 1:-1]) / n
@@ -46,11 +66,7 @@ class _IntradayBase:
         md = ctx.market_data
         if ctx.now is None or not hasattr(md, "today_bars") or not market_hours.session_open(ctx.now):
             return None
-        try:
-            return md.today_bars(list(ctx.universe))
-        except Exception:  # noqa: BLE001 - data hiccup: skip this cycle, don't kill the bot
-            log.exception("%s: could not load today's bars", self.name)
-            return None
+        return load_today_bars(md, list(ctx.universe), self.name)
 
     def _signal(self, sym: str, strength: float, horizon: float, now: datetime, **evidence) -> Signal:
         return Signal(self.name, sym, Direction.LONG, round(min(1.0, strength), 3), horizon,
