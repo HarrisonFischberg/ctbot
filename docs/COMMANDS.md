@@ -76,6 +76,15 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
 | Tests | `.venv/bin/pytest -q` |
 | Known-vulnerability scan of installed packages | `.venv/bin/pip-audit --skip-editable` |
 
+## Start at login (optional, macOS)
+
+`scripts/autostart.sh install` loads the launchd agent `com.ctbot.bot`
+(`scripts/com.ctbot.bot.plist.example`, installed to `~/Library/LaunchAgents/`). It runs
+`./run_ctbot.sh` at login and restarts it if it stops (at most every 30 s), with
+`CTBOT_NO_BROWSER=1` and `LIVE_TRADING_ENABLED=false`; log `logs/bot.log`.
+`scripts/autostart.sh status` shows its state, `scripts/autostart.sh uninstall` removes it.
+Run `install` again after moving the project folder.
+
 ## Scheduled job (optional)
 
 On macOS, a launchd job can run the price-cache refresh, Collective2 tracking, idea scoring,

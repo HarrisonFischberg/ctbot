@@ -60,6 +60,26 @@ Open `http://127.0.0.1:8787`, go to **Settings**, add your keys and press **Conn
 Then pick a strategy on **Discover**. The bot trades during US market hours while
 `./run_ctbot.sh` is running.
 
+### Start at login (macOS, optional)
+
+To have the dashboard and paper bot start when you log in and come back if they stop:
+
+```bash
+scripts/autostart.sh install      # start now, at every login, and after a crash
+scripts/autostart.sh status       # running? pid and last exit code
+scripts/autostart.sh uninstall    # stop it and turn autostart off
+```
+
+It runs the same `./run_ctbot.sh`, paper only (the agent pins `LIVE_TRADING_ENABLED=false`),
+without opening a browser tab; output goes to `logs/bot.log`. Stop any `./run_ctbot.sh` you
+started by hand before installing, and don't start one while autostart is on, or two bots
+would trade the same paper account.
+
+Keeping the Mac awake: the bot already holds `caffeinate -di` while the market is open, so the
+Mac doesn't idle-sleep during trading and may sleep after the close. Closing a laptop's lid still
+sleeps it unless it has power and an external display (clamshell mode); `caffeinate -s` doesn't
+change that, so the agent doesn't add it.
+
 More commands, including backtests and the research lab: [docs/COMMANDS.md](docs/COMMANDS.md).
 How it fits together: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
