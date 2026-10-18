@@ -130,3 +130,21 @@ def test_disconnect_deletes_only_the_saved_robinhood_sign_in(tmp_path, monkeypat
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def test_preflight_names_the_key_source_never_the_value(tmp_path, monkeypatch):
+    from ctbot.preflight import _key_source
+
+    store = tmp_path / "settings.json"
+    monkeypatch.setattr(secret_store, "STORE_PATH", store)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert _key_source("ANTHROPIC_API_KEY") == "nowhere: not set"
+    (tmp_path / ".env").write_text("ANTHROPIC_API_KEY=sk-test-from-dotenv-0000000000\n")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-from-dotenv-0000000000")
+    assert _key_source("ANTHROPIC_API_KEY") == ".env"
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-exported-in-shell-000000")
+    assert _key_source("ANTHROPIC_API_KEY") == "the shell environment"
+    secret_store.save("ANTHROPIC_API_KEY", "sk-test-saved-in-settings-00000", store)
+    src = _key_source("ANTHROPIC_API_KEY")
+    assert src == "the Settings tab" and "sk-" not in src
