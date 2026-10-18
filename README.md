@@ -70,6 +70,10 @@ scripts/autostart.sh status       # running? pid and last exit code
 scripts/autostart.sh uninstall    # stop it and turn autostart off
 ```
 
+Keys must be in the dashboard's **Settings** tab or in `.env`: launchd doesn't read your shell
+profile, so a key you only `export` there is invisible to the agent (and an old one in `.env`
+gets used instead). The health check names where its Claude key came from when it fails.
+
 It runs the same `./run_ctbot.sh`, paper only (the agent pins `LIVE_TRADING_ENABLED=false`),
 without opening a browser tab; output goes to `logs/bot.log`. Stop any `./run_ctbot.sh` you
 started by hand before installing, and don't start one while autostart is on, or two bots

@@ -13,6 +13,28 @@ from datetime import datetime, timezone
 from typing import Any
 
 
+def _key_source(key: str) -> str:
+    """Where this process got a key, never its value: a launchd job doesn't see shell exports,
+    so a key that works in Terminal can be stale or missing there."""
+    import os
+
+    from ctbot import secret_store
+
+    value = os.environ.get(key)
+    if not value:
+        return "nowhere: not set"
+    if key in secret_store.load():
+        return "the Settings tab"
+    try:
+        from dotenv import dotenv_values, find_dotenv
+
+        if dotenv_values(find_dotenv(usecwd=True)).get(key) == value:
+            return ".env"
+    except ImportError:
+        pass
+    return "the shell environment"
+
+
 def run_checks(settings) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
 
@@ -57,7 +79,7 @@ def run_checks(settings) -> list[dict[str, Any]]:
         m = anthropic.Anthropic().models.retrieve(settings.claude_model)
         add("claude api", True, f"{m.id} ok")
     except Exception as e:  # noqa: BLE001
-        add("claude api", False, f"{type(e).__name__}: {str(e)[:160]}")
+        add("claude api", False, f"{type(e).__name__}: {str(e)[:160]} (key from {_key_source('ANTHROPIC_API_KEY')})")
     from datetime import timedelta
 
     from ctbot import market_hours
