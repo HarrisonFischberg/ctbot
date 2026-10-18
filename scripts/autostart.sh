@@ -18,6 +18,29 @@ fi
 
 loaded() { launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; }
 
+# Unload the agent and wait until launchd has let go of it: bootout returns before the job is
+# gone, and a bootstrap that comes too soon fails with "5: Input/output error".
+unload() {
+  launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null
+  launchctl unload "$PLIST" 2>/dev/null  # an older `launchctl load` of the same file
+  for _ in 1 2 3 4 5 6 7 8 9 10; do loaded || return 0; sleep 0.5; done
+  echo "launchd still has $LABEL loaded after bootout." >&2
+}
+
+# launchd's own reasons for refusing the agent; "5: Input/output error" alone says nothing.
+explain() {
+  echo "--- plutil -lint" >&2; plutil -lint "$PLIST" >&2
+  echo "--- plist owner and mode (must be you, not group/other writable)" >&2; ls -l "$PLIST" >&2
+  echo "--- disabled?" >&2
+  launchctl print-disabled "$DOMAIN" 2>&1 | grep -F "$LABEL" >&2 || echo "not disabled" >&2
+  echo "--- GUI session domain" >&2
+  launchctl print "$DOMAIN" >/dev/null 2>&1 && echo "$DOMAIN ok" >&2 \
+    || echo "$DOMAIN unavailable: run this from Terminal on the Mac while logged in, not over ssh" >&2
+  echo "--- launchd log, last 2 minutes" >&2
+  log show --last 2m --style compact --predicate "eventMessage CONTAINS \"$LABEL\"" 2>/dev/null \
+    | tail -n 15 >&2
+}
+
 case "${1:-}" in
   install)
     if [ ! -x .venv/bin/ctbot-paper ]; then
@@ -34,15 +57,24 @@ case "${1:-}" in
       exit 1
     fi
     mkdir -p logs "$HOME/Library/LaunchAgents"
+    unload
     sed "s#/path/to/ctbot#$ROOT#g" scripts/$LABEL.plist.example > "$PLIST"
-    plutil -lint "$PLIST" >/dev/null || { echo "Generated $PLIST is not a valid plist." >&2; exit 1; }
-    loaded && launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null
-    launchctl bootstrap "$DOMAIN" "$PLIST" || exit 1
+    chmod 644 "$PLIST"
+    plutil -lint "$PLIST" >/dev/null || { plutil -lint "$PLIST" >&2; exit 1; }
+    launchctl enable "$DOMAIN/$LABEL"  # clears an earlier `launchctl disable`
+    if ! launchctl bootstrap "$DOMAIN" "$PLIST"; then
+      sleep 2  # once more, in case launchd was still tearing down an old copy
+      if ! launchctl bootstrap "$DOMAIN" "$PLIST"; then
+        echo "launchctl couldn't load $PLIST. Details:" >&2
+        explain
+        exit 1
+      fi
+    fi
     echo "Autostart on: CTbot starts at login and restarts if it stops."
     echo "Dashboard: http://127.0.0.1:8787 · log: logs/bot.log · turn off: scripts/autostart.sh uninstall"
     ;;
   uninstall)
-    loaded && launchctl bootout "$DOMAIN/$LABEL"
+    unload
     rm -f "$PLIST"
     echo "Autostart off: CTbot stopped and won't start at login."
     ;;
