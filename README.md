@@ -82,10 +82,9 @@ without opening a browser tab; output goes to `logs/bot.log`. Stop any `./run_ct
 started by hand before installing, and don't start one while autostart is on, or two bots
 would trade the same paper account.
 
-Keeping the Mac awake: the bot already holds `caffeinate -di` while the market is open, so the
-Mac doesn't idle-sleep during trading and may sleep after the close. Closing a laptop's lid still
-sleeps it unless it has power and an external display (clamshell mode); `caffeinate -s` doesn't
-change that, so the agent doesn't add it.
+Keeping the Mac awake: the bot doesn't do this itself. Use an app that keeps the Mac awake
+during market hours (or macOS Energy settings). Closing a laptop's lid still sleeps it unless it
+has power and an external display (clamshell mode).
 
 More commands, including backtests and the research lab: [docs/COMMANDS.md](docs/COMMANDS.md).
 How it fits together: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

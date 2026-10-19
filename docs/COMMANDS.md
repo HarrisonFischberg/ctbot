@@ -13,7 +13,7 @@ cd path/to/ctbot
 | What | Command |
 |---|---|
 | Everything at once: dashboard + paper bot (Ctrl+C stops both) | `./run_ctbot.sh` |
-| Paper bot only (macOS: kept awake while the market is open) | `.venv/bin/ctbot-paper --loop --interval 300` |
+| Paper bot only | `.venv/bin/ctbot-paper --loop --interval 300` |
 | Dashboard only | `.venv/bin/ctbot-dashboard` then open http://127.0.0.1:8787 |
 | Pre-open health check | `.venv/bin/ctbot-preflight` |
 | Robinhood sign-in (when preflight says it expired) | `.venv/bin/ctbot-robinhood-login` |
