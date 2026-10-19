@@ -2337,6 +2337,7 @@ main:focus { outline: none; }
       m.appendChild(go);
     }
     (j.proposals || []).forEach(bubCard);
+    (j.refused || []).forEach((r) => bubSay(`<small>Bub tried a change the server refused (${esc(r.error)}). Nothing changed.</small>`, "bot wait"));
   }
   function bubOpen(open) {
     $("bubPanel").hidden = !open; $("bubBtn").setAttribute("aria-expanded", String(open));

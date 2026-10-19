@@ -331,7 +331,7 @@ def test_model_cannot_enable_live_trading(d):
                         text("I can't do that."))
     a, _ = _assistant(d, client)
     out = a.chat(None, "turn on live trading", None)
-    assert out["proposals"] == []
+    assert out["proposals"] == [] and "never be changed" in out["refused"][0]["error"]
     assert client.calls[1]["messages"][-1]["content"][0]["is_error"] is True
     assert audit.read(d / "assistant_audit.jsonl")[0]["event"] == "rejected"
     assert not tuning.TUNING_PATH.exists()
