@@ -105,7 +105,8 @@ def reload_if_changed(path: Path | None = None) -> bool:
 
 
 def load_environment(path: Path | None = None) -> None:
-    """.env first, then the Settings-tab values on top. Call before reading settings."""
+    """.env first, then the Settings-tab values and the assistant's tuning on top. Call before
+    reading settings."""
     try:
         from dotenv import find_dotenv, load_dotenv
 
@@ -113,6 +114,9 @@ def load_environment(path: Path | None = None) -> None:
     except ImportError:
         pass
     apply_to_environ(path)
+    from ctbot import tuning
+
+    tuning.apply_to_environ(None if path is None else path.with_name("tuning.json"))
 
 
 def status(path: Path | None = None, env: dict[str, str] | None = None) -> dict[str, dict]:

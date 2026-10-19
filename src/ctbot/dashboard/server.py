@@ -14,8 +14,14 @@ rebinding). Endpoints:
   POST /api/webull/connect     check the Webull keys; ask for a 2FA token if the Webull app wants one
   POST /api/webull/check       has the 2FA token been approved in the Webull app yet?
   POST /api/webull/disconnect  delete the saved Webull token
+  POST /api/assistant/chat     ask the assistant ({conversation_id, message, focus}); history stays here
+  POST /api/assistant/apply    apply one proposal by its server-issued id (your Apply click)
+  POST /api/assistant/dismiss  drop one proposal by id
+  POST /api/assistant/revert   restore the before-value of one applied change, by audit id
+  GET  /api/assistant/audit    recent assistant changes, usage and whether a key is set (token required)
 
-The order POST only appends to the paper queue; it never touches the ledger, Robinhood, or live
+The assistant (ctbot.assistant) only proposes; a change needs your click and is re-validated then,
+and every proposal and outcome is appended to data/assistant_audit.jsonl. The order POST only appends to the paper queue; it never touches the ledger, Robinhood, or live
 code. Every POST requires the page's token header and a same-origin request, so other websites
 open in your browser cannot submit clicks or change keys. Stop the server with Ctrl+C.
 """
@@ -37,7 +43,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs
 
-from ctbot import allocations, manual_queue, secret_store
+from ctbot import allocations, manual_queue, secret_store, tuning
 from ctbot.config import Settings
 from ctbot.dashboard.last_quotes import SessionQuotes
 from ctbot.dashboard.state import _read_history, build_state
@@ -57,7 +63,7 @@ def _robinhood_md(settings: Settings):
     )
 
 
-def make_handler(settings: Settings, port: int):
+def make_handler(settings: Settings, port: int, assistant_client=None):
     from ctbot.dashboard.candles import CandleSource
     from ctbot.market_data.webull_client import WebullClient
 
@@ -68,6 +74,17 @@ def make_handler(settings: Settings, port: int):
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
     allowed_origins = {f"http://{h}" for h in allowed_hosts}
     token = secrets.token_urlsafe(24)
+
+    def current_settings() -> Settings:
+        """Settings as of now: the account saved on the Settings tab and the assistant's tuning."""
+        live = replace(settings,
+                       robinhood_account_number=os.environ.get("ROBINHOOD_ACCOUNT_NUMBER", "").strip(),
+                       robinhood_account_nickname=os.environ.get("ROBINHOOD_ACCOUNT_NICKNAME", "").strip())
+        tuning.reload_if_changed()
+        try:
+            return tuning.overlay(live)
+        except ValueError:  # a bad value in .env: show what the bot started with
+            return live
 
     def queue_order(body: dict) -> tuple[int, dict]:
         side = body.get("side")
@@ -256,7 +273,53 @@ def make_handler(settings: Settings, port: int):
         log.info("Robinhood sign-in deleted from this machine")
         return 200, settings_status()
 
+    from ctbot.assistant import audit as assistant_audit
+    from ctbot.assistant.actions import Backend, Proposals
+    from ctbot.assistant.chat import Assistant
+
+    proposals = Proposals(Backend(settings=current_settings, launch=launch, launch_stop=launch_stop,
+                                  queue_order=queue_order,
+                                  audit_path=settings.paper_ledger_path.with_name("assistant_audit.jsonl")))
+    assistant = Assistant(current_settings,
+                          lambda: build_state(current_settings(), quotes, datetime.now(timezone.utc)),
+                          proposals, settings.paper_ledger_path.with_name("assistant_usage.json"),
+                          client=assistant_client)
+
+    def assistant_chat(body: dict) -> tuple[int, dict]:
+        return 200, assistant.chat(body.get("conversation_id"), body.get("message"), body.get("focus"))
+
+    def assistant_apply(body: dict) -> tuple[int, dict]:
+        try:
+            out = proposals.apply(body.get("proposal_id"))
+        except KeyError as e:
+            return 410, {"error": e.args[0]}
+        log.info("assistant: %s %s", "applied" if out["ok"] else "apply failed", out.get("summary") or out.get("error"))
+        return (200 if out["ok"] else 400), out
+
+    def assistant_dismiss(body: dict) -> tuple[int, dict]:
+        try:
+            return 200, proposals.dismiss(body.get("proposal_id"))
+        except KeyError as e:
+            return 410, {"error": e.args[0]}
+
+    def assistant_revert(body: dict) -> tuple[int, dict]:
+        try:
+            out = proposals.revert(body.get("audit_id"))
+        except KeyError as e:
+            return 404, {"error": e.args[0]}
+        except ValueError as e:
+            return 400, {"error": str(e)}
+        log.info("assistant: revert %s", "applied" if out["ok"] else "failed")
+        return (200 if out["ok"] else 400), out
+
+    def assistant_log() -> dict:
+        return {"entries": assistant_audit.recent(proposals.backend.audit_path), **assistant.status()}
+
     routes = {
+        "/api/assistant/chat": assistant_chat,
+        "/api/assistant/apply": assistant_apply,
+        "/api/assistant/dismiss": assistant_dismiss,
+        "/api/assistant/revert": assistant_revert,
         "/api/robinhood/disconnect": disconnect_robinhood,
         "/api/launch": launch,
         "/api/launch/stop": launch_stop,
@@ -301,11 +364,13 @@ def make_handler(settings: Settings, port: int):
                     return self._send(400, b'{"error": "bad symbol"}', "application/json")
                 out = candles.get(sym, (q.get("span") or ["1d"])[0])
                 return self._send(200, json.dumps(out).encode(), "application/json")
+            if path == "/api/assistant/audit":  # holds your chat messages: page token required
+                if not secrets.compare_digest(self.headers.get("X-Ctbot-Token", ""), token):
+                    return self._send(403, b"bad token", "text/plain")
+                return self._send(200, json.dumps(assistant_log(), default=str).encode(), "application/json")
             if path == "/api/state":
-                live = replace(settings,  # account saved on the Settings tab shows at once
-                               robinhood_account_number=os.environ.get("ROBINHOOD_ACCOUNT_NUMBER", "").strip(),
-                               robinhood_account_nickname=os.environ.get("ROBINHOOD_ACCOUNT_NICKNAME", "").strip())
-                state = build_state(live, quotes, datetime.now(timezone.utc))
+                # account saved on the Settings tab and the assistant's tuning show at once
+                state = build_state(current_settings(), quotes, datetime.now(timezone.utc))
                 return self._send(200, json.dumps(state, default=str).encode(), "application/json")
             return self._send(404, b"not found", "text/plain")
 
@@ -317,13 +382,14 @@ def make_handler(settings: Settings, port: int):
                 return self._send(403, b"forbidden origin", "text/plain")
             if not secrets.compare_digest(self.headers.get("X-Ctbot-Token", ""), token):
                 return self._send(403, b"bad token", "text/plain")
-            route = routes.get(self.path.split("?", 1)[0])
+            path = self.path.split("?", 1)[0]
+            route = routes.get(path)
             if route is None:
                 return self._send(404, b"not found", "text/plain")
             if "application/json" not in (self.headers.get("Content-Type") or ""):
                 return self._send(415, b"json only", "text/plain")
             length = int(self.headers.get("Content-Length") or 0)
-            if not 0 < length <= 4096:
+            if not 0 < length <= (8192 if path == "/api/assistant/chat" else 4096):  # chat: room for UTF-8
                 return self._send(413, b"bad length", "text/plain")
             try:
                 body = json.loads(self.rfile.read(length))

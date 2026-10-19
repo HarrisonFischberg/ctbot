@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -105,6 +105,50 @@ def build_strategies(config: dict[str, dict[str, Any]]) -> list[WeightedStrategy
             inst.name = name  # fills, brackets and exits are owned per configured name
         out.append(WeightedStrategy(inst, weight, standalone, risk, mode))
     return out
+
+
+def with_modes(strategies: list[WeightedStrategy], config: dict[str, dict[str, Any]]) -> list[WeightedStrategy]:
+    """`strategies` with each one's shadow/trade mode re-read from `config` (nothing else changes,
+    so a running paper bot can pick up a mode switch without rebuilding its models)."""
+    out = []
+    for ws in strategies:
+        mode = str((config.get(ws.strategy.name) or {}).get("mode", "trade")).lower()
+        out.append(replace(ws, mode=mode) if mode in ("trade", "shadow") and mode != ws.mode else ws)
+    return out
+
+
+def set_mode(path: Path, name: str, mode: str) -> None:
+    """Rewrite one table's `mode = "..."` line in strategies.toml (or add one under its header),
+    keeping every comment and the rest of the file as it is. Atomic: the bot never reads half."""
+    import os
+    import re
+    import tomllib
+
+    if mode not in ("trade", "shadow"):
+        raise ValueError("mode must be trade or shadow")
+    lines = path.read_text().splitlines(keepends=True)
+    head = next((i for i, ln in enumerate(lines) if ln.strip() == f"[{name}]"), None)
+    if head is None:
+        raise ValueError(f"no [{name}] table in {path}")
+    end = next((i for i in range(head + 1, len(lines)) if lines[i].lstrip().startswith("[")), len(lines))
+    pat = re.compile(r'^(\s*mode\s*=\s*)"[^"]*"(.*)$', re.S)
+    for i in range(head + 1, end):
+        m = pat.match(lines[i])
+        if m:
+            lines[i] = f'{m.group(1)}"{mode}"{m.group(2)}'
+            break
+    else:
+        lines.insert(head + 1, f'mode = "{mode}"\n')
+    text = "".join(lines)
+    try:  # never leave a broken file: check the result before it replaces the old one
+        ok = tomllib.loads(text)[name].get("mode") == mode
+    except tomllib.TOMLDecodeError:
+        ok = False
+    if not ok:
+        raise ValueError(f"could not set [{name}] mode in {path}")
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(text)
+    os.replace(tmp, path)
 
 
 def required_event_kinds(strategies: list[WeightedStrategy]) -> set[EventKind]:
