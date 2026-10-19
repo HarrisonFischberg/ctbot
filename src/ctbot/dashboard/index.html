@@ -856,7 +856,10 @@ main:focus { outline: none; }
     try {
       const r = await fetch(path, { method: "POST", cache: "no-store",
         headers: { "Content-Type": "application/json", "X-Ctbot-Token": TOKEN }, body: JSON.stringify(body || {}) });
-      return [r.ok, await r.json().catch(() => ({}))];
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok && !j.error) j.error = r.status === 403 ? "this page is from before the dashboard restarted: reload the page"
+        : `the dashboard server answered ${r.status}`;
+      return [r.ok, j];
     } catch (e) { return [false, { error: e.message }]; }
   }
   let rhPoll = 0, SETTINGS = null;

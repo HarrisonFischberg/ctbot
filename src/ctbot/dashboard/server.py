@@ -395,7 +395,11 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
                 body = json.loads(self.rfile.read(length))
             except json.JSONDecodeError:
                 return self._send(400, b"bad json", "text/plain")
-            status, payload = route(body if isinstance(body, dict) else {})
+            try:
+                status, payload = route(body if isinstance(body, dict) else {})
+            except Exception as e:  # noqa: BLE001 - answer with JSON, never drop the connection
+                log.exception("%s failed", path)
+                status, payload = 500, {"error": f"the dashboard hit an error ({type(e).__name__}); see its terminal"}
             return self._send(status, json.dumps(payload).encode(), "application/json")
 
         def log_message(self, fmt, *args):
