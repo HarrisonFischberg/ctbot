@@ -18,6 +18,7 @@ whatever the action, and this module never imports ctbot.live.
 
 from __future__ import annotations
 
+import math
 import os
 import re
 import threading
@@ -82,7 +83,7 @@ def _num(v: Any, what: str) -> float:
         n = float(v)
     except (TypeError, ValueError):
         raise ValueError(f"{what} must be a number") from None
-    if n != n:
+    if math.isnan(n):
         raise ValueError(f"{what} must be a number")
     return n
 
@@ -144,8 +145,12 @@ def plan(b: Backend, action: str, params: dict[str, Any], internal: bool = False
             raise ValueError(f"{tuning.KNOBS[key].label} is already {tuning.fmt(key, before)}")
         stored = key in tuning.load(b.tuning_path)
         label = tuning.KNOBS[key].label
-        return Plan(action, {"key": key, "value": value},
-                    f"{label} {tuning.fmt(key, before)} → {tuning.fmt(key, value) if value is not None else 'your .env value'}",
+        if value is None:
+            fb, src = tuning.fallback(key)
+            to = f"{tuning.fmt(key, fb)} ({'your .env value' if src == '.env' else 'the default'})"
+        else:
+            to = tuning.fmt(key, value)
+        return Plan(action, {"key": key, "value": value}, f"{label} {tuning.fmt(key, before)} → {to}",
                     before=before, after=value,
                     note="Applies to the running paper bot within a few seconds, no restart.",
                     revertible=True,

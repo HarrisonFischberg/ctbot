@@ -460,6 +460,75 @@ code { font: 12px var(--code); background: rgba(var(--tint), .06); padding: 1px 
 .skip:focus { top: 12px; }
 main:focus { outline: none; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+/* ---- Bub, the assistant: a small creature bottom-right on every tab ---- */
+.bub-btn { position: fixed; right: 24px; bottom: 24px; width: 62px; height: 62px; border-radius: 50%; z-index: 30;
+  background: var(--panel); border: 1px solid var(--line-2); box-shadow: 0 6px 24px rgba(0,0,0,.28); cursor: pointer;
+  display: grid; place-items: center; padding: 0; color: var(--neon); transition: transform .15s; }
+.bub-btn:hover { transform: translateY(-2px); }
+.bub-btn:focus-visible { outline: 2px solid var(--neon); outline-offset: 3px; }
+.bub-btn[aria-expanded="true"] { transform: scale(.92); }
+.bub { width: 46px; height: 46px; overflow: visible; }
+.bub .skin { fill: var(--neon); } .bub .ant { stroke: var(--neon); }
+.bub .eye { fill: #fff; } .bub .pupil, .bub .mouth { fill: #08130c; stroke: #08130c; }
+.bub .mouth { fill: none; }
+.bub .cheek { fill: rgba(255,255,255,.28); }
+.bub .body, .bub .eyes, .bub .pupils, .bub .tip { transform-box: fill-box; transform-origin: center; }
+.bub .body { animation: bub-bob 3.2s ease-in-out infinite; }
+.bub .eyes { animation: bub-blink 5.5s infinite; }
+.bub-btn.thinking .bub .body, .bub-hd .bub.thinking .body { animation-duration: .9s; }
+.bub-btn.thinking .bub .pupils, .bub.thinking .pupils { animation: bub-look 1.2s ease-in-out infinite; }
+.bub-btn.thinking .bub .tip, .bub.thinking .tip { animation: bub-tip .6s ease-in-out infinite alternate; }
+@keyframes bub-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
+@keyframes bub-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+@keyframes bub-look { 0%, 100% { transform: translate(-1.5px, -2px); } 50% { transform: translate(1.5px, -2px); } }
+@keyframes bub-tip { from { transform: scale(1); } to { transform: scale(1.5); } }
+.bub-panel { position: fixed; right: 24px; bottom: 98px; width: min(410px, calc(100vw - 32px)); height: min(640px, calc(100vh - 124px));
+  z-index: 31; background: var(--panel); color: var(--ink); border: 1px solid var(--line-2); border-radius: 20px;
+  box-shadow: 0 16px 48px rgba(0,0,0,.35); display: flex; flex-direction: column; overflow: hidden; }
+.bub-panel[hidden] { display: none; }
+.bub-hd { display: flex; align-items: center; gap: 10px; padding: 14px 14px 12px 16px; border-bottom: 1px solid var(--line); }
+.bub-hd .bub { width: 30px; height: 30px; }
+.bub-hd b { font: 400 18px/1 var(--serif); display: block; }
+.bub-hd small { color: var(--muted); font-size: 12px; }
+.bub-hd .cbtn { margin-left: auto; }
+.bub-log { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.bm { max-width: 88%; padding: 9px 13px; border-radius: 16px; font-size: 13.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.bm.me { align-self: flex-end; background: var(--neon-soft); color: var(--ink); border-bottom-right-radius: 6px; }
+.bm.bot { align-self: flex-start; background: var(--panel-2); border-bottom-left-radius: 6px; }
+.bm.err { background: var(--pop-err); color: var(--crit-ink); }
+.bm ul { margin: 4px 0; padding-left: 18px; } .bm p { margin: 0 0 6px; } .bm p:last-child { margin: 0; }
+.bm.wait { color: var(--muted); }
+.bm.wait i { display: inline-block; width: 5px; height: 5px; margin: 0 2px; border-radius: 50%; background: currentColor;
+  animation: bub-dot 1s infinite; } .bm.wait i:nth-child(2) { animation-delay: .15s; } .bm.wait i:nth-child(3) { animation-delay: .3s; }
+@keyframes bub-dot { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+.acard { align-self: stretch; border: 1px solid var(--neon-dim); border-radius: 14px; padding: 12px 14px; background: var(--panel-2);
+  display: grid; gap: 6px; font-size: 13px; }
+.acard .asum { font-weight: 600; font-size: 14px; }
+.acard .why, .acard .rk { color: var(--ink-2); } .acard .rk b { color: var(--warn); font-weight: 600; }
+.acard .nt { color: var(--muted); font-size: 12px; }
+.acard .row { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+.acard .done { font-size: 12.5px; color: var(--muted); } .acard .done.ok { color: var(--good); } .acard .done.bad { color: var(--crit); }
+.bub-chips { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 16px 10px; }
+.bub-chips button { background: rgba(var(--tint), .06); border: 0; border-radius: 999px; padding: 6px 11px; color: var(--ink-2);
+  font: 500 12px var(--sans); cursor: pointer; }
+.bub-chips button:hover { color: var(--ink); background: rgba(var(--tint), .1); }
+.bub-chips button:focus-visible { outline: 2px solid var(--neon); outline-offset: 1px; }
+.bub-form { display: flex; gap: 8px; padding: 10px 12px 12px; border-top: 1px solid var(--line); align-items: flex-end; }
+.bub-form textarea { flex: 1; resize: none; min-height: 40px; max-height: 120px; background: rgba(var(--tint), .05); color: var(--ink);
+  border: 1px solid transparent; border-radius: 14px; padding: 9px 12px; font: 13.5px/1.4 var(--sans); }
+.bub-form textarea:focus { outline: none; border-color: var(--neon); }
+.bub-form .btn { padding: 10px 16px; }
+.aud { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.aud li { display: grid; grid-template-columns: 96px 1fr auto; gap: 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.aud li:last-child { border-bottom: 0; }
+.aud .t { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.aud .s small { display: block; color: var(--muted); font-size: 12px; }
+@media (max-width: 640px) { .bub-btn { right: 16px; bottom: 16px; } .bub-panel { right: 16px; bottom: 88px; height: calc(100vh - 112px); }
+  .aud li { grid-template-columns: 1fr auto; } .aud .t { grid-column: 1 / -1; } }
+@media (prefers-reduced-motion: reduce) {
+  .bub .body, .bub .eyes, .bub .pupils, .bub .tip, .bm.wait i { animation: none !important; }
+  .bub-btn { transition: none; } .bub-btn:hover, .bub-btn[aria-expanded="true"] { transform: none; } }
+.toast { right: 100px; }
 </style>
 </head>
 <body>
@@ -635,6 +704,13 @@ main:focus { outline: none; }
       <div id="checks" class="xscroll"><div class="note">Not run yet.</div></div>
     </div>
 
+    <div data-tab="settings" class="card span-12">
+      <h2>Assistant changes <span class="count">everything Bub proposed and what you did with it, from data/assistant_audit.jsonl</span></h2>
+      <div id="asstAudit"><div class="note">Nothing yet. Open Bub (bottom right) and ask what to change.</div></div>
+      <p class="note">Bub only proposes. A change happens when you press Apply, and Revert puts back the value from before.
+        Paper only: it can never turn on live trading or raise the money and loss limits.</p>
+    </div>
+
     <div data-tab="none" class="card span-4" hidden>
       <h2>Strategies</h2>
       <div class="strats" id="strategies"></div>
@@ -660,6 +736,39 @@ main:focus { outline: none; }
   </footer>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<button class="bub-btn" id="bubBtn" type="button" aria-expanded="false" aria-controls="bubPanel" aria-label="Ask Bub, the CTbot assistant">
+<svg class="bub" viewBox="0 0 64 64" aria-hidden="true"><g class="body">
+  <path class="ant" d="M32 15 Q29 8 35 5" fill="none" stroke-width="2.6" stroke-linecap="round"/><circle class="skin tip" cx="35.5" cy="5" r="3.2"/>
+  <ellipse class="skin" cx="21" cy="57" rx="6.5" ry="3.4"/><ellipse class="skin" cx="43" cy="57" rx="6.5" ry="3.4"/>
+  <ellipse class="skin" cx="32" cy="36" rx="25" ry="21.5"/>
+  <g class="eyes"><ellipse class="eye" cx="23.5" cy="32" rx="6.2" ry="7.2"/><ellipse class="eye" cx="40.5" cy="32" rx="6.2" ry="7.2"/></g>
+  <g class="pupils"><circle class="pupil" cx="24.5" cy="33.5" r="3"/><circle class="pupil" cx="41.5" cy="33.5" r="3"/></g>
+  <circle class="cheek" cx="15.5" cy="42" r="3"/><circle class="cheek" cx="48.5" cy="42" r="3"/>
+  <path class="mouth" d="M27.5 44.5 Q32 48.5 36.5 44.5" stroke-width="2.3" stroke-linecap="round"/></g></svg>
+</button>
+<section class="bub-panel" id="bubPanel" role="dialog" aria-modal="false" aria-labelledby="bubTitle" hidden>
+  <div class="bub-hd"><svg class="bub" viewBox="0 0 64 64" aria-hidden="true"><g class="body">
+  <path class="ant" d="M32 15 Q29 8 35 5" fill="none" stroke-width="2.6" stroke-linecap="round"/><circle class="skin tip" cx="35.5" cy="5" r="3.2"/>
+  <ellipse class="skin" cx="21" cy="57" rx="6.5" ry="3.4"/><ellipse class="skin" cx="43" cy="57" rx="6.5" ry="3.4"/>
+  <ellipse class="skin" cx="32" cy="36" rx="25" ry="21.5"/>
+  <g class="eyes"><ellipse class="eye" cx="23.5" cy="32" rx="6.2" ry="7.2"/><ellipse class="eye" cx="40.5" cy="32" rx="6.2" ry="7.2"/></g>
+  <g class="pupils"><circle class="pupil" cx="24.5" cy="33.5" r="3"/><circle class="pupil" cx="41.5" cy="33.5" r="3"/></g>
+  <circle class="cheek" cx="15.5" cy="42" r="3"/><circle class="cheek" cx="48.5" cy="42" r="3"/>
+  <path class="mouth" d="M27.5 44.5 Q32 48.5 36.5 44.5" stroke-width="2.3" stroke-linecap="round"/></g></svg>
+    <div><b id="bubTitle">Bub</b><small id="bubSub">paper-only assistant</small></div>
+    <button class="cbtn" type="button" id="bubClose" aria-label="Close the assistant"><svg viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8"/></svg></button>
+  </div>
+  <div class="bub-log" id="bubLog" role="log" aria-live="polite" aria-label="Conversation with Bub"></div>
+  <div class="bub-chips" id="bubChips" aria-label="Quick questions">
+    <button type="button">Why so few trades today?</button><button type="button">Why not more aggressive?</button>
+    <button type="button">Anything broken?</button><button type="button">Take more trades</button>
+  </div>
+  <form class="bub-form" id="bubForm">
+    <label for="bubIn" class="sr-only" style="position:absolute;left:-9999px">Message to Bub</label>
+    <textarea id="bubIn" rows="1" maxlength="1000" placeholder="Ask Bub about the bot…"></textarea>
+    <button class="btn solid" type="submit" id="bubSend">Send</button>
+  </form>
+</section>
 <div class="modal" id="invest" hidden>
   <form class="sheet" id="invForm" role="dialog" aria-modal="true" aria-labelledby="invTitle">
     <div class="sheet-hd"><h3 id="invTitle">Invest</h3><button class="linkish" type="button" id="invClose" aria-label="Close">✕</button></div>
@@ -728,9 +837,11 @@ main:focus { outline: none; }
     if (bar.scrollWidth > bar.clientWidth) bar.scrollLeft = onTab.offsetLeft - bar.offsetLeft - (bar.clientWidth - onTab.offsetWidth) / 2;
     if (S) renderAll();
     if (tab === "settings" || tab === "home") loadSettings();
+    if (tab === "settings") loadAudit();
   }
 
   const openIdeas = new Set();
+  let focusIdea = null;  // the idea last opened on Activity: what "this one" means to Bub
   const tokenMeta = document.querySelector('meta[name="ctbot-token"]');
   const TOKEN = tokenMeta && !tokenMeta.content.startsWith("__") ? tokenMeta.content : null;
   const canTrade = () => !!TOKEN && S && S.mode === "paper";
@@ -1328,7 +1439,7 @@ main:focus { outline: none; }
       });
       $("ideas").querySelectorAll("tr.idea").forEach((tr) => tr.addEventListener("click", (ev) => {
         if (ev.target.closest("input,button")) return;
-        const id = tr.dataset.idea; openIdeas.has(id) ? openIdeas.delete(id) : openIdeas.add(id); renderIdeas();
+        const id = tr.dataset.idea; openIdeas.has(id) ? openIdeas.delete(id) : (openIdeas.add(id), focusIdea = id); renderIdeas();
       }));
       $("ideas").querySelectorAll("[data-buy]").forEach((b) => b.addEventListener("click", () => {
         const amt = parseFloat($("ideas").querySelector(`[data-amt="${b.dataset.buy}"]`).value);
@@ -2148,6 +2259,128 @@ main:focus { outline: none; }
   $("resetLayout").addEventListener("click", () => {
     try { [LAYOUT, SIZES, CLOSED, MINI].forEach((k) => localStorage.removeItem(k)); } catch (e) {}
     location.reload();
+  });
+
+  // ---- Bub, the assistant ----------------------------------------------------------------------
+  // Chat history lives on the server (by conversation id); the browser sends only the new message,
+  // the tab and any selected stock or idea. Cards change nothing until Apply is pressed.
+  const bub = { cid: null, busy: false, usage: null, hasKey: null };
+  try { bub.cid = sessionStorage.getItem("ctbot.bubCid"); } catch (e) {}
+  const bubLog = $("bubLog"), bubIn = $("bubIn");
+  const ACT_LABEL = { applied: "Applied", failed: "Failed", dismissed: "Dismissed", rejected: "Refused" };
+  function md(t) {  // escaped text with `code`, **bold**, "- " bullets and paragraphs
+    const inline = (x) => esc(x).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+    let out = "", list = false, para = [];
+    const flush = () => { if (para.length) out += "<p>" + para.map(inline).join("<br>") + "</p>"; para = []; };
+    for (const l of String(t || "").split("\n")) {
+      const m = /^\s*[-•*] (.*)$/.exec(l);
+      if (m) { flush(); if (!list) { out += "<ul>"; list = true; } out += `<li>${inline(m[1])}</li>`; continue; }
+      if (list) { out += "</ul>"; list = false; }
+      if (l.trim()) para.push(l); else flush();
+    }
+    flush();
+    return out + (list ? "</ul>" : "");
+  }
+  function bubSay(html, cls) {
+    const el = document.createElement("div"); el.className = "bm " + cls; el.innerHTML = html;
+    bubLog.appendChild(el); bubLog.scrollTop = bubLog.scrollHeight; return el;
+  }
+  function bubUsage(u) {
+    if (u) bub.usage = u;
+    const x = bub.usage;
+    $("bubSub").textContent = "paper-only assistant" + (x ? ` · ${x.used}/${x.cap} messages today` : "");
+  }
+  function bubThinking(on) {
+    bub.busy = on; $("bubSend").disabled = on;
+    document.querySelectorAll(".bub-btn, .bub-hd .bub").forEach((el) => el.classList.toggle("thinking", on));
+  }
+  function bubCard(c) {
+    const el = document.createElement("div"); el.className = "acard"; el.setAttribute("role", "group"); el.setAttribute("aria-label", "Suggested change");
+    el.innerHTML = `<div class="asum">${esc(c.summary)}</div>${c.reason ? `<div class="why">${esc(c.reason)}</div>` : ""}
+      ${c.risk ? `<div class="rk"><b>Risk:</b> ${esc(c.risk)}</div>` : ""}${c.note ? `<div class="nt">${esc(c.note)}</div>` : ""}
+      <div class="row"><button class="btn solid" type="button" data-a="apply">Apply</button><button class="btn" type="button" data-a="dismiss">Dismiss</button></div>`;
+    el.addEventListener("click", async (e) => {
+      const b = e.target.closest("[data-a]"); if (!b) return;
+      el.querySelectorAll("button").forEach((x) => (x.disabled = true));
+      const [ok, j] = await api("/api/assistant/" + b.dataset.a, { proposal_id: c.id });
+      const row = el.querySelector(".row");
+      if (b.dataset.a === "dismiss") row.innerHTML = `<span class="done">${ok ? "Dismissed. Nothing changed." : esc(j.error || "Could not dismiss")}</span>`;
+      else row.innerHTML = ok ? `<span class="done ok">Applied ✓ ${c.revertible ? "· undo it from Settings → Assistant changes" : ""}</span>`
+        : `<span class="done bad">Not applied: ${esc(j.error || "refused")}</span>`;
+      if (ok && b.dataset.a === "apply") { toast("Applied: " + c.summary); load(); }
+      const done = row.querySelector(".done"); done.tabIndex = -1; done.focus();  // keep focus inside the panel
+      loadAudit();
+    });
+    bubLog.appendChild(el); bubLog.scrollTop = bubLog.scrollHeight;
+  }
+  function bubFocus() {
+    const f = { tab };
+    const idea = focusIdea && S && S.ideas.find((i) => i.id === focusIdea);
+    if (tab === "activity" && idea) { f.idea_id = idea.id; f.symbol = idea.symbol; }
+    else if (tab === "home" && pxSym) f.symbol = pxSym;
+    return f;
+  }
+  async function bubAsk(text) {
+    text = String(text || "").trim();
+    if (!text || bub.busy) return;
+    bubSay(esc(text).replace(/\n/g, "<br>"), "me"); bubIn.value = "";
+    const wait = bubSay('Thinking <i></i><i></i><i></i>', "bot wait"); bubThinking(true);
+    const [ok, j] = await api("/api/assistant/chat", { conversation_id: bub.cid, message: text, focus: bubFocus() });
+    wait.remove(); bubThinking(false);
+    if (j.conversation_id) { bub.cid = j.conversation_id; try { sessionStorage.setItem("ctbot.bubCid", bub.cid); } catch (e) {} }
+    bubUsage(j.usage);
+    if (!ok) { bubSay(esc(j.error || "The dashboard server didn't answer. Is ctbot-dashboard running?"), "bot err"); return; }
+    const m = bubSay(md(j.reply), "bot" + (j.error ? " err" : ""));
+    if (j.error === "no_key") {
+      const go = document.createElement("button"); go.type = "button"; go.className = "btn"; go.textContent = "Open Settings";
+      go.style.marginTop = "8px"; go.addEventListener("click", () => document.querySelector('.tabs [data-tab="settings"]').click());
+      m.appendChild(go);
+    }
+    (j.proposals || []).forEach(bubCard);
+  }
+  function bubOpen(open) {
+    $("bubPanel").hidden = !open; $("bubBtn").setAttribute("aria-expanded", String(open));
+    if (open) {
+      if (!bubLog.children.length) bubSay(md("Hi, I'm **Bub**. Ask me what the bot did today and why, or what to change. "
+        + "I only suggest: nothing changes until you press Apply, and it's all paper money."), "bot");
+      loadAudit(); bubIn.focus();
+    } else $("bubBtn").focus();
+  }
+  $("bubBtn").addEventListener("click", () => bubOpen($("bubPanel").hidden));
+  $("bubClose").addEventListener("click", () => bubOpen(false));
+  document.addEventListener("keydown", (e) => {  // Esc closes Bub even after a card's button went away
+    if (e.key === "Escape" && !$("bubPanel").hidden && !document.querySelector(".modal:not([hidden])")) { e.preventDefault(); bubOpen(false); }
+  });
+  $("bubChips").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) bubAsk(b.textContent); });
+  $("bubForm").addEventListener("submit", (e) => { e.preventDefault(); bubAsk(bubIn.value); });
+  bubIn.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); bubAsk(bubIn.value); } });
+  bubIn.addEventListener("input", () => { bubIn.style.height = "auto"; bubIn.style.height = Math.min(bubIn.scrollHeight, 120) + "px"; });
+
+  async function loadAudit() {
+    if (!TOKEN) return;
+    let j;
+    try {
+      const r = await fetch("/api/assistant/audit", { cache: "no-store", headers: { "X-Ctbot-Token": TOKEN } });
+      if (!r.ok) return;
+      j = await r.json();
+    } catch (e) { return; }
+    bub.hasKey = j.has_key; bubUsage(j.usage);
+    const rows = (j.entries || []).slice(0, 20);
+    $("asstAudit").innerHTML = rows.length ? `<ul class="aud">${rows.map((e) => {
+      const label = e.revert_of ? "Reverted" : ACT_LABEL[e.event] || e.event;
+      const tagc = e.event === "applied" ? "on" : e.event === "dismissed" ? "" : "q";
+      const what = e.summary || `${e.action}${e.params && e.params.key ? " " + e.params.key : ""}`;
+      const sub = [e.error, e.user_message && e.user_message !== "(revert)" ? `you asked: "${e.user_message}"` : "", e.reverted ? "reverted since" : ""].filter(Boolean).join(" · ");
+      return `<li><span class="t">${esc(fmtTime(e.ts))}</span><span class="s"><span class="tag ${tagc}">${esc(label)}</span> ${esc(what)}${sub ? `<small>${esc(sub)}</small>` : ""}</span>
+        <span>${e.can_revert ? `<button class="btn" type="button" data-revert="${esc(e.id)}">Revert</button>` : ""}</span></li>`;
+    }).join("")}</ul>` : `<div class="note">Nothing yet. Open Bub (bottom right) and ask what to change.${j.has_key ? "" : " Bub needs the Anthropic API key above."}</div>`;
+  }
+  $("asstAudit").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-revert]"); if (!b) return;
+    b.disabled = true;
+    const [ok, j] = await api("/api/assistant/revert", { audit_id: b.dataset.revert });
+    toast(ok ? "Reverted: " + (j.summary || "done") : "Revert failed: " + (j.error || "refused"), !ok);
+    loadAudit(); if (ok) load();
   });
 
   if (window.__CTBOT_STATE__) { S = window.__CTBOT_STATE__; renderAll(); }

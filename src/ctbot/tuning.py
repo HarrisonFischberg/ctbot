@@ -13,6 +13,7 @@ is checked before the allowlist, so widening KNOBS by mistake still cannot reach
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -82,7 +83,7 @@ def validate(key: str, value: Any) -> int | float | str:
         num = float(value)
     except (TypeError, ValueError):
         raise ValueError(f"{knob.label} must be a number") from None
-    if num != num or not knob.lo <= num <= knob.hi:  # NaN fails too
+    if math.isnan(num) or not knob.lo <= num <= knob.hi:
         raise ValueError(f"{knob.label} must be between {fmt(key, knob.lo)} and {fmt(key, knob.hi)}")
     if knob.kind == "int":
         if num != int(num):
@@ -145,13 +146,28 @@ def save(key: str, value: Any, path: Path | None = None) -> None:
     os.replace(tmp, path)
 
 
-def _env_fallback(key: str) -> None:
+def _dotenv(key: str) -> str | None:
     try:
         from dotenv import dotenv_values, find_dotenv
 
-        fallback = dotenv_values(find_dotenv(usecwd=True)).get(key)
+        return dotenv_values(find_dotenv(usecwd=True)).get(key) or None
     except ImportError:
-        fallback = None
+        return None
+
+
+def fallback(key: str) -> tuple[Any, str]:
+    """What one knob becomes once removed from tuning.json: (value, ".env" or "default")."""
+    from ctbot.config import Settings
+
+    env = {k: v for k, v in os.environ.items() if k != key}
+    dv = _dotenv(key)
+    if dv:
+        env[key] = dv
+    return current(Settings.from_env(env), key), ".env" if dv else "default"
+
+
+def _env_fallback(key: str) -> None:
+    fallback = _dotenv(key)
     if fallback:
         os.environ[key] = fallback
     else:
