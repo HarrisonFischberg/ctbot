@@ -247,3 +247,27 @@ def test_earnings_inside_signal_horizon_skips_the_paid_review():
         c.engine, c.context = _Counting(), _Ctx()
         run_cycle(c, _state(broker), NOW)
     assert broker.positions() == [] and _Counting.calls == 0
+
+
+def test_next_cycle_reviews_a_new_name_instead_of_repeating_the_top_one():
+    from ctbot.strategies.registry import WeightedStrategy
+
+    seen = []
+
+    class _No(_Engine):
+        def evaluate(self, candidate, account):
+            seen.append(candidate.symbol)
+            return Decision(approve=False, confidence=0.2, rationale="", suggested_notional=50.0)
+
+    sigs = [Signal("copy_trading", "KO", Direction.LONG, 1.0, 1), Signal("copy_trading", "PEP", Direction.LONG, 0.9, 1)]
+    strat = WeightedStrategy(_Strategy("copy_trading", sigs), 0.5, standalone=True)
+    with tempfile.TemporaryDirectory() as d:
+        broker = PaperBroker(_MD(), 250.0, Path(d) / "ledger.json", slippage_bps=0, clock=lambda: NOW)
+        c = _components(broker, [strat])
+        c.engine = _No()
+        c.settings = Settings.from_env({"ENTRY_MODE": "auto", "PAPER_LEDGER_PATH": str(broker.ledger_path),
+                                        "MAX_CANDIDATES_PER_CYCLE": "1"})
+        state = _state(broker)
+        run_cycle(c, state, NOW)
+        run_cycle(c, state, NOW)
+    assert seen == ["KO", "PEP"]

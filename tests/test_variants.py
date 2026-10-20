@@ -126,3 +126,39 @@ def test_data_halt_stops_entries_in_every_book(tmp_path):
     book_halt.write_text("my own")  # a book's own HALT stays
     variants._sync_halt(main_halt, book_halt)
     assert book_halt.exists()
+
+
+def test_books_share_one_price_fetch_and_keep_missing_methods_missing():
+    from datetime import datetime, timezone
+
+    from ctbot.models import Quote
+
+    class Client:
+        calls = 0
+
+        def quotes(self, symbols):
+            Client.calls += 1
+            return {s: Quote(s, 10, 10, 10, datetime.now(timezone.utc)) for s in symbols if s != "NOPE"}
+
+        def today_bars(self, symbols, ttl_s=60.0):
+            Client.calls += 1
+            return {"KO": []}
+
+    md = variants.BookMarketData(Client())
+    assert set(md.quotes(["KO", "pep"])) == {"KO", "PEP"}
+    md.quotes(["KO"]), md.quotes(["PEP", "KO", "NOPE"])
+    assert Client.calls == 2  # NOPE was new; KO and PEP came from the snapshot
+    md.today_bars(["KO"]), md.today_bars(["KO"])
+    assert Client.calls == 3
+    assert not hasattr(variants.BookMarketData(object()), "today_bars")  # orb_sip checks hasattr
+
+
+def test_review_cap_goes_to_ideas_that_can_still_trade():
+    from ctbot.aggregation.ensemble import EnsembleParams, combine
+
+    sigs = [Signal("copy_trading", s, Direction.LONG, st, 1) for s, st in (("A", 0.9), ("B", 0.8), ("C", 0.7))]
+    params = EnsembleParams(max_candidates=2)
+    cands = combine(sigs, {"copy_trading": 1.0}, params, frozenset({"copy_trading"}))
+    assert [c.symbol for c in cands] == ["A", "B"]
+    cands = combine(sigs, {"copy_trading": 1.0}, params, frozenset({"copy_trading"}), lambda c: c.symbol == "A")
+    assert [c.symbol for c in cands] == ["B", "C"]

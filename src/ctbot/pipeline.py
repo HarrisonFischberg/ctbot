@@ -202,6 +202,17 @@ def _idea(
     }
 
 
+def _earnings_block(c: Components, cand: Candidate, now: datetime) -> datetime | None:
+    """The earnings report that falls before this long's planned exit (the hard rule refuses it)."""
+    report = c.context.next_earnings(cand.symbol) if c.context else None
+    if report is None:
+        return None
+    plan = c.risk.exit_plan(cand)
+    horizon = max((s.horizon_days for s in cand.signals if s.direction is Direction.LONG), default=1.0)
+    planned_exit = datetime.fromisoformat(plan["exit_at"]) if plan else now + timedelta(days=horizon)
+    return report if now < report < planned_exit else None
+
+
 def live_quotes(md: MarketDataProvider) -> bool:
     return getattr(md, "quotes_are_live", True)
 
@@ -401,7 +412,13 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
     weights = {ws.strategy.name: ws.weight for ws in c.strategies}
     standalone = frozenset(ws.strategy.name for ws in c.strategies if ws.standalone)
     shadow_models = frozenset(ws.strategy.name for ws in c.strategies if ws.mode == "shadow")
-    candidates = combine(signals, weights, c.settings.ensemble, standalone)
+    def stale_or_blocked(cand: Candidate) -> bool:
+        """Spend the review cap on ideas that can still trade: setups already reviewed today and
+        names the earnings rule would refuse go to the back of the line."""
+        buyers = tuple(sorted({s.strategy for s in cand.signals if s.direction is Direction.LONG}))
+        return (today, cand.symbol, buyers) in c.reviewed or _earnings_block(c, cand, now) is not None
+
+    candidates = combine(signals, weights, c.settings.ensemble, standalone, stale_or_blocked)
     log.info("%d events, %d signals, %d candidates", len(events), len(signals), len(candidates))
 
     snap: dict[str, dict[str, Any]] = {}
@@ -438,10 +455,7 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                 continue  # same setup already reviewed today (rule-based entries are free: they retry)
             c.reviewed.add(key)
             report = c.context.next_earnings(cand.symbol) if c.context else None
-            plan = c.risk.exit_plan(cand)
-            horizon = max((s.horizon_days for s in longs), default=1.0)
-            planned_exit = datetime.fromisoformat(plan["exit_at"]) if plan else now + timedelta(days=horizon)
-            if report and now < report < planned_exit:
+            if _earnings_block(c, cand, now) is not None:
                 # the hard rule would refuse it anyway: skip the paid review
                 verdict = RiskVerdict(False, ("earnings_before_exit",))
                 log.info("rejected long %s: earnings_before_exit (%s)", cand.symbol, report.isoformat())

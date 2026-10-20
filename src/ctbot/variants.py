@@ -108,6 +108,57 @@ def cached(providers: list[Any]) -> list[Any]:
     return [p if isinstance(p, CachedProvider) else CachedProvider(p) for p in providers]
 
 
+class BookMarketData:
+    """The books' view of the main bot's market data: a price or intraday-bar fetch is reused by
+    every book for `ttl_s` seconds. The client's own quote cache lasts only seconds, so without
+    this each book re-fetched the same quotes and a cycle took minutes. Daily bars are already
+    cached for the day by the client."""
+
+    CACHED = ("today_bars", "intraday_bars")
+
+    def __init__(self, inner: Any, ttl_s: float = 60.0) -> None:
+        self.inner, self.ttl_s = inner, ttl_s  # 60 s keeps quotes inside the 120 s stale-quote check
+        self._quotes: dict[str, tuple[float, Any]] = {}
+        self._calls: dict[tuple, tuple[float, Any]] = {}
+
+    def quotes(self, symbols):
+        mono = time.monotonic()
+        syms = sorted({s.upper() for s in symbols})
+        need = [s for s in syms if s not in self._quotes or mono - self._quotes[s][0] > self.ttl_s]
+        if need:
+            fresh = self.inner.quotes(need)
+            for s in need:
+                if s in fresh:
+                    self._quotes[s] = (mono, fresh[s])
+                else:
+                    self._quotes.pop(s, None)
+        return {s: self._quotes[s][1] for s in syms if s in self._quotes}
+
+    def daily_bars(self, symbol, lookback_days):
+        return self.inner.daily_bars(symbol, lookback_days)
+
+    def is_market_open(self):
+        return self.inner.is_market_open()
+
+    def __getattr__(self, name):
+        attr = getattr(self.inner, name)  # AttributeError when the client lacks it, as before
+        if name not in self.CACHED:
+            return attr
+
+        def cached_call(*args, **kwargs):
+            key = (name, repr(args), repr(sorted(kwargs.items())))
+            hit = self._calls.get(key)
+            if hit and time.monotonic() - hit[0] < self.ttl_s:
+                return hit[1]
+            for k in [k for k, v in self._calls.items() if time.monotonic() - v[0] >= self.ttl_s]:
+                del self._calls[k]
+            out = attr(*args, **kwargs)
+            self._calls[key] = (time.monotonic(), out)
+            return out
+
+        return cached_call
+
+
 class SharedReviews:
     """Wraps a decision engine so a setup is reviewed once per day per model across all books."""
 
@@ -156,6 +207,7 @@ def build(main: Any, reviews: dict) -> list[Book]:
     from ctbot.strategies.registry import build_strategies, load_strategy_config, strategy_risk_overrides
 
     s0 = main.settings
+    md = BookMarketData(main.market_data)  # one shared price snapshot for all books
     books = []
     for v in load(s0.strategies_file.with_name(CONFIG.name)):
         s = Settings.from_env(book_env(dict(os.environ), s0.paper_ledger_path, v))
@@ -167,10 +219,10 @@ def build(main: Any, reviews: dict) -> list[Book]:
         for ws in strategies:
             if scanners.get(ws.strategy.name) is not None:
                 ws.strategy.scanner = scanners[ws.strategy.name]  # one market-wide scan for all books
-        broker = PaperBroker(main.market_data, s.starting_capital, s.paper_ledger_path,
+        broker = PaperBroker(md, s.starting_capital, s.paper_ledger_path,
                              instant_settlement=s.paper_settlement == "instant")
         c = Components(
-            settings=s, market_data=main.market_data, providers=main.providers, strategies=strategies,
+            settings=s, market_data=md, providers=main.providers, strategies=strategies,
             engine=SharedReviews(ClaudeDecisionEngine(s.claude_model, s.claude_effort, usage_path=s.llm_usage_path),
                                  reviews),
             risk=RiskManager(s.risk, strategy_risk_overrides(strategies)), executor=broker,
