@@ -620,17 +620,8 @@ main:focus { outline: none; }
           <span class="lm">how far the trailing stop follows below each position's highest price</span></label>
         <button class="btn solid" type="submit" id="apSave">Save</button>
       </form>
-      <div id="apModels" class="xscroll" style="margin-top:18px"></div>
       <h3 class="ap-h3">Latest decisions</h3>
       <div id="apDecisions" class="xscroll"></div>
-    </div>
-    <div data-tab="trading" class="card span-12">
-      <h2>Discover strategies <span class="count" id="discMeta"></span><span class="spacer"></span>
-        <span class="seg" role="group" aria-label="Period"><button data-period="3M">3M</button><button data-period="6M">6M</button><button data-period="1Y">1Y</button></span></h2>
-      <p class="note" style="margin:0 0 16px">How each strategy would have done with $1,000 on its own, simulated on real prices after trading costs.
-        Simulated results aren't a promise of future returns.</p>
-      <div class="free-note" id="discFree" hidden></div>
-      <div class="discover" id="discover"></div>
     </div>
 
     <div data-tab="activity" class="card span-12 ideas">
@@ -653,8 +644,9 @@ main:focus { outline: none; }
     </div>
 
     <div data-tab="trading" class="card span-12">
-      <h2>Every strategy <span class="count" id="catMeta"></span></h2>
-      <p class="explain">Each strategy's real paper record and its long-term test. Click one for the full story, charts and to invest.</p>
+      <h2>Strategy library <span class="count" id="catMeta"></span></h2>
+      <p class="explain">Every strategy Autopilot can use: whether it's trading or benched and why, its real paper record,
+        its simulated past year and its long-term test. Click one for the full story and charts. Simulated results aren't a promise of future returns.</p>
       <div class="catalog" id="catalog"></div>
     </div>
 
@@ -1575,16 +1567,24 @@ main:focus { outline: none; }
     const strats = S.strategies || [], models = Object.fromEntries((S.models || []).map((m) => [m.model, m]));
     const scores = (S.idea_scores || {}).summary || {};
     const labRows = Object.fromEntries((((S.research || {}).lab || {}).rows || []).map((r) => [r.strategy, r]));
-    const rank = (s) => runOf(s.name) ? 0 : s.enabled ? 1 : 9;
+    const A = S.autopilot || { enabled: false, models: [] }, apOf = Object.fromEntries(A.models.map((m) => [m.name, m]));
+    const rank = (s) => runOf(s.name) ? 0 : apOf[s.name] && apOf[s.name].status === "trading" ? 1 : s.enabled ? 2 : 9;
     const list = strats.slice().sort((a, b) => rank(a) - rank(b));
-    $("catMeta").textContent = `${strats.filter((s) => runOf(s.name)).length} invested · ${strats.filter((s) => !runOf(s.name)).length} watching`;
+    $("catMeta").textContent = A.enabled
+      ? `${A.models.filter((m) => m.status === "trading").length} trading · ${A.models.filter((m) => m.status !== "trading").length} benched`
+      : `${strats.filter((s) => runOf(s.name)).length} invested · ${strats.filter((s) => !runOf(s.name)).length} watching`;
     $("catalog").innerHTML = list.map((s) => {
       const P = s.plain || {}, m = models[s.name], sc = scores[s.name], lab = labRows[LAB_FOR[s.name]], run = runOf(s.name);
-      const badge = run ? `<span class="tag on">● Invested</span>` : s.enabled ? `<span class="tag q">◐ Watching</span>` : `<span class="tag off">○ Off</span>`;
+      const ap = apOf[s.name], yr = ((s.performance || {}).windows || {})["1Y"];
+      const badge = !s.enabled ? `<span class="tag off">○ Off</span>`
+        : A.enabled && ap ? `<span class="tag ${ap.status === "trading" ? "on" : "rej"}">${ap.status === "trading" ? "● Trading" : "Benched"}</span>`
+        : run ? `<span class="tag on">● Invested</span>` : `<span class="tag q">◐ Watching</span>`;
       const verdict = (x) => !x || x.avg_bps == null ? null : x.avg_bps >= 0 ? `<span class="up">helped</span>` : `<span class="down">didn't help</span>`;
       const claudeV = sc && sc.approved && sc.rejected && sc.approved.avg_bps != null && sc.rejected.avg_bps != null
         ? (sc.approved.avg_bps > sc.rejected.avg_bps ? `<span class="up">picked better ideas</span>` : `<span class="down">no better than chance</span>`) : null;
       const rows = [
+        ap ? ["Autopilot", esc(ap.reason)] : null,
+        yr ? ["Simulated past year", `<span class="${dir(yr.return)}">${sgnPct(yr.return, 1)}</span> · worst drop ${pct(yr.worst_drop, 0)}`] : null,
         ["Real paper trades", m ? `${m.closed} done${m.win_rate == null ? "" : ` · won ${pct(m.win_rate, 0)}`}` : "none yet"],
         m ? ["Profit / loss", `<span class="${dir(m.pnl + (m.open_pnl || 0))}">${sgnUsd(m.pnl + (m.open_pnl || 0))}</span>`] : null,
         lab ? ["Long test, 2020-26", `${sgnPct(lab.out_of_sample.cagr, 1)} a year · worst drop ${pct(lab.out_of_sample.max_dd, 0)}`] : null,
@@ -1594,7 +1594,7 @@ main:focus { outline: none; }
         <div class="hd"><span class="n">${esc(P.title || s.name)}</span>${badge}<span class="spacer" style="margin-left:auto"></span>${lab ? spark(lab.curve) : ""}</div>
         <div class="ds">${esc(P.tagline || s.description || "No description.")}</div>
         <dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>
-        <span class="more">Full details →</span>${launchBox(s)}</div>`;
+        <span class="more">Full details →</span>${A.enabled ? "" : launchBox(s)}</div>`;
     }).join("");
   }
   // ---- strategies in plain words, the invest sheet and "your strategies" -------------
@@ -1652,37 +1652,6 @@ main:focus { outline: none; }
     return over
       ? `All ${usd(L.max_total, 0)} of paper money is already in your strategies. Stop one on Home to free its money, then invest it here.`
       : `Your cash is already handed to strategies you invested in that haven't bought yet. Stop one on Home to free it.`;
-  }
-  function renderDiscover() {
-    const fn = freeNote(); $("discFree").hidden = !fn; $("discFree").innerHTML = fn ? `${esc(fn)} <button class="btn" type="button" data-goto="home">Go to Home</button>` : "";
-    document.querySelectorAll("[data-period]").forEach((b) => b.classList.toggle("on", b.dataset.period === period));
-    const B = S.benchmarks || {}, w = (x) => ((x || {}).windows || {})[period];
-    const bret = (sym) => w(B[sym]) ? `<b class="${dir(w(B[sym]).return)}">${sgnPct(w(B[sym]).return, 1)}</b>` : "—";
-    $("discMeta").innerHTML = `${PERIOD_LABEL[period]}: S&P 500 ${bret("SPY")} · Nasdaq-100 ${bret("QQQ")}`;
-    const days = { "3M": 91, "6M": 182, "1Y": 365 }[period];
-    const list = (S.strategies || []).slice().sort((a, b) => {
-      const ra = w(a.performance), rb = w(b.performance);
-      return (rb ? rb.return : -9) - (ra ? ra.return : -9);
-    });
-    $("discover").innerHTML = list.map((s) => {
-      const P = s.plain || {}, perf = s.performance || {}, r = w(perf), run = runOf(s.name);
-      const status = run ? `<span class="tag on">● Invested ${usd(run.capital, 0)}</span>`
-        : !s.enabled ? `<span class="tag off">Off</span>` : "";
-      const big = r ? `<div class="dret ${dir(r.return)}">${sgnPct(r.return, 1)}</div>
-          <div class="dlab">${PERIOD_LABEL[period]} · worst drop ${pct(r.worst_drop, 1)}${perf.kind === "stand-in" ? " · estimate" : ""}</div>`
-        : `<div class="dret flat">—</div><div class="dlab">${perf.kind === "none" || !perf.windows ? "No simulated history yet" : "Not enough history for this period"}</div>`;
-      const act = run ? `<span class="lm">${sgnUsd(run.gain)} so far</span><button class="btn sell" type="button" data-stop="${esc(s.name)}">Stop</button>`
-        : s.enabled ? `<button class="btn solid" type="button" data-invest="${esc(s.name)}" ${canTrade() && freeCash() >= 10 ? "" : `disabled title="${esc(freeNote() || "Start the dashboard with ./run_ctbot.sh to invest")}"`}>Invest</button>`
-        : `<span class="lm">Off in config/strategies.toml</span>`;
-      return `<article class="disc ${s.enabled ? "" : "is-off"}" data-detail="${esc(s.name)}" tabindex="0" aria-label="${esc(P.title || s.name)}: details and invest">
-        <div class="dh"><div><div class="dt">${esc(P.title || s.name)}</div>
-          <div class="dmeta">${riskTag(P.risk)}<span class="lm">Holds ${esc((P.holds || "?").toLowerCase())}</span></div></div>${status}</div>
-        ${big}
-        ${miniChart(perf.curve, (B.SPY || {}).curve, days)}
-        <p class="dtag">${esc(P.tagline || s.description || "")}</p>
-        <span class="more">Details, chart and how it works →</span>
-        <div class="dact">${act}</div></article>`;
-    }).join("");
   }
   function renderSteps() {
     const st = SETTINGS, keys = st ? st.keys : {}, rh = st ? st.robinhood : {};
@@ -1896,7 +1865,7 @@ main:focus { outline: none; }
     const go = e.target.closest("[data-goto]");
     if (go) { tab = go.dataset.goto; try { localStorage.setItem("ctbot.tab", tab); } catch (err) {} applyTab(); scrollTo(0, 0); return; }
     const per = e.target.closest("[data-period]");
-    if (per) { period = per.dataset.period; try { localStorage.setItem("ctbot.period", period); } catch (err) {} renderDiscover(); return; }
+    if (per) { period = per.dataset.period; try { localStorage.setItem("ctbot.period", period); } catch (err) {} renderCatalog(); return; }
     const b = e.target.closest("[data-stop]");
     if (!b) return;
     const name = b.dataset.stop;
@@ -1956,11 +1925,6 @@ main:focus { outline: none; }
     $("apSave").disabled = !canTrade();
     const on = A.models.filter((m) => m.status === "trading").length;
     $("apMeta").textContent = A.enabled ? `on · ${on} of ${A.models.length} strategies trading` : "off: the settings below Discover decide";
-    $("apModels").innerHTML = `<table class="tbl"><thead><tr><th>Strategy</th><th>Autopilot</th><th>Why</th><th class="r">Recent trades</th><th class="r">Win rate</th><th class="r">P&amp;L</th></tr></thead><tbody>${
-      A.models.map((m) => `<tr><td><button class="linkish who" type="button" data-detail="${esc(m.name)}">${esc(plainOf(m.name).title)}</button>${m.systematic ? ` <span class="tag" title="Rule-based: no Claude review, keeps its own backtested exits">rule-based</span>` : ""}</td>
-        <td><span class="tag ${m.status === "trading" ? "on" : "rej"}">${m.status === "trading" ? (A.enabled ? "trading" : "would trade") : "benched"}</span></td>
-        <td style="white-space:normal;color:var(--ink-2)">${esc(m.reason)}</td><td class="r">${m.closed}</td>
-        <td class="r">${m.win_rate == null ? "—" : pct(m.win_rate, 0)}</td><td class="r ${dir(m.pnl)}">${sgnUsd(m.pnl)}</td></tr>`).join("")}</tbody></table>`;
     const recent = (S.ideas || []).slice(-12).reverse();
     $("apDecisions").innerHTML = recent.length ? `<table class="tbl"><thead><tr><th>When</th><th>Stock</th><th>From</th><th>Outcome</th><th>Why</th></tr></thead><tbody>${
       recent.map((i) => `<tr><td>${fmtTime(i.ts)}</td><td class="sym">${esc(i.symbol)}</td><td>${esc((i.strategies || []).map((n) => plainOf(n).title).join(", "))}</td>
@@ -1982,7 +1946,7 @@ main:focus { outline: none; }
   function renderAll() {
     renderChrome(); renderAutopilot(); renderKpis(); renderIdeas(); renderChart(); renderLimits(); renderPositions();
     renderWatchlist(); renderFills(); renderStrategies(); renderLog(); renderC2(); renderModels(); renderFilterScore(); renderLab();
-    renderRuns(); renderCatalog(); renderCompare(); renderStressWF(); renderDiscover(); renderSteps();
+    renderRuns(); renderCatalog(); renderCompare(); renderStressWF(); renderSteps();
     loadPx();
     applySorts();
     $("updated").textContent = "updated " + new Date(S.generated_at).toLocaleTimeString("en-US", { timeZone: ET, hour12: false }) + " ET";
