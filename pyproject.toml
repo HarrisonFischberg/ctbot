@@ -45,6 +45,8 @@ ctbot-tearsheet = "ctbot.research.tearsheet:main"
 ctbot-sweep = "ctbot.research.sweep:main"
 ctbot-perf = "ctbot.research.perf:main"
 ctbot-rank-research = "ctbot.research.ranker:main"
+ctbot-dayplan = "ctbot.dayplan:plan_main"
+ctbot-reconcile = "ctbot.dayplan:reconcile_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

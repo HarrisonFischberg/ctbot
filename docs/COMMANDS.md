@@ -16,6 +16,8 @@ cd path/to/ctbot
 | Paper bot only | `.venv/bin/ctbot-paper --loop --interval 300` |
 | Dashboard only | `.venv/bin/ctbot-dashboard` then open http://127.0.0.1:8787 |
 | Pre-open health check | `.venv/bin/ctbot-preflight` |
+| Premarket plan: trade or no-trade today, and why | `.venv/bin/ctbot-dayplan` |
+| Stop all new entries now (exits still run) / resume | `touch data/HALT` / `rm data/HALT` |
 | Robinhood sign-in (when preflight says it expired) | `.venv/bin/ctbot-robinhood-login` |
 
 Only one paper bot can run at a time (a lock refuses a second). Start it before 9:30 ET;
@@ -72,6 +74,7 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
 | Cache the last 2 weeks of 5-minute bars | `.venv/bin/ctbot-fetch-bars --interval 5minute --since $(date -v-14d +%Y-%m-%d)` |
 | Score today's reviewed ideas (approved vs rejected) | `.venv/bin/ctbot-score-ideas` |
 | Paper book tearsheet (after ~5 sessions) | `.venv/bin/ctbot-tearsheet` |
+| Reconcile ledger, brackets and journal; P&L per model today | `.venv/bin/ctbot-reconcile` |
 
 ## Research
 
@@ -81,6 +84,10 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
 | Trend length sweep (chosen on 2010-19, checked on 2020-26) | `.venv/bin/ctbot-sweep` |
 | Tearsheet for a lab strategy | `.venv/bin/ctbot-tearsheet --lab "lev: trend QQQ 170d -> QLD capped at 30% vol"` |
 | Intraday backtest (5-minute data) | `.venv/bin/ctbot-backtest` |
+| Lab with next-close execution (stricter) | `.venv/bin/ctbot-lab --lag 1 --cash-apy 0.035` |
+| Stock ranking model: walk-forward vs SPY, equal weight, momentum (dev + validation) | `.venv/bin/ctbot-rank-research` |
+| Score the locked holdout once, after choosing | `.venv/bin/ctbot-rank-research --holdout` |
+| Write the shadow model file for the bot (retrain monthly) | `.venv/bin/ctbot-rank-research --write-model` |
 | Tests | `.venv/bin/pytest -q` |
 | Known-vulnerability scan of installed packages | `.venv/bin/pip-audit --skip-editable` |
 

@@ -9,6 +9,17 @@
 | Screenshots in `docs/images/` | Captured from CTbot's own dashboard with made-up demo data (generated prices, paper account, no real account) | MIT (this repo) |
 | Chart palette | Validated default palette from the dataviz skill used during development; colour values only | Not copyrightable values |
 
+## Third-party code and ideas (2026-10-20)
+
+| Source (commit) | License | What CTbot uses | Obligation |
+|---|---|---|---|
+| microsoft/qlib (5435523) | MIT | Alpha158 factor formulas and TopkDropout logic, rewritten in pandas/numpy (`research/factors.py`, `research/ranker.py`) | Copyright notice kept in the module docstrings |
+| HKUDS/Vibe-Trading (097b29f) | MIT | Ideas only: PBO/false-discovery checks, run cards, HALT file, hash-chained ledger; code rewritten (`research/validation.py`, `research/registry.py`) | Credited in docstrings (not required for ideas) |
+| TauricResearch/TradingAgents (e8f5503) | Apache-2.0 | Ideas only: bull/bear debate, outcome memory (`decision/engine.py`, `decision/memory.py`); no code copied | None |
+| TraderAlice/OpenAlice (87bc415) | AGPL-3.0 | Nothing copied; day-plan and thesis-check ideas reimplemented independently | None (no code used) |
+
+No new Python dependency was added.
+
 ## Python dependencies (installed versions, 2026-10-15)
 
 | Package | Version | License | Use |
