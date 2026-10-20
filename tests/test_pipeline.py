@@ -215,3 +215,34 @@ def test_dashboard_click_buys_then_sells_through_risk_checks():
         assert process_manual_order(c, state, order("buy", ts=old), NOW)[0] == "expired"
         night = datetime(2026, 10, 14, 2, tzinfo=timezone.utc)
         assert process_manual_order(c, state, order("buy", ts=night), night)[1] == ["market_closed"]
+
+
+def test_earnings_inside_signal_horizon_skips_the_paid_review():
+    """A plan-less signal (momentum, 30-day horizon) with a report in 10 days would be refused by the
+    hard rule after the review; the pipeline refuses it first so the review slot isn't spent."""
+    from datetime import timedelta
+
+    from ctbot.strategies.registry import WeightedStrategy
+
+    class _Ctx:
+        def next_earnings(self, symbol):
+            return NOW + timedelta(days=10)
+
+        def for_symbol(self, symbol):
+            return {}
+
+    class _Counting(_Engine):
+        calls = 0
+
+        def evaluate(self, candidate, account):
+            _Counting.calls += 1
+            return super().evaluate(candidate, account)
+
+    sig = Signal("copy_trading", "KO", Direction.LONG, 1.0, 30)
+    strat = WeightedStrategy(_Strategy("copy_trading", [sig]), 0.5, standalone=True)
+    with tempfile.TemporaryDirectory() as d:
+        broker = PaperBroker(_MD(), 250.0, Path(d) / "ledger.json", slippage_bps=0, clock=lambda: NOW)
+        c = _components(broker, [strat])
+        c.engine, c.context = _Counting(), _Ctx()
+        run_cycle(c, _state(broker), NOW)
+    assert broker.positions() == [] and _Counting.calls == 0

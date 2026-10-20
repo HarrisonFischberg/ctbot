@@ -127,3 +127,24 @@ def test_library_entries_need_the_backtest_to_admit_them():
     assert v["lib_rsi2_etfs"]["status"] == "trading"
     assert v["lib_nr7_stocks"]["status"] == "benched" and "could be luck" in v["lib_nr7_stocks"]["reason"]
     assert v["lib_macd_etfs"]["status"] == "benched" and "not tested yet" in v["lib_macd_etfs"]["reason"]
+
+
+def test_autopilot_replaces_the_confidence_bar_and_restores_it_when_off():
+    from ctbot import autopilot
+    from ctbot.config import RiskLimits
+    from ctbot.models import Candidate, Decision, Direction, Quote, Signal
+    from ctbot.risk.manager import AccountState, RiskManager
+
+    rm = RiskManager(RiskLimits(min_claude_confidence=0.55))
+    cand = Candidate("KO", Direction.LONG, 0.5, (Signal("momentum", "KO", Direction.LONG, 1.0, 1),))
+    st = AccountState(10_000, 10_000, 10_000, 10_000, 0)
+
+    def reasons(conf, approve=True):
+        return rm.check_entry(cand, Decision(approve, conf, "", 500), st, Quote("KO", 60, 60, 60), 1e9,
+                              check_quote_age=False).reasons
+
+    assert any(r.startswith("confidence_") for r in reasons(0.42))
+    rm.min_confidence = autopilot.MIN_CONFIDENCE
+    assert not any(r.startswith("confidence_") for r in reasons(0.42))
+    assert any(r.startswith("confidence_") for r in reasons(0.25))
+    assert "claude_rejected" in reasons(0.42, approve=False)  # a no is still a no

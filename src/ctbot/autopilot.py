@@ -34,6 +34,11 @@ EXCLUDED = {
 }
 MIN_TRADES_TO_BENCH = 10
 BENCH_WINDOW_DAYS = 30
+# With a capped loss and a trailing exit, a trade pays when its expected value is positive, not when it
+# is more likely than not to win (trend entries win ~40% of the time). While the autopilot is on,
+# Claude's approval is the gate and its win probability only has to clear this floor instead of
+# MIN_CLAUDE_CONFIDENCE (Harold's choice, 2026-10-20).
+MIN_CONFIDENCE = 0.30
 LIMITS = {"max_loss_pct": (0.01, 0.25), "giveback_pct": (0.01, 0.30)}
 
 
@@ -121,3 +126,4 @@ def apply(c, state, cfg: AutopilotConfig, fills: list[dict[str, Any]], now: date
     state.sleeves, state.sleeve_used, state.sleeve_reserve = {}, {}, {}
     c.risk.max_loss_pct = cfg.max_loss_pct
     c.risk.trail_giveback = cfg.giveback_pct
+    c.risk.min_confidence = MIN_CONFIDENCE

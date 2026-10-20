@@ -87,6 +87,7 @@ class RiskManager:
         # Set each cycle by the autopilot (ctbot.autopilot); None = fixed brackets as before.
         self.max_loss_pct: float | None = None
         self.trail_giveback: float | None = None
+        self.min_confidence: float | None = None  # replaces MIN_CLAUDE_CONFIDENCE while set
 
     def liquidity_limits(self, candidate: Candidate) -> tuple[float, float]:
         """(min_share_price, min_avg_dollar_volume) for this candidate.
@@ -266,8 +267,9 @@ class RiskManager:
             reasons.append("kill_switch_active")
         if not decision.approve:
             reasons.append("claude_rejected")
-        if decision.confidence < L.min_claude_confidence:
-            reasons.append(f"confidence_{decision.confidence:.2f}_below_{L.min_claude_confidence}")
+        floor = L.min_claude_confidence if self.min_confidence is None else self.min_confidence
+        if decision.confidence < floor:
+            reasons.append(f"confidence_{decision.confidence:.2f}_below_{floor}")
         if candidate.symbol in held_symbols:
             reasons.append("already_held")
         plan = self.exit_plan(candidate)

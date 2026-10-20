@@ -100,7 +100,7 @@ def apply_launcher(c: Components, state: AccountState, positions: dict, now: dat
             fills = []
         autopilot.apply(c, state, ap, fills, now)
         return
-    c.risk.max_loss_pct = c.risk.trail_giveback = None
+    c.risk.max_loss_pct = c.risk.trail_giveback = c.risk.min_confidence = None
     path = c.settings.allocations_path
     used: dict[str, float] = {}
     open_gain: dict[str, float] = {}
@@ -439,7 +439,9 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
             c.reviewed.add(key)
             report = c.context.next_earnings(cand.symbol) if c.context else None
             plan = c.risk.exit_plan(cand)
-            if report and plan and now < report < datetime.fromisoformat(plan["exit_at"]):
+            horizon = max((s.horizon_days for s in longs), default=1.0)
+            planned_exit = datetime.fromisoformat(plan["exit_at"]) if plan else now + timedelta(days=horizon)
+            if report and now < report < planned_exit:
                 # the hard rule would refuse it anyway: skip the paid review
                 verdict = RiskVerdict(False, ("earnings_before_exit",))
                 log.info("rejected long %s: earnings_before_exit (%s)", cand.symbol, report.isoformat())
