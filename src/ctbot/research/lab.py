@@ -342,7 +342,7 @@ def simulate(lab: Lab, strat: Callable[[Lab, int], Weights], start: date, end: d
         months.setdefault((d.year, d.month), [v, v])[1] = v
     yr = [b / a - 1 for a, b in years.values()]
     mo = [b / a - 1 for a, b in months.values()]
-    cagr = (curve[-1][1] / capital) ** (1 / yrs) - 1
+    cagr = max(curve[-1][1] / capital, 0.0) ** (1 / yrs) - 1  # a wiped-out book is -100%, not complex
     mean = statistics.mean(rets) if rets else 0
     return Result(
         final=curve[-1][1], cagr=cagr, vol=sd * math.sqrt(252),
@@ -491,7 +491,7 @@ def walk_forward(lab: Lab, family: Callable[[int], Callable[[Lab, int], Weights]
         mdd = min(mdd, v / peak - 1)
     rets = [b[1] / a[1] - 1 for a, b in zip(curve, curve[1:])]
     sd = statistics.pstdev(rets)
-    return {"picks": picks, "cagr": (eq / 5000) ** (1 / yrs) - 1, "max_dd": mdd,
+    return {"picks": picks, "cagr": max(eq / 5000, 0.0) ** (1 / yrs) - 1, "max_dd": mdd,
             "sharpe": statistics.mean(rets) / sd * math.sqrt(252) if sd else None,
             "from": curve[0][0].isoformat(), "to": curve[-1][0].isoformat()}
 
@@ -538,7 +538,7 @@ def stress(windows: dict[str, tuple[str, str]] | None = None) -> dict[str, Any]:
                 mdd = min(mdd, eq / peak - 1)
             yrs = len(rets) / 252
             sd = statistics.pstdev(rets)
-            rows.append({"strategy": name, "cagr": eq ** (1 / yrs) - 1, "max_dd": mdd,
+            rows.append({"strategy": name, "cagr": max(eq, 0.0) ** (1 / yrs) - 1, "max_dd": mdd,
                          "sharpe": statistics.mean(rets) / sd * math.sqrt(252) if sd else None, "growth_of_5000": 5000 * eq})
         out[wname] = rows
     return out

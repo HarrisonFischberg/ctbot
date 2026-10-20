@@ -33,10 +33,45 @@ check refused every entry in CSV mode; the live ranker ran TopkDropout on the ac
 instead of its own picks (and `topk_dropout` could buy while above k); HALT blocked the core's
 risk-reducing trims; and the duplicate guard blocked a retry of an exit that didn't fill.
 
-## Performance claims
+## Real-data results (run 2026-10-20 on the operator's Mac)
 
-**No real-data performance claim is made in this change.** The only backtests run here used
-synthetic prices, to check the machinery:
+Dataset: Robinhood split-adjusted daily bars, no dividends, 1999-09-15 to 2026-10-16
+(`data/bars_cache`, fingerprint 33ea388d1a903dfc). Holdout (2023 onward) **not scored**.
+
+**Ranker** (`ctbot-rank-research`): SPY plus 60 of today's large caps (survivorship-biased), 16
+trials, dev to 2017-12-31 and validation 2018-2022, next-open fills, 4 bps per side.
+
+- No ranker variant beats equal weight after Benjamini-Hochberg (q=10%).
+- PBO 0.62: picking the best setting is more likely luck than skill.
+- Validation IC is about 0.00 for h=5 and 0.013 for h=21.
+- On dev, 12-1 momentum (15.9% CAGR, Sharpe 0.82) beat every ranker variant; the best was
+  k=3 h=5 at 11.7%, 0.70.
+- Validation CAGRs up to 22% came with -50% drawdowns, against -47.5% for momentum.
+
+Verdict: negative. The ranker stays in shadow and no model file is written; the holdout stays
+unspent.
+
+**Lab with next-close fills** (`ctbot-lab --lag 1`, 3.5% cash yield): out of sample 2010-2026,
+1999-2009 in sample; catalog PBO 0.16.
+
+| Strategy | OOS CAGR | Max DD | Sharpe | DSR |
+|---|---|---|---|---|
+| Vol-target QQQ 15% + trend | 15.9% | -13.2% | 1.14 | 0.96 |
+| Current allocation: 40% QQQ trend + 40% QLD capped + 20% cash | 20.0% | -21.0% | 1.11 | 0.97 |
+| Trend QQQ 170d, then QLD capped at 30% vol | 28.9% | -26.5% | 1.06 | 0.96 |
+| Current core: trend QQQ 170d | 19.0% | -24.2% | 1.06 | 0.96 |
+| Hold QQQ | 19.3% | -35.6% | 0.84 | 0.95 |
+
+The trend cores hold up when they trade one close after the signal, so the current allocation
+stands. 3x ETFs without a volatility cap lost 100% over the full sample. The lab printed a complex
+CAGR for those wiped-out rows; it is now clamped to -100%.
+
+There is no backtest of the Claude-reviewed short-term setups: an LLM can't be backtested without
+look-ahead, so they are measured only forward, in paper.
+
+## Synthetic checks
+
+The machinery was first checked on synthetic prices:
 
 - Planted-signal panel (40 stocks, 2012-2023, synthetic): the ranker found the signal
   (validation IC 0.13) and beat equal weight after FDR. Expected by construction; proves the
@@ -44,15 +79,9 @@ synthetic prices, to check the machinery:
 - Pure-noise panel (60 stocks, ~16 years, synthetic, 16 trials): no ranker variant beat equal
   weight after FDR (q=10%). Proves it doesn't invent one.
 
-Existing real-data results in `docs/strategy_research_2026-10-14.md` (Robinhood cache, IS/OOS,
-costs) are unchanged and were not re-run.
+## Reproducing
 
-## Blocker
-
-Real-data backtests need CTbot's price cache (`data/bars_cache/`), which lives only on the
-operator's Mac (gitignored). The build environment cannot reach any market-data host, and the
-connected TradingFlow feed holds under a year of daily bars, too short for a 3-year training
-window. To produce the evidence, either upload the cache folder to the project or run:
+Run on the machine that holds the price cache (the build environment cannot reach market data):
 
 ```bash
 .venv/bin/ctbot-fetch-bars --interval day --since 2010-01-01 \
@@ -74,10 +103,8 @@ Nothing changes live trading (`LIVE_TRADING_ENABLED=false`, `live/` untouched) o
 
 ## Recommended next steps (in order)
 
-1. Run the three commands above (or upload the cache) and read `data/research/ranker_report.json`:
-   keep the ranker in shadow only if a variant beats equal weight and momentum on validation, its
-   PBO is well under 0.5 and it survives FDR; then score the holdout once.
-2. Check `ctbot-lab --lag 1`: if the trend cores' out-of-sample results hold with next-close fills,
-   the current allocation stands; if not, revisit before adding capital.
+1. Leave the ranker in shadow; don't spend the holdout on it. Revisit with a broader,
+   point-in-time universe if one becomes available.
+2. Keep the trend-core allocation, which held up with next-close fills.
 3. After a week of measured spend, compare Haiku vs Opus reviews with `ctbot-score-ideas`; at $250
    capital, Haiku is the default worth testing.
