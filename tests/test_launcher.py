@@ -116,6 +116,12 @@ def test_launch_endpoints_validate_and_need_the_token(tmp_path):
         assert state["launcher"]["allocated"] == 1000.0
         assert post("/api/launch/stop", {"strategy": "trend_core"}) == 200
         assert allocations.stopping(s.allocations_path) == {"trend_core"}
+        from ctbot import autopilot  # the page's save keeps a floor it doesn't send
+
+        autopilot.save(s.autopilot_path, autopilot.AutopilotConfig(min_confidence=0.45))
+        assert post("/api/autopilot", {"enabled": True, "max_loss_pct": 0.05, "giveback_pct": 0.06}) == 200
+        assert autopilot.load(s.autopilot_path) == autopilot.AutopilotConfig(True, 0.05, 0.06, 0.45)
+        assert post("/api/autopilot", {"enabled": True, "max_loss_pct": 0.9, "giveback_pct": 0.06}) == 400
     finally:
         httpd.shutdown()
         httpd.server_close()
