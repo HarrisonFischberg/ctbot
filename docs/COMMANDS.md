@@ -42,7 +42,18 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
   sign-in in your browser; **Run check** tests every connection. Restart the bot after a change.
 - **Home**: portfolio value, a 4-step *Get started* checklist, and *Your strategies* (what you
   invested, value now, total return, Stop).
-- **Discover**: every strategy in plain words with its simulated return over the past 3, 6 or 12
+- **Autopilot**: turn it on and set two numbers: *max loss per trade* (how far below the fill a
+  new trade's starting stop may sit) and *give back from the high* (how far the trailing stop
+  follows below each position's highest price). Saved in `data/autopilot.json`; the bot reads it
+  every cycle. While on, every enabled strategy may trade on its own (day trades, overnight holds,
+  swings, the trend cores), except ones research rejected (the ranker) or that lost money over 10+
+  paper trades in the last 30 days (shown as benched, with the reason). Claude reviews each
+  non-systematic entry and sets its starting stop; those positions have no fixed take-profit, and
+  winners keep rolling past their usual exit time while they are up. The trend cores keep their own
+  backtested exits. The page also lists the latest decisions with Claude's reasons, and below it the
+  strategy library and research (the old Discover and Research tabs). Autopilot replaces Invest
+  runs while it is on. Paper only.
+- **Strategy library** (on Autopilot, formerly Discover): every strategy in plain words with its simulated return over the past 3, 6 or 12
   months next to the S&P 500. **Invest** asks for an amount, a max loss and a take-profit; that
   strategy then trades on its own with that much paper money (never more), and the bot sells and
   stops it when the max loss or take-profit is reached. Every other model only suggests ideas

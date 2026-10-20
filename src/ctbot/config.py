@@ -114,6 +114,10 @@ class Settings:
         return self.paper_ledger_path.with_name("allocations.json")
 
     @property
+    def autopilot_path(self) -> Path:  # Autopilot page: on/off, max loss per trade, give-back (ctbot.autopilot)
+        return self.paper_ledger_path.with_name("autopilot.json")
+
+    @property
     def ideas_path(self) -> Path:
         return self.paper_ledger_path.with_name("ideas.jsonl")
 

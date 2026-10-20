@@ -60,7 +60,7 @@ def plan(settings: Settings, day: date, now: datetime | None = None) -> dict[str
             continue
         cls = t.get("class", name)
         models.append({"model": name, "mode": t.get("mode", "trade"), "schedule": SCHEDULE.get(cls, "every cycle"),
-                       "reviewed_by_claude": not cls.startswith(("trend_core", "orb_sip", "ranker"))})
+                       "reviewed_by_claude": not cls.startswith(("trend_core", "ranker"))})
     trading = [m["model"] for m in models if m["mode"] == "trade"]
     if not trading:
         reasons.append("no model is in trade mode (all watching)")

@@ -5,6 +5,7 @@ The executor is injected by the entrypoint. This module must not import ctbot.li
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections import Counter
@@ -14,7 +15,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
-from ctbot import allocations, llm_costs, market_hours
+from ctbot import allocations, autopilot, llm_costs, market_hours
 from ctbot.aggregation.ensemble import combine
 from ctbot.config import Settings
 from ctbot.contracts import (
@@ -91,6 +92,15 @@ def apply_launcher(c: Components, state: AccountState, positions: dict, now: dat
     an empty data/allocations.json hands control back to strategies.toml."""
     if c.configured is None:
         c.configured = list(c.strategies)
+    ap = autopilot.load(c.settings.autopilot_path)
+    if ap.enabled and not c.executor.is_live:  # paper only: replaces the launcher
+        try:
+            fills = json.loads(c.settings.paper_ledger_path.read_text()).get("fills", [])
+        except (OSError, ValueError):
+            fills = []
+        autopilot.apply(c, state, ap, fills, now)
+        return
+    c.risk.max_loss_pct = c.risk.trail_giveback = None
     path = c.settings.allocations_path
     used: dict[str, float] = {}
     open_gain: dict[str, float] = {}
@@ -298,6 +308,9 @@ def manage_positions(c: Components, state: AccountState, now: datetime) -> None:
     positions = {p.symbol: p for p in c.executor.positions()}
     for sym, pos in list(positions.items()):
         quote = c.market_data.quotes([sym]).get(sym)
+        if quote and c.risk.trail(state, sym, quote.bid):
+            b = state.brackets[sym]
+            log.info("trail %s: new high %.2f, stop raised to %.2f", sym, b["peak"], b["stop"])
         report = c.context.next_earnings(sym) if c.context else None
         if quote and c.risk.maybe_swing(state, pos, quote, now, report):
             b = state.brackets[sym]
@@ -439,6 +452,11 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                 "max_open_positions": c.settings.risk.max_open_positions,
                 "held_symbols": sorted(held),
             }
+            if c.risk.trail_giveback:
+                account["exit_policy"] = (
+                    f"autopilot: trailing stop, no fixed take-profit. Your stop_loss_pct sets the starting stop "
+                    f"(at most {c.risk.max_loss_pct:.0%}) and the trail distance below the highest price "
+                    f"(at most {c.risk.trail_giveback:.0%}); pick it from the stock's normal volatility")
             if systematic:
                 # mechanical allocation rule: no Claude review; every hard risk check still runs
                 decision = Decision(True, 1.0, "systematic rule (no review)", 0.0)
