@@ -1,0 +1,47 @@
+# Side-by-side paper books (ctbot.variants). The paper bot runs each one after the main book, with
+# the same market data and the same Claude verdicts, so the only difference is the settings below.
+# Each starts with STARTING_CAPITAL (from .env) and keeps its files in data/variants/<name>/.
+# Results: the Autopilot page's "Settings test" card, or `.venv/bin/ctbot-variants`.
+#
+# autopilot = max_loss_pct (starting stop, at most this far below the fill), giveback_pct (trailing
+#             stop distance below the high), min_confidence (Claude's approval needs at least this).
+# env       = other settings for this book only (see ALLOWED_ENV in src/ctbot/variants.py).
+# Each book below changes ONE thing from "base", so a difference in results points at that setting.
+# Delete a book's folder to restart it from scratch; set enabled = false to stop them all.
+
+enabled = true
+
+[base]
+title = "Base: 8% stop, 8% trail"
+autopilot = { max_loss_pct = 0.08, giveback_pct = 0.08, min_confidence = 0.30 }
+
+[trail_4]
+title = "Tight trail (4%)"
+autopilot = { max_loss_pct = 0.08, giveback_pct = 0.04, min_confidence = 0.30 }
+
+[trail_12]
+title = "Loose trail (12%)"
+autopilot = { max_loss_pct = 0.08, giveback_pct = 0.12, min_confidence = 0.30 }
+
+[stop_4]
+title = "Tight starting stop (4%)"
+autopilot = { max_loss_pct = 0.04, giveback_pct = 0.08, min_confidence = 0.30 }
+
+[claude_55]
+title = "Pickier Claude (55% confidence)"
+autopilot = { max_loss_pct = 0.08, giveback_pct = 0.08, min_confidence = 0.55 }
+
+[concentrated]
+title = "Fewer, bigger positions (4 at up to 40%)"
+autopilot = { max_loss_pct = 0.08, giveback_pct = 0.08, min_confidence = 0.30 }
+env = { MAX_OPEN_POSITIONS = "4", MAX_POSITION_PCT = "0.40" }
+
+[more_ideas]
+title = "Review twice as many ideas (16 a cycle)"
+autopilot = { max_loss_pct = 0.08, giveback_pct = 0.08, min_confidence = 0.30 }
+env = { MAX_CANDIDATES_PER_CYCLE = "16" }
+
+[sonnet]
+title = "Sonnet 5.5 reviews instead of Haiku"
+autopilot = { max_loss_pct = 0.08, giveback_pct = 0.08, min_confidence = 0.30 }
+env = { CLAUDE_MODEL = "claude-sonnet-5-5", MAX_CLAUDE_USD_PER_DAY = "2.00" }

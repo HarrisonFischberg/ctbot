@@ -11,6 +11,7 @@ are not read, and the Robinhood account number is reduced to its last 4 digits.
 from __future__ import annotations
 
 import json
+import logging
 from collections import deque
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -20,6 +21,8 @@ from typing import Any
 from ctbot import manual_queue, market_hours
 from ctbot.config import Settings, load_universe
 from ctbot.models import Quote
+
+log = logging.getLogger(__name__)
 
 QuotesFn = Callable[[list[str]], dict[str, Quote]]
 
@@ -244,6 +247,17 @@ def _strategies(path: Path) -> list[dict[str, Any]]:
     ]
 
 
+def _variants(settings: Settings) -> list[dict[str, Any]]:
+    """The side-by-side paper books (config/variants.toml) next to the main one."""
+    from ctbot import variants
+
+    try:
+        return variants.summary(settings)
+    except Exception:  # noqa: BLE001 - a results table must never break the page
+        log.exception("variants summary failed")
+        return []
+
+
 def _autopilot(settings: Settings, strategies: list[dict[str, Any]], fills: list[dict[str, Any]],
                now: datetime) -> dict[str, Any]:
     """Autopilot page: the two knobs, and which models it lets trade now and why."""
@@ -357,6 +371,7 @@ def build_state(
         "bot": _bot_status(settings, now),
         "ideas": _ideas(settings),
         "autopilot": _autopilot(settings, _strategies(settings.strategies_file), ledger.get("fills", []), now),
+        "variants": _variants(settings),
         "manual_orders": _manual_activity(settings),
         "collective2": _c2(),
         "research": _research(),

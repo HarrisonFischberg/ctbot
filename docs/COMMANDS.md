@@ -53,6 +53,13 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
   backtested exits. The page also lists the latest decisions with Claude's reasons, and below it the
   strategy library and research (the old Discover and Research tabs). Autopilot replaces Invest
   runs while it is on. Paper only.
+- **Settings test**: `config/variants.toml` lists extra $10,000 paper accounts that the paper bot
+  runs next to the main one, each changing one setting (trail, starting stop, Claude's confidence
+  floor, position count, ideas per cycle, reviewer model). They share the bot's market data and
+  Claude's verdicts, so they add almost no data calls or cost. Each keeps its files in
+  `data/variants/<name>/`; `data/HALT` stops entries in all of them. The Autopilot page's *Settings
+  test* card and `.venv/bin/ctbot-variants` compare them. Edit the file and restart the bot to change
+  them; delete a folder to restart that account; `enabled = false` turns them off.
 - **Strategy library growth**: `ctbot.library` adds 12 published rule families (52-week high,
   channel breakout, pullback, Bollinger dip, NR7, gap-down reversal, golden cross, MACD, three down
   days, volume breakout, relative strength, RSI(2)) on two universes (index/sector funds, 60 large

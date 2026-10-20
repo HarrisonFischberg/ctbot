@@ -45,7 +45,8 @@ class _Engine:
 
 def _components(broker, strategies, entry_mode="auto"):
     return Components(
-        settings=Settings.from_env({"ENTRY_MODE": entry_mode}),
+        # the broker's temp folder, so a real data/autopilot.json can't leak into these tests
+        settings=Settings.from_env({"ENTRY_MODE": entry_mode, "PAPER_LEDGER_PATH": str(broker.ledger_path)}),
         market_data=_MD(),
         providers=[],
         strategies=strategies,

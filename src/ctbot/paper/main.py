@@ -20,7 +20,7 @@ from ctbot.contracts import Journal  # noqa: E402
 from ctbot.decision.engine import ClaudeDecisionEngine  # noqa: E402
 from ctbot.market_data.csv_provider import CsvMarketData  # noqa: E402
 from ctbot.paper.simulator import PaperBroker  # noqa: E402
-from ctbot import manual_queue, market_hours  # noqa: E402
+from ctbot import manual_queue, market_hours, variants  # noqa: E402
 from ctbot.pipeline import Components, manage_positions, process_manual_order, run_cycle  # noqa: E402
 from ctbot.providers.registry import build_providers  # noqa: E402
 from ctbot.risk.manager import (  # noqa: E402
@@ -129,6 +129,15 @@ def main() -> None:
     load_account_state(state, settings.paper_risk_state_path)
 
     log = logging.getLogger("ctbot.paper")
+    # Side-by-side books (config/variants.toml): same data and Claude verdicts, their own settings.
+    components.providers = variants.cached(components.providers)
+    reviews: dict = {}
+    components.engine = variants.SharedReviews(components.engine, reviews)
+    try:
+        books = variants.build(components, reviews)
+    except ValueError as e:
+        log.error("config/variants.toml: %s; running the main book only", e)
+        books = []
     log.info("paper loop started: entry_mode=%s market_data=%s", settings.entry_mode,
              settings.market_data)
 
@@ -145,8 +154,9 @@ def main() -> None:
         from ctbot import secret_store, tuning
 
         if secret_store.reload_if_changed():
-            components.engine._client = None  # next review builds a client with the new key
-            components.providers = build_providers(list(settings.providers), dict(os.environ))
+            for eng in [components.engine] + [b.components.engine for b in books]:
+                eng.reset_client()  # next review builds a client with the new key
+            components.providers = variants.cached(build_providers(list(settings.providers), dict(os.environ)))
             if components.context is not None:
                 components.context.news = _news()
             log.info("settings changed on the dashboard: API keys reloaded")
@@ -167,11 +177,12 @@ def main() -> None:
             except Exception:  # noqa: BLE001 - a half-edited file: keep the current modes
                 log.exception("strategies.toml changed but could not be read; keeping the current modes")
                 return
-            if components.configured is not None:  # the launcher re-derives what trades from these
-                components.configured = with_modes(components.configured, cfg)
-                components.launched = None
-            else:
-                components.strategies = with_modes(components.strategies, cfg)
+            for c in [components] + [b.components for b in books]:
+                if c.configured is not None:  # the launcher re-derives what trades from these
+                    c.configured = with_modes(c.configured, cfg)
+                    c.launched = None
+                else:
+                    c.strategies = with_modes(c.strategies, cfg)
             log.info("strategy modes reloaded: %s", ", ".join(
                 f"{ws.strategy.name}={ws.mode}" for ws in (components.configured or components.strategies)))
 
@@ -211,9 +222,11 @@ def main() -> None:
     def cycle() -> None:
         refresh_state()
         # run_cycle -> RiskManager.refresh updates peak, rolls the day, trips the kill switch.
-        run_cycle(components, state, datetime.now(timezone.utc))
+        now = datetime.now(timezone.utc)
+        run_cycle(components, state, now)
         save_account_state(state, settings.paper_risk_state_path)
         _record_equity(settings, broker)
+        variants.run(books, components, now, _record_equity)
 
     def wait_for_open() -> None:
         """Market closed: no cycles, no quotes, and the Mac may sleep. Dashboard clicks are still
@@ -242,9 +255,11 @@ def main() -> None:
         next_check = time.monotonic() + 30
         while time.monotonic() < deadline and market_open():  # dashboard clicks run within ~2s
             guarded(handle_clicks, "dashboard clicks")
-            if time.monotonic() >= next_check and broker.positions():
-                guarded(lambda: (refresh_state(), manage_positions(components, state, datetime.now(timezone.utc)),
-                                 save_account_state(state, settings.paper_risk_state_path)), "position check")
+            if time.monotonic() >= next_check:
+                if broker.positions():
+                    guarded(lambda: (refresh_state(), manage_positions(components, state, datetime.now(timezone.utc)),
+                                     save_account_state(state, settings.paper_risk_state_path)), "position check")
+                variants.manage(books, datetime.now(timezone.utc))
                 next_check = time.monotonic() + 30
             time.sleep(2)
 

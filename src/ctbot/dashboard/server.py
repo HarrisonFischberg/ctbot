@@ -321,10 +321,11 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
         if current_settings().mode.value != "paper":
             return 400, {"error": "the autopilot is paper only"}
         try:
-            cfg = autopilot.validate(body)
+            path = current_settings().autopilot_path  # keep fields the page doesn't send (min_confidence)
+            cfg = autopilot.validate({**asdict(autopilot.load(path)), **body})
         except (TypeError, ValueError) as e:
             return 400, {"error": str(e)}
-        autopilot.save(current_settings().autopilot_path, cfg)
+        autopilot.save(path, cfg)
         log.info("autopilot: %s, max loss %.0f%%, give-back %.0f%%", "on" if cfg.enabled else "off",
                  cfg.max_loss_pct * 100, cfg.giveback_pct * 100)
         return 200, {"ok": True, "enabled": cfg.enabled, "max_loss_pct": cfg.max_loss_pct, "giveback_pct": cfg.giveback_pct}

@@ -94,7 +94,7 @@ def test_end_to_end_buy_once_tagged_then_time_exit():
     md, engine = _MD(100.0), _Engine()
     with tempfile.TemporaryDirectory() as d:
         broker = PaperBroker(md, 250.0, Path(d) / "l.json", slippage_bps=0, clock=lambda: now)
-        settings = Settings.from_env({"ENTRY_MODE": "auto", "MIN_AGREEING_STRATEGIES": "2"})
+        settings = Settings.from_env({"PAPER_LEDGER_PATH": str(broker.ledger_path), "ENTRY_MODE": "auto", "MIN_AGREEING_STRATEGIES": "2"})
         c = Components(settings, md, [], [WeightedStrategy(_Fixed(exit_at), 1.0, standalone=True),
                                           WeightedStrategy(_MeanRevExit(), 0.75)],
                        engine, RiskManager(settings.risk), broker, ["KO"])
@@ -195,7 +195,7 @@ def test_daily_claude_review_budget():
     with tempfile.TemporaryDirectory() as d:
         md = _MD(100.0)
         broker = PaperBroker(md, 250.0, Path(d) / "l.json", clock=lambda: now)
-        settings = Settings.from_env({"ENTRY_MODE": "manual", "MAX_CLAUDE_REVIEWS_PER_DAY": "2"})
+        settings = Settings.from_env({"PAPER_LEDGER_PATH": str(broker.ledger_path), "ENTRY_MODE": "manual", "MAX_CLAUDE_REVIEWS_PER_DAY": "2"})
         c = Components(settings, md, [], [WeightedStrategy(_Many(), 1.0, standalone=True)], engine,
                        RiskManager(settings.risk), broker, syms, recorder=ideas.append)
         run_cycle(c, AccountState(250, 250, 250, 250, 0), now)
@@ -218,7 +218,7 @@ def test_per_model_review_cap():
     with tempfile.TemporaryDirectory() as d:
         md = _MD(100.0)
         broker = PaperBroker(md, 250.0, Path(d) / "l.json", clock=lambda: now)
-        settings = Settings.from_env({"ENTRY_MODE": "manual", "MAX_REVIEWS_PER_MODEL_PER_DAY": "1",
+        settings = Settings.from_env({"PAPER_LEDGER_PATH": str(broker.ledger_path), "ENTRY_MODE": "manual", "MAX_REVIEWS_PER_MODEL_PER_DAY": "1",
                                       "MAX_CANDIDATES_PER_CYCLE": "10"})
         c = Components(settings, md, [], [WeightedStrategy(_Model("vwap_revert", ["KO", "PEP"]), 1.0, standalone=True),
                                           WeightedStrategy(_Model("orb", ["XLE"]), 1.0, standalone=True)],
@@ -241,7 +241,7 @@ def test_model_exit_only_closes_its_own_positions():
         broker = PaperBroker(md, 250.0, Path(d) / "l.json", slippage_bps=0, clock=lambda: now)
         broker._positions["KO"] = Position("KO", 0.5, 100.0, now)
         broker._positions["PEP"] = Position("PEP", 0.5, 100.0, now)
-        settings = Settings.from_env({"ENTRY_MODE": "auto"})
+        settings = Settings.from_env({"PAPER_LEDGER_PATH": str(broker.ledger_path), "ENTRY_MODE": "auto"})
         c = Components(settings, md, [], [WeightedStrategy(_Exit(), 1.0, standalone=True)], _Engine(),
                        RiskManager(settings.risk), broker, ["KO", "PEP"])
         st = AccountState(250, 200, 250, 250, 2, brackets={

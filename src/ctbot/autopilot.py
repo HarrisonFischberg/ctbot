@@ -37,9 +37,9 @@ BENCH_WINDOW_DAYS = 30
 # With a capped loss and a trailing exit, a trade pays when its expected value is positive, not when it
 # is more likely than not to win (trend entries win ~40% of the time). While the autopilot is on,
 # Claude's approval is the gate and its win probability only has to clear this floor instead of
-# MIN_CLAUDE_CONFIDENCE (Harold's choice, 2026-10-20).
+# MIN_CLAUDE_CONFIDENCE (Harold's choice, 2026-10-20). Settable per book in autopilot.json.
 MIN_CONFIDENCE = 0.30
-LIMITS = {"max_loss_pct": (0.01, 0.25), "giveback_pct": (0.01, 0.30)}
+LIMITS = {"max_loss_pct": (0.01, 0.25), "giveback_pct": (0.01, 0.30), "min_confidence": (0.10, 0.90)}
 
 
 @dataclass(frozen=True)
@@ -47,6 +47,7 @@ class AutopilotConfig:
     enabled: bool = False
     max_loss_pct: float = 0.05
     giveback_pct: float = 0.08
+    min_confidence: float = MIN_CONFIDENCE
 
 
 def load(path: Path) -> AutopilotConfig:
@@ -126,4 +127,4 @@ def apply(c, state, cfg: AutopilotConfig, fills: list[dict[str, Any]], now: date
     state.sleeves, state.sleeve_used, state.sleeve_reserve = {}, {}, {}
     c.risk.max_loss_pct = cfg.max_loss_pct
     c.risk.trail_giveback = cfg.giveback_pct
-    c.risk.min_confidence = MIN_CONFIDENCE
+    c.risk.min_confidence = cfg.min_confidence

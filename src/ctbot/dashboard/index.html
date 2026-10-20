@@ -628,6 +628,13 @@ main:focus { outline: none; }
       <div id="apDecisions" class="xscroll"></div>
     </div>
 
+    <div data-tab="trading" class="card span-12" id="varCard" hidden>
+      <h2>Settings test <span class="count" id="varMeta"></span></h2>
+      <p class="explain">Extra $10,000 paper accounts running next to yours on the same prices and the same Claude verdicts.
+        Each changes one setting, so after a week or two the best settings stand out. Set them in <code>config/variants.toml</code>.</p>
+      <div id="variants" class="xscroll"></div>
+    </div>
+
     <div data-tab="activity" class="card span-12 ideas">
       <h2>Bot's trade ideas <span class="count" id="ideaCount"></span></h2>
       <div class="seg ideaseg" role="group" aria-label="Show ideas" id="ideaSeg"></div>
@@ -1924,6 +1931,22 @@ main:focus { outline: none; }
         <td><div class="clamp2">${esc((i.decision && i.decision.rationale) || (i.risk && i.risk.reasons && i.risk.reasons.join(", ")) || "")}</div></td></tr>`).join("")}</tbody></table>`
       : `<div class="empty" style="height:60px">No decisions yet: they appear here once the market opens.</div>`;
   }
+  function renderVariants() {
+    const V = S.variants || [];
+    $("varCard").hidden = V.length < 2;
+    if (V.length < 2) return;
+    const since = V.map((v) => v.since).filter(Boolean).sort()[0];
+    $("varMeta").textContent = `${V.length} accounts${since ? ` · since ${fmtTime(since)}` : ""}`;
+    const extra = (v) => Object.entries(v.env || {}).filter(([k]) => k !== "CLAUDE_MODEL" || v.name !== "main")
+      .map(([k, x]) => `${k.toLowerCase().replaceAll("_", " ")} ${x}`).join(" · ");
+    $("variants").innerHTML = `<table class="tbl lib"><thead><tr><th>Account</th><th class="r">Value</th><th class="r">Return</th>
+      <th class="r">Worst drop</th><th class="r">Trades</th><th class="r">Won</th><th class="r">Open</th><th>Max loss · trail · Claude floor</th></tr></thead><tbody>${
+      V.map((v) => `<tr><td class="sym">${esc(v.title)}</td><td class="r">${usd(v.equity, 0)}</td>
+        <td class="r ${dir(v.return)}">${sgnPct(v.return, 1)}</td><td class="r">${pct(v.max_dd, 1)}</td><td class="r">${v.trades}</td>
+        <td class="r">${v.win_rate == null ? "–" : pct(v.win_rate, 0)}</td><td class="r">${v.open}</td>
+        <td class="why">${pct(v.max_loss_pct, 0)} · ${pct(v.giveback_pct, 0)} · ${pct(v.min_confidence, 0)}${extra(v) ? " · " + esc(extra(v)) : ""}</td></tr>`).join("")
+    }</tbody></table>`;
+  }
   ["apOn", "apLoss", "apGive"].forEach((id) => $(id).addEventListener("input", () => (apDirty = true)));
   $("apForm").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1936,7 +1959,7 @@ main:focus { outline: none; }
     toast(j.enabled ? `Autopilot on: max loss ${pct(j.max_loss_pct, 1)}, give-back ${pct(j.giveback_pct, 1)}. The bot picks it up next cycle.` : "Autopilot off");
   });
   function renderAll() {
-    renderChrome(); renderAutopilot(); renderKpis(); renderIdeas(); renderChart(); renderLimits(); renderPositions();
+    renderChrome(); renderAutopilot(); renderVariants(); renderKpis(); renderIdeas(); renderChart(); renderLimits(); renderPositions();
     renderWatchlist(); renderFills(); renderStrategies(); renderLog(); renderC2(); renderModels(); renderFilterScore(); renderLab();
     renderRuns(); renderCatalog(); renderCompare(); renderStressWF(); renderSteps();
     loadPx();
