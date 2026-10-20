@@ -60,7 +60,8 @@ def score_idea(idea: dict[str, Any], bars: list) -> dict[str, Any] | None:
     d = idea.get("decision") or {}
     return {
         "id": idea["id"], "ts": idea["ts"], "symbol": idea["symbol"], "model": plan["model"],
-        "approved": bool(d.get("approve")), "confidence": d.get("confidence"), "status": idea.get("status"),
+        "approved": bool(d.get("approve")), "reviewed": bool(d), "confidence": d.get("confidence"),
+        "status": idea.get("status"),
         "entry": entry, "exit": px, "exit_reason": why,
         "net_ret": px * (1 - c) / (entry * (1 + c)) - 1,
     }
@@ -69,8 +70,10 @@ def score_idea(idea: dict[str, Any], bars: list) -> dict[str, Any] | None:
 def summarize(scores: list[dict[str, Any]]) -> dict[str, Any]:
     groups: dict[str, dict[str, list[float]]] = defaultdict(lambda: {"approved": [], "rejected": []})
     for s in scores:
-        groups[s["model"]]["approved" if s["approved"] else "rejected"].append(s["net_ret"])
-        groups["all"]["approved" if s["approved"] else "rejected"].append(s["net_ret"])
+        # ideas saved without a review (shadow models) are kept apart so they don't dilute "rejected"
+        key = "approved" if s["approved"] else "rejected" if s.get("reviewed", True) else "unreviewed"
+        for g in (s["model"], "all"):
+            groups[g].setdefault(key, []).append(s["net_ret"])
 
     def stat(r):
         return {"n": len(r), "avg_bps": statistics.mean(r) * 1e4 if r else None,

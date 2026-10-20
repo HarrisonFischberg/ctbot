@@ -258,12 +258,36 @@ def test_shadow_model_is_reviewed_and_recorded_but_not_traded():
     with tempfile.TemporaryDirectory() as d:
         md = _MD(100.0)
         broker = PaperBroker(md, 250.0, Path(d) / "l.json", clock=lambda: now)
-        settings = Settings.from_env({"ENTRY_MODE": "auto"})
+        settings = Settings.from_env({"ENTRY_MODE": "auto", "REVIEW_SHADOW_IDEAS": "true",
+                                      "PAPER_LEDGER_PATH": str(Path(d) / "l.json")})
         c = Components(settings, md, [], [WeightedStrategy(_Fixed(exit_at), 1.0, standalone=True, mode="shadow")],
                        engine, RiskManager(settings.risk), broker, ["KO"], recorder=ideas.append)
         run_cycle(c, AccountState(250, 250, 250, 250, 0), now)
     assert engine.calls == 1 and broker._fills == []
     assert [(i["symbol"], i["status"], i["risk"]["allowed"]) for i in ideas] == [("KO", "shadow", True)]
+
+
+def test_shadow_ideas_are_not_reviewed_by_default_and_spend_cap_stops_reviews():
+    import json
+
+    exit_at = datetime(2026, 10, 13, 19, 50, tzinfo=timezone.utc).isoformat()
+    now = datetime(2026, 10, 13, 15, tzinfo=timezone.utc)
+    with tempfile.TemporaryDirectory() as d:
+        md = _MD(100.0)
+        settings = Settings.from_env({"ENTRY_MODE": "auto", "PAPER_LEDGER_PATH": str(Path(d) / "l.json")})
+        engine, ideas = _Engine(), []
+        broker = PaperBroker(md, 250.0, Path(d) / "l.json", clock=lambda: now)
+        c = Components(settings, md, [], [WeightedStrategy(_Fixed(exit_at), 1.0, standalone=True, mode="shadow")],
+                       engine, RiskManager(settings.risk), broker, ["KO"], recorder=ideas.append)
+        run_cycle(c, AccountState(250, 250, 250, 250, 0), now)
+        assert engine.calls == 0 and [i["status"] for i in ideas] == ["shadow_unreviewed"]
+        # a trading model is reviewed until today's logged spend reaches the cap
+        settings.llm_usage_path.write_text(json.dumps({"day": "2026-10-13", "usd": 5.0}) + "\n")
+        engine2, ideas2 = _Engine(), []
+        c2 = Components(settings, md, [], [WeightedStrategy(_Fixed(exit_at), 1.0, standalone=True, mode="trade")],
+                        engine2, RiskManager(settings.risk), broker, ["KO"], recorder=ideas2.append)
+        run_cycle(c2, AccountState(250, 250, 250, 250, 0), now)
+        assert engine2.calls == 0 and [i["status"] for i in ideas2] == ["review_budget_used"]
 
 
 def test_registry_rejects_bad_mode():

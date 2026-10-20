@@ -16,6 +16,7 @@ import time  # noqa: E402
 from datetime import datetime, timezone  # noqa: E402
 
 from ctbot.config import Settings, load_universe  # noqa: E402
+from ctbot.contracts import Journal  # noqa: E402
 from ctbot.decision.engine import ClaudeDecisionEngine  # noqa: E402
 from ctbot.market_data.csv_provider import CsvMarketData  # noqa: E402
 from ctbot.paper.simulator import PaperBroker  # noqa: E402
@@ -108,12 +109,14 @@ def main() -> None:
         market_data=md,
         providers=build_providers(list(settings.providers), dict(os.environ)),
         strategies=strategies,
-        engine=ClaudeDecisionEngine(settings.claude_model, settings.claude_effort),
+        engine=ClaudeDecisionEngine(settings.claude_model, settings.claude_effort,
+                                    usage_path=settings.llm_usage_path),
         risk=RiskManager(settings.risk, strategy_risk_overrides(strategies)),
         executor=broker,
         universe=load_universe(settings.universe_file),
         recorder=lambda idea: manual_queue._append(settings.ideas_path, idea),
         context=context,
+        journal=Journal(settings.journal_path),
     )
     equity = broker.equity()
     state = AccountState(

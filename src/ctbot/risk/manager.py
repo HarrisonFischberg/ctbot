@@ -258,6 +258,8 @@ class RiskManager:
         if quote is None:
             reasons.append("no_quote")
         else:
+            if now is not None and (now - quote.ts).total_seconds() > L.max_quote_age_s:
+                reasons.append("stale_quote")  # the pipeline and dashboard path always pass now
             if quote.last < min_price:
                 reasons.append("price_below_min")
             if quote.bid <= 0 or quote.ask <= 0 or quote.ask < quote.bid:

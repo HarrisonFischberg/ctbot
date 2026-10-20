@@ -60,6 +60,7 @@ class RiskLimits:
     swing_min_profit_pct: float = 0.01    # hold a model trade past its exit if up at least this much
     swing_max_days: int = 2               # extra sessions a winner may be held (0 disables)
     model_max_losing_streak: int = 3      # pause a model for the day after this many losses in a row
+    max_quote_age_s: float = 120.0        # entries refuse a quote older than this (stale data)
 
 
 
@@ -78,6 +79,10 @@ class Settings:
     max_claude_reviews_per_day: int = 40  # API cost cap; later candidates are skipped
     max_reviews_per_model_per_day: int = 15  # so one noisy model can't use the whole budget
     max_assistant_messages_per_day: int = 100  # dashboard assistant chats; separate from reviews
+    max_claude_usd_per_day: float = 1.0   # estimated review spend (data/llm_usage.jsonl); then no more reviews
+    review_shadow_ideas: bool = False     # pay for Claude reviews of ideas from shadow-only models
+    review_outcome_memory: bool = True    # show the reviewer each model's settled paper results (no LLM)
+    review_debate: bool = False           # two extra short calls (case for / against) before the verdict
     starting_capital: float = 250.0
     risk: RiskLimits = RiskLimits()
     ensemble: EnsembleParams = EnsembleParams()
@@ -111,6 +116,20 @@ class Settings:
     @property
     def ideas_path(self) -> Path:
         return self.paper_ledger_path.with_name("ideas.jsonl")
+
+    @property
+    def llm_usage_path(self) -> Path:
+        return self.paper_ledger_path.with_name("llm_usage.jsonl")
+
+    @property
+    def journal_path(self) -> Path:
+        """Decision journal: snapshot -> strategy results -> proposed order -> outcome (ctbot.contracts)."""
+        return self.paper_ledger_path.with_name("journal.jsonl")
+
+    @property
+    def halt_path(self) -> Path:
+        """Kill-switch file: while it exists, no new entries are submitted (exits still run)."""
+        return self.paper_ledger_path.with_name("HALT")
 
     @property
     def manual_orders_path(self) -> Path:
@@ -176,6 +195,7 @@ class Settings:
             swing_min_profit_pct=_float(env, "SWING_MIN_PROFIT_PCT", 0.01),
             swing_max_days=_int(env, "SWING_MAX_DAYS", 2),
             model_max_losing_streak=_int(env, "MODEL_MAX_LOSING_STREAK", 3),
+            max_quote_age_s=_float(env, "MAX_QUOTE_AGE_S", 120.0),
         )
         ensemble = EnsembleParams(
             min_long_score=_float(env, "MIN_LONG_SCORE", 0.15),
@@ -197,6 +217,10 @@ class Settings:
             max_claude_reviews_per_day=_int(env, "MAX_CLAUDE_REVIEWS_PER_DAY", 40),
             max_reviews_per_model_per_day=_int(env, "MAX_REVIEWS_PER_MODEL_PER_DAY", 15),
             max_assistant_messages_per_day=_int(env, "MAX_ASSISTANT_MESSAGES_PER_DAY", 100),
+            max_claude_usd_per_day=_float(env, "MAX_CLAUDE_USD_PER_DAY", 1.0),
+            review_shadow_ideas=_bool(env, "REVIEW_SHADOW_IDEAS", False),
+            review_outcome_memory=_bool(env, "REVIEW_OUTCOME_MEMORY", True),
+            review_debate=_bool(env, "REVIEW_DEBATE", False),
             starting_capital=_float(env, "STARTING_CAPITAL", 250.0),
             risk=risk,
             ensemble=ensemble,

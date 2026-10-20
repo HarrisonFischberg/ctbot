@@ -1365,6 +1365,7 @@ main:focus { outline: none; }
       too_close_to_close: `<span class="tag off">near close</span>`,
       review_budget_used: `<span class="tag off">review budget used</span>`,
       shadow: `<span class="tag q">shadow · not traded</span>`,
+      shadow_unreviewed: `<span class="tag q">shadow · not reviewed</span>`,
     })[i.status] || `<span class="tag">${esc(i.status)}</span>`;
   }
   const REASON = {  // risk-check codes in words
@@ -1384,6 +1385,7 @@ main:focus { outline: none; }
     if (i.status === "auto_submitted") return ["bought", long ? "Auto-bought" : "Auto-sold", long ? "The bot bought it: every check passed." : "The bot sold it on its exit rule."];
     if (i.status === "recommended") return ["rec", "★ Recommended", "Passed every check. Buy it below if you want it."];
     if (i.status === "shadow") return ["watch", "Watching only", "It passed, but this strategy isn't invested, so nothing was bought."];
+    if (i.status === "shadow_unreviewed") return ["watch", "Watching only", "This strategy isn't invested, so the idea was saved without a paid AI review."];
     if (i.status === "too_close_to_close") return ["blocked", "Too late", "Too close to the market close to buy."];
     if (i.status === "review_budget_used") return ["blocked", "Skipped", "Claude's review limit for today was used up."];
     if ((d && !d.approve) || rs.includes("claude_rejected")) return ["no", "AI said no", d && d.rationale ? d.rationale : "Claude didn't approve it."];
