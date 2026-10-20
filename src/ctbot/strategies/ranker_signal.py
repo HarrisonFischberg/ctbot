@@ -10,6 +10,12 @@ Systematic: no Claude review (no LLM cost); every hard risk check still applies.
 mode: it records ideas for the forward paper comparison and never trades unless you switch it to
 trade on the dashboard. Without a model file it does nothing. A model file never changes its own
 mode, and a newer model is only picked up after the file is replaced and the bot restarted.
+
+TopkDropout runs on the model's own book (ranker_book.json next to the model file): the names it
+picked at the last rebalance, persisted across restarts, not every position the account holds. A
+rebalance emits EXIT for book names that dropped out (including names that lost their score) and
+LONG only for new picks, so the forward record follows the strategy the research simulated. In
+trade mode a pick the risk manager refused still counts as held until it drops out.
 """
 
 from __future__ import annotations
@@ -43,8 +49,9 @@ class RankerSignal:
     event_kinds: frozenset[EventKind] = frozenset()
 
     def __init__(self, model_file: str | Path = MODEL_FILE, disaster_stop: float = 0.15,
-                 max_model_age_days: int = 120) -> None:
+                 max_model_age_days: int = 120, book_file: str | Path | None = None) -> None:
         self.model_file = Path(model_file)
+        self.book_file = Path(book_file) if book_file else self.model_file.with_name("ranker_book.json")
         self.disaster_stop = disaster_stop
         self.max_model_age_days = max_model_age_days
         self._model: dict | None = None
@@ -61,6 +68,18 @@ class RankerSignal:
             except (OSError, ValueError):
                 log.exception("ranker: unreadable model file %s", self.model_file)
         return self._model
+
+    def book(self) -> list[str]:
+        try:
+            return list(json.loads(self.book_file.read_text()).get("held", []))
+        except (OSError, ValueError):
+            return []
+
+    def _save_book(self, held: list[str], day: date, version: str) -> None:
+        self.book_file.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.book_file.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"as_of": day.isoformat(), "model": version, "held": sorted(held)}))
+        tmp.replace(self.book_file)
 
     def rebalance_day(self, d: date, every: int) -> bool:
         return int(np.busday_count(ANCHOR, d)) % max(every, 1) == 0
@@ -112,14 +131,18 @@ class RankerSignal:
         if s.empty:
             return []
         names = list(s.index)
-        held = {names.index(h) for h in ctx.held_symbols if h in names}
+        book = self.book()
+        held = {names.index(h) for h in book if h in names}
         keep = topk_dropout(s.to_numpy(), held, p["top_k"], p["n_drop"])
+        self._save_book([names[j] for j in keep], ctx.today, m["version"])
         ev = {"systematic": True, "model": m["version"], "trained_through": m["trained_through"],
               "decided_on_bars_through": str(ctx.today - timedelta(days=1)), "horizon_days": p["horizon"]}
         out: list[Signal] = []
         for j in sorted(held - keep):
             out.append(Signal(self.name, names[j], Direction.EXIT, 1.0, 0,
                               {**ev, "reason": "dropped_from_top_k", "score": round(float(s.iloc[j]), 5)}, ts=ctx.now))
+        for sym in sorted(set(book) - set(names)):  # lost its score (no data, illiquid): research sells it
+            out.append(Signal(self.name, sym, Direction.EXIT, 1.0, 0, {**ev, "reason": "no_score"}, ts=ctx.now))
         # Held names leave at a rebalance (EXIT above); exit_at is only a safety net.
         exit_day = _add_bdays(ctx.today, 60)
         buys = [names[j] for j in sorted(keep - held)]

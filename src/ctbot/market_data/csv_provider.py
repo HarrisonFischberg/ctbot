@@ -17,6 +17,8 @@ log = logging.getLogger(__name__)
 
 
 class CsvMarketData:
+    quotes_are_live = False  # quotes are the last daily close: the stale-quote check does not apply
+
     def __init__(self, root: Path = Path("data/bars")) -> None:
         self.root = root
         self._warned: set[str] = set()

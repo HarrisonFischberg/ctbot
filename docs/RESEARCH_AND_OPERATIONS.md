@@ -82,9 +82,9 @@ and the reasons (no candidates, rejected by risk, shadow only, review budget, HA
 
 | Control | Where | Behaviour |
 |---|---|---|
-| Stale quote | `RiskManager.check_entry` | entries refused when the quote is older than `MAX_QUOTE_AGE_S` (120 s); the Robinhood source already drops stale quotes, this is the second check |
-| Kill-switch file | `pipeline.halted` | `touch data/HALT`: no new entries (automatic or dashboard); exits still run |
-| Duplicate orders | `pipeline._submit` | the same symbol and side within 120 s is refused |
+| Stale quote | `RiskManager.check_entry` | entries refused when the quote is older than `MAX_QUOTE_AGE_S` (120 s); the Robinhood source already drops stale quotes, this is the second check. Not applied in CSV mode, whose quotes are the last daily close |
+| Kill-switch file | `pipeline.halted` | `touch data/HALT`: no new entries or top-ups (automatic or dashboard); exits and risk-reducing trims still run |
+| Duplicate orders | `pipeline._submit` | a second buy of the same symbol within 120 s of a filled buy is refused; sells and retries of unfilled orders are never blocked |
 | Spend cap | `pipeline` + `llm_costs` | no paid review once today's measured spend reaches `MAX_CLAUDE_USD_PER_DAY` |
 | Reconciliation | `ctbot-reconcile` | non-zero exit on any ledger/bracket/journal mismatch |
 
@@ -122,7 +122,7 @@ The review estimate above is not measured yet; the log replaces it after a few t
 | Undo | How |
 |---|---|
 | Everything | revert the merge commit of this change; no data migration is involved |
-| Ranker model only | `enabled = false` under `[ranker]` in `config/strategies.toml`, or delete `data/research/ranker_model.json` |
+| Ranker model only | `enabled = false` under `[ranker]` in `config/strategies.toml`, or delete `data/research/ranker_model.json`; delete `data/research/ranker_book.json` to reset its picks |
 | Old review behaviour | `REVIEW_SHADOW_IDEAS=true`, `REVIEW_OUTCOME_MEMORY=false`, `MAX_CLAUDE_USD_PER_DAY=1000` |
 | Stop new entries now | `touch data/HALT` (delete to resume) |
 | New files are additive | `data/journal.jsonl`, `data/llm_usage.jsonl`, `data/research/`, `data/day_plan/`, `data/eod/` can be deleted at any time |

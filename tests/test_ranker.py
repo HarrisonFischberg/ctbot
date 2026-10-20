@@ -235,3 +235,16 @@ def test_shadow_strategy_matches_research_scoring(tmp_path):
     late = StrategyContext(MD(), tuple(panel), (), day, frozenset(), datetime.combine(day, dtime(15, 0), tzinfo=ET))
     assert RankerSignal(path, max_model_age_days=10_000).generate(late) == []
     assert RankerSignal(tmp_path / "missing.json").generate(ctx) == []
+    # the model trades its own book, not the account's positions
+    book = json.loads((tmp_path / "ranker_book.json").read_text())["held"]
+    assert sorted(book) == sorted(top)
+    (tmp_path / "ranker_book.json").write_text(json.dumps({"held": sorted(top) + ["GONE"]}))
+    other = StrategyContext(MD(), tuple(panel), (), day, frozenset({"QQQ", "XYZ"}), now)
+    sigs = RankerSignal(path, max_model_age_days=10_000).generate(other)
+    assert [(s.symbol, s.evidence["reason"]) for s in sigs] == [("GONE", "no_score")]  # held top k: no new buys
+
+
+def test_topk_dropout_with_more_held_than_k():
+    scores = np.array([8.0, 7, 6, 5, 4, 3, 2, 1])
+    keep = rk.topk_dropout(scores, {2, 3, 4, 5, 6, 7}, 3, 2)
+    assert keep == {2, 3, 4, 5}  # sells the worst n_drop and buys nothing while above k

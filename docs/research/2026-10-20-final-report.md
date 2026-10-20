@@ -13,18 +13,25 @@ Branch `claude/project-thread-cjsnts`, PR #7. Assessment and ranked plan:
 | Walk-forward ranker + TopkDropout + baselines + ablations | `research/ranker.py`, `ctbot-rank-research` | purge, label timing, future-invariance, next-open fills, planted signal found / noise not found, end-to-end run | synthetic panels only | **real-data run blocked** (see below) |
 | Trial registry, locked holdout, PBO, FDR, DSR trial count | `research/registry.py`, `research/validation.py` | chain tamper detection, holdout lock, PBO on noise vs skill, BH | synthetic | — |
 | Lab next-close execution and PBO | `ctbot-lab --lag 1` | lag test | synthetic | real-data rerun blocked |
-| Shadow ranker in the bot | `strategies/ranker_signal.py`, `[ranker]` shadow | live scoring equals research scoring; once per day; window; missing model | fake market data | forward paper record needs weeks of live running |
+| Shadow ranker in the bot | `strategies/ranker_signal.py`, `[ranker]` shadow; TopkDropout on its own persisted book | live scoring equals research scoring; own book, not account positions; once per day; window; missing model | fake market data | forward paper record needs weeks of live running |
 | Review spend cap, usage log, unreviewed shadow ideas | `llm_costs.py`, pipeline, settings | cap and default tests, cost arithmetic | fake Claude client | real spend measured only once the bot runs |
 | Outcome memory for reviews | `decision/memory.py` | as-of filtering | fake ledger | value of the memory unmeasured |
 | Bull/bear debate (off) | `ClaudeDecisionEngine.debate` | adds 2 low-effort calls; failure never blocks | fake client | no evidence it helps; stays off |
-| Stale quote, HALT file, duplicate window | risk manager, pipeline | dedicated tests | — | — |
+| Stale quote, HALT file, duplicate window | risk manager, pipeline | dedicated tests, incl. CSV mode, trims under HALT, retry after no fill | — | — |
 | Decision journal and explicit no-trade | `contracts.py`, pipeline | record order and outcomes | — | — |
 | Premarket plan, EOD reconciliation | `dayplan.py`, scheduled job | holiday/HALT reasons; mismatch detection | synthetic ledger | — |
 | Thesis files with code-checked invalidation (OpenAlice idea) | partly: model stops, `exit_at`, exit signals already do this | — | — | separate thesis files deferred: low value over existing brackets |
 | News/event-driven, pairs, intraday variants | rejected with reasons in the assessment | — | — | — |
 
-Test suite: 200 passed (`.venv/bin/pytest -q`; 177 before). The repository has no CI workflow,
+Test suite: 204 passed (`.venv/bin/pytest -q`; 177 before). The repository has no CI workflow,
 so "green" means the local suite.
+
+## Independent review
+
+A separate review of the branch found four bugs, all fixed with regression tests: the stale-quote
+check refused every entry in CSV mode; the live ranker ran TopkDropout on the account's positions
+instead of its own picks (and `topk_dropout` could buy while above k); HALT blocked the core's
+risk-reducing trims; and the duplicate guard blocked a retry of an exit that didn't fill.
 
 ## Performance claims
 

@@ -40,6 +40,15 @@ def test_stale_quote_refuses_entries():
     assert rm.check_entry(cand, dec, st, fresh, 1e9, now=NOW).allowed
     v = rm.check_entry(cand, dec, st, old, 1e9, now=NOW)
     assert not v.allowed and "stale_quote" in v.reasons
+    # daily-bar quotes (CSV mode) carry the bar's date and are never fresh: no age check there
+    assert rm.check_entry(cand, dec, st, old, 1e9, now=NOW, check_quote_age=False).allowed
+
+
+def test_csv_quotes_are_not_age_checked():
+    from ctbot.market_data.csv_provider import CsvMarketData
+    from ctbot.pipeline import live_quotes
+
+    assert not live_quotes(CsvMarketData(Path("missing"))) and live_quotes(_MD())
 
 
 def test_halt_file_blocks_buys_not_sells():
@@ -69,3 +78,25 @@ def test_duplicate_order_is_refused():
         assert _submit(c, st, buy, {}, NOW.date())
         assert not _submit(c, st, OrderRequest("KO", Side.BUY, 20.0, limit_price=51.0), {}, NOW.date())
         assert len(c.executor.positions()) == 1
+
+
+def test_unfilled_order_can_retry_and_sells_are_never_deduplicated():
+    class NoFill:
+        is_live = False
+
+        def submit(self, order):
+            return None
+
+    with tempfile.TemporaryDirectory() as d:
+        c = _components(d)
+        st = AccountState(250, 250, 250, 250, 0)
+        real = c.executor
+        c.executor = NoFill()
+        assert not _submit(c, st, OrderRequest("KO", Side.BUY, 20.0, limit_price=51.0), {}, NOW.date())
+        c.executor = real  # no fill last time: the retry is not a duplicate
+        assert _submit(c, st, OrderRequest("KO", Side.BUY, 20.0, limit_price=51.0), {}, NOW.date())
+        positions = {p.symbol: p for p in c.executor.positions()}
+        c.executor = NoFill()
+        assert not _submit(c, st, OrderRequest("KO", Side.SELL, 19.0, limit_price=49.0), positions, NOW.date())
+        c.executor = real
+        assert _submit(c, st, OrderRequest("KO", Side.SELL, 19.0, limit_price=49.0), positions, NOW.date())

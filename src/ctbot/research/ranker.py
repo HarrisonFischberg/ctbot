@@ -172,7 +172,7 @@ def topk_dropout(scores: np.ndarray, held: set[int], k: int, n_drop: int) -> set
     today = [j for j in valid if j not in held][: n_drop + max(0, k - len(last))]
     comb = sorted(last + today, key=lambda j: -scores[j])
     sell = {j for j in last if j in comb[-n_drop:]} if n_drop else set()
-    buy = today[: len(sell) + k - len(last)]
+    buy = today[: max(0, len(sell) + k - len(last))]
     return (set(last) - sell) | set(buy)
 
 

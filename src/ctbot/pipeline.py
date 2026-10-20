@@ -192,6 +192,10 @@ def _idea(
     }
 
 
+def live_quotes(md: MarketDataProvider) -> bool:
+    return getattr(md, "quotes_are_live", True)
+
+
 def avg_dollar_volume(md: MarketDataProvider, symbol: str, days: int = 20) -> float:
     bars = md.daily_bars(symbol, days)
     return sum(b.close * b.volume for b in bars) / len(bars) if bars else 0.0
@@ -208,17 +212,18 @@ def _submit(c: Components, state: AccountState, order, positions, today, decisio
         _journal(c, ExecutionOutcome(order.client_order_id, order.symbol, "refused", reason="halt_file"))
         return False
     key, t = (order.symbol, order.side), time.monotonic()
-    if key in c.recent_orders and t - c.recent_orders[key] < DUPLICATE_WINDOW_S:
+    if order.side is Side.BUY and key in c.recent_orders and t - c.recent_orders[key] < DUPLICATE_WINDOW_S:
         log.warning("refused duplicate %s %s within %.0fs", order.side.value, order.symbol, DUPLICATE_WINDOW_S)
         _journal(c, ExecutionOutcome(order.client_order_id, order.symbol, "refused", reason="duplicate_order"))
         return False
-    c.recent_orders[key] = t
     fill = c.executor.submit(order)
     log.info("submitted %s live=%s fill=%s", order, c.executor.is_live, fill)
     if fill is None:
         _journal(c, ExecutionOutcome(order.client_order_id, order.symbol, "no_fill"))
         return False
     c.fills += 1
+    if order.side is Side.BUY:  # exits are never blocked, and an order that didn't fill may retry
+        c.recent_orders[key] = t
     _journal(c, ExecutionOutcome(order.client_order_id, order.symbol, "filled", fill.quantity, fill.price,
                                  simulated=fill.simulated))
     if order.side is Side.SELL:
@@ -239,9 +244,10 @@ def _submit(c: Components, state: AccountState, order, positions, today, decisio
     return True
 
 
-def _maybe_top_up(c: Components, state: AccountState, cand: Candidate, pos, quote, now: datetime) -> None:
+def _maybe_top_up(c: Components, state: AccountState, cand: Candidate, pos, quote, now: datetime,
+                  buys_ok: bool = True) -> None:
     """Systematic core only: rebalance to its target size when it is off by more than 5% of
-    equity. Buys respect the kill switch and the daily-loss halt; trims (partial sells, used
+    equity. Buys respect the kill switch, the daily-loss halt, HALT and the close cutoff; trims (partial sells, used
     by the volatility-capped core) always may run and keep the position's exit plan."""
     sig = next((s for s in cand.signals if s.direction is Direction.LONG and s.evidence.get("rebalance")), None)
     owner = (state.brackets.get(cand.symbol) or {}).get("model")
@@ -265,7 +271,7 @@ def _maybe_top_up(c: Components, state: AccountState, cand: Candidate, pos, quot
             log.info("trim %s: -$%.2f to its target $%.0f", cand.symbol, -gap, target)
             state.cash = c.executor.cash()
         return
-    if state.kill_switch or state.equity <= state.day_start_equity * (1 - L.max_daily_loss_pct):
+    if not buys_ok or state.kill_switch or state.equity <= state.day_start_equity * (1 - L.max_daily_loss_pct):
         return
     cash = state.cash - sum(v for k, v in state.sleeve_reserve.items() if k != owner)  # others' money stays theirs
     if gap <= band or cash < 1:
@@ -399,6 +405,9 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                 continue  # opened by another model: only its owner's exits (or its plan) apply
             verdict = c.risk.check_exit(cand, positions[cand.symbol], state, quote, today)
         else:
+            if cand.symbol in held:  # trims always run; top-up buys respect HALT and the close cutoff
+                _maybe_top_up(c, state, cand, positions[cand.symbol], quote, now, buys_ok=allow_entries and not halt)
+                continue  # one position per symbol: no point paying for a review
             if halt:
                 log.info("skipping entry %s: HALT file present", cand.symbol)
                 c.recorder(_idea(now, cand, quote, None, None, "halted"))
@@ -408,9 +417,6 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                          c.settings.risk.no_entries_last_minutes)
                 c.recorder(_idea(now, cand, quote, None, None, "too_close_to_close"))
                 continue
-            if cand.symbol in held:
-                _maybe_top_up(c, state, cand, positions[cand.symbol], quote, now)
-                continue  # one position per symbol: no point paying for a review
             buyers = tuple(sorted({s.strategy for s in cand.signals if s.direction is Direction.LONG}))
             longs = [s for s in cand.signals if s.direction is Direction.LONG]
             systematic = bool(longs) and all(s.evidence.get("systematic") for s in longs)
@@ -437,7 +443,8 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                 # mechanical allocation rule: no Claude review; every hard risk check still runs
                 decision = Decision(True, 1.0, "systematic rule (no review)", 0.0)
                 adv = avg_dollar_volume(c.market_data, cand.symbol)
-                verdict = c.risk.check_entry(cand, decision, state, quote, adv, held, today, report, now)
+                verdict = c.risk.check_entry(cand, decision, state, quote, adv, held, today, report, now,
+                                         live_quotes(c.market_data))
                 if not verdict.allowed:
                     log.info("rejected long %s: %s", cand.symbol, ", ".join(verdict.reasons))
                     c.recorder(_idea(now, cand, quote, decision, verdict, "rejected"))
@@ -486,7 +493,8 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
             decision = (c.engine.evaluate(cand, account, debate=True) if c.settings.review_debate
                         else c.engine.evaluate(cand, account))
             adv = avg_dollar_volume(c.market_data, cand.symbol)
-            verdict = c.risk.check_entry(cand, decision, state, quote, adv, held, today, report, now)
+            verdict = c.risk.check_entry(cand, decision, state, quote, adv, held, today, report, now,
+                                         live_quotes(c.market_data))
 
         if not verdict.allowed:
             log.info("rejected %s %s: %s", cand.direction.value, cand.symbol, ", ".join(verdict.reasons))
@@ -559,7 +567,8 @@ def process_manual_order(
         adv = avg_dollar_volume(c.market_data, sym)
         report = c.context.next_earnings(sym) if c.context else None
         verdict = c.risk.check_entry(Candidate(sym, Direction.LONG, 1.0, sigs), decision, state,
-                                     quote, adv, frozenset(positions), today, report, now)
+                                     quote, adv, frozenset(positions), today, report, now,
+                                     live_quotes(c.market_data))
     else:
         return "rejected", [f"unknown side {order['side']!r}"], None
 

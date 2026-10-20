@@ -2,6 +2,8 @@
 
 from datetime import date, datetime, timedelta, timezone
 
+import pytest
+
 from ctbot.models import Bar, Quote
 from ctbot.strategies.base import StrategyContext
 from ctbot.strategies.swing import Rsi2Etf, TurnOfMonth, rsi
@@ -174,7 +176,8 @@ def test_orb_sip_keeps_the_opening_range_through_a_bar_outage(monkeypatch):
     assert sig.evidence["trigger"] == 51.0 and md.calls == 2
 
 
-def test_vol_capped_core_holds_other_fund_and_trims_when_vol_rises():
+@pytest.mark.parametrize("halted", [False, True])
+def test_vol_capped_core_holds_other_fund_and_trims_when_vol_rises(halted):
     import tempfile
     from pathlib import Path
 
@@ -204,13 +207,16 @@ def test_vol_capped_core_holds_other_fund_and_trims_when_vol_rises():
     core = TrendCore("QQQ", 170, size_pct=0.8, hold="QLD", vol_cap=0.30)
     with tempfile.TemporaryDirectory() as d:
         broker = PaperBroker(md, 5000.0, Path(d) / "l.json", slippage_bps=0, clock=lambda: NOW)
-        s = Settings.from_env({"ENTRY_MODE": "auto", "MAX_TRADING_CAPITAL": "5000", "MAX_CORE_PCT": "0.8"})
+        s = Settings.from_env({"ENTRY_MODE": "auto", "MAX_TRADING_CAPITAL": "5000", "MAX_CORE_PCT": "0.8",
+                               "PAPER_LEDGER_PATH": str(Path(d) / "ledger.json")})
         c = Components(s, md, [], [WeightedStrategy(core, 1.0, standalone=True)], None, RiskManager(s.risk), broker, ["QQQ"])
         st = AccountState(5000, 5000, 5000, 5000, 0)
         run_cycle(c, st, NOW)  # calm: full 80% in QLD
         assert [(p.symbol, round(p.quantity * 100)) for p in broker.positions()] == [("QLD", 4000)]
         hist["QLD"] = wild  # volatility jumps: target = 0.8 * 0.30 / ~0.8 -> ~30% of equity
         st.cash, st.equity = broker.cash(), broker.equity()
+        if halted:
+            s.halt_path.write_text("stop")  # HALT stops entries, never a risk-reducing trim
         run_cycle(c, st, NOW + timedelta(minutes=5))
         # ~160% annualized vol -> target 0.8 * 0.30 / 1.6 = ~15% of equity (~$750); bracket kept
         assert 600 < broker.positions()[0].quantity * 100 < 900 and "QLD" in st.brackets
