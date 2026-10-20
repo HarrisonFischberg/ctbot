@@ -12,6 +12,7 @@ import argparse  # noqa: E402
 import json  # noqa: E402
 import logging  # noqa: E402
 import os  # noqa: E402
+import threading  # noqa: E402
 import time  # noqa: E402
 from datetime import datetime, timezone  # noqa: E402
 
@@ -187,6 +188,18 @@ def main() -> None:
                 f"{ws.strategy.name}={ws.mode}" for ws in (components.configured or components.strategies)))
 
     asleep_until: datetime | None = None
+
+    def beat_forever() -> None:
+        """Heartbeat from its own thread: a cycle with fresh Claude reviews and several books can
+        run for minutes, and the dashboard and preflight call a bot silent for 30 s stopped."""
+        while True:
+            try:
+                _heartbeat(settings, args.interval, asleep_until)
+            except OSError:
+                log.exception("heartbeat write failed")
+            time.sleep(5)
+
+    threading.Thread(target=beat_forever, name="heartbeat", daemon=True).start()
 
     def market_open() -> bool:
         return not settings.respect_market_hours or market_hours.session_open(datetime.now(timezone.utc))
