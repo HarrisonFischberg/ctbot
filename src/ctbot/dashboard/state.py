@@ -221,8 +221,10 @@ def _strategies(path: Path) -> list[dict[str, Any]]:
 
     perf = _read_json(PERF_PATH).get("strategies", {})
 
+    from ctbot.strategies.registry import with_library
+
     try:
-        cfg = tomllib.loads(path.read_text())
+        cfg = with_library(tomllib.loads(path.read_text()))
     except (FileNotFoundError, tomllib.TOMLDecodeError):
         return []
     return [

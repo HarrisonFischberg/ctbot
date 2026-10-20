@@ -26,6 +26,8 @@ PARAMS: dict[str, tuple[str, Any] | None] = {
     "hold": ("Fund it buys", _fund),
     "sma_days": ("Uptrend test", lambda v: f"price above its {v}-day average (~{round(int(v) / 21)} months)"),
     "size_pct": None,
+    "family": None,
+    "universe": ("Trades", lambda v: {"etfs": "index & sector funds", "stocks": "60 large-cap stocks"}.get(v, v)),
     "vol_cap": ("Calm-market sizing", lambda v: f"shrinks the position when yearly swings exceed {_pct(v)}"),
     "disaster_stop": ("Emergency stop-loss", lambda v: f"sells if it falls {_pct(v)} below the buy price"),
     "max_model_age_days": ("Model must be newer than", lambda v: f"{v} days (retrain monthly)"),
@@ -156,12 +158,29 @@ STRATEGIES: dict[str, dict[str, Any]] = {
 MODES = {"trade": "Active", "shadow": "Watching", "off": "Off"}
 
 
+def _library(params: dict[str, Any]) -> dict[str, Any] | None:
+    from ctbot.library import signals as sg
+
+    fam = sg.FAMILIES.get(str(params.get("family")))
+    if fam is None:
+        return None
+    uni = str(params.get("universe"))
+    return {"title": f"{fam.title} ({sg.UNIVERSE_TITLE.get(uni, uni)})", "tagline": fam.tagline,
+            "how": [fam.tagline, f"Idea from: {fam.source}.",
+                    "Buys at the next open after the signal, up to 5 positions at 20% each.",
+                    "Starting stop 2× the stock's typical daily range (at most 8%), then a trailing stop; "
+                    f"sells after {fam.max_hold} trading days at the latest.",
+                    "Watch-only until its backtest (ctbot-library-research) admits it."],
+            "risk": "Medium" if uni == "etfs" else "High", "holds": f"Up to {fam.max_hold} trading days"}
+
+
 def describe(name: str, cls: str | None, params: dict[str, Any]) -> dict[str, Any]:
     key = cls or name
     if key == "trend_core" and params.get("hold") and params.get("hold") != params.get("symbol"):
         key = "trend_core_leveraged"
-    base = STRATEGIES.get(key) or {"title": name.replace("_", " ").title(), "tagline": "", "how": [],
-                                   "risk": "Unknown", "holds": "Varies"}
+    base = _library(params) if key == "rule" else STRATEGIES.get(key)
+    base = base or {"title": name.replace("_", " ").title(), "tagline": "", "how": [], "risk": "Unknown",
+                    "holds": "Varies"}
     settings = []
     for k, v in params.items():
         spec = PARAMS.get(k, (k.replace("_", " ").capitalize(), lambda x: str(x)))

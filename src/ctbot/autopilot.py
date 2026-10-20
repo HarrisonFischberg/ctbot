@@ -71,10 +71,16 @@ def save(path: Path, cfg: AutopilotConfig) -> None:
     os.replace(tmp, path)
 
 
-def decide(models: list[str], fills: list[dict[str, Any]], now: datetime) -> dict[str, dict[str, Any]]:
+def decide(models: list[str], fills: list[dict[str, Any]], now: datetime,
+           library: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
     """model -> {"status": "trading" | "benched", "reason", "closed", "pnl", "win_rate"} from the
-    paper record of the last BENCH_WINDOW_DAYS."""
+    paper record of the last BENCH_WINDOW_DAYS. Strategy-library entries (lib_*) also need the
+    library backtest's admission (data/research/library_report.json)."""
     from ctbot.dashboard.state import model_stats
+    from ctbot.library import backtest as lbt
+
+    if library is None and any(m.startswith("lib_") for m in models):
+        library = lbt.load_report()
 
     cutoff = now - timedelta(days=BENCH_WINDOW_DAYS)
     recent = [f for f in fills if datetime.fromisoformat(f["ts"]) >= cutoff]
@@ -86,6 +92,8 @@ def decide(models: list[str], fills: list[dict[str, Any]], now: datetime) -> dic
         rec = {"closed": closed, "pnl": round(pnl, 2), "win_rate": (s.get("wins", 0) / closed) if closed else None}
         if m in EXCLUDED:
             out[m] = {**rec, "status": "benched", "reason": EXCLUDED[m]}
+        elif m.startswith("lib_") and not (verdict := lbt.reason(library, m))[0]:
+            out[m] = {**rec, "status": "benched", "reason": verdict[1]}
         elif closed >= MIN_TRADES_TO_BENCH and pnl < 0:
             out[m] = {**rec, "status": "benched",
                       "reason": f"lost ${-pnl:,.2f} over its last {closed} paper trades ({BENCH_WINDOW_DAYS} days)"}

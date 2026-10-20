@@ -36,8 +36,10 @@ SCHEDULE = {  # when each model looks for setups (ET); cadence follows the 5-min
 
 
 def _strategies(path: Path) -> dict[str, dict[str, Any]]:
+    from ctbot.strategies.registry import with_library
+
     with path.open("rb") as fh:
-        return tomllib.load(fh)
+        return with_library(tomllib.load(fh))
 
 
 def _json(path: Path) -> dict[str, Any]:

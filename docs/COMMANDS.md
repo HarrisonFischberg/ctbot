@@ -53,6 +53,16 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
   backtested exits. The page also lists the latest decisions with Claude's reasons, and below it the
   strategy library and research (the old Discover and Research tabs). Autopilot replaces Invest
   runs while it is on. Paper only.
+- **Strategy library growth**: `ctbot.library` adds 12 published rule families (52-week high,
+  channel breakout, pullback, Bollinger dip, NR7, gap-down reversal, golden cross, MACD, three down
+  days, volume breakout, relative strength, RSI(2)) on two universes (index/sector funds, 60 large
+  caps): 24 watch-only entries named `lib_<family>_<universe>`. `.venv/bin/ctbot-library-research`
+  backtests all of them with the live exits (next-open fills, 2×ATR starting stop capped at 8%, 8%
+  trailing stop, longest hold), logs every trial in `data/research/trials.jsonl`, and writes
+  `data/research/library_report.json`. The autopilot trades an entry only if that report admits it
+  (2018-22 excess over cash survives Benjamini-Hochberg at q=10% across all entries, positive
+  2000-17 Sharpe, 20+ trades). `--holdout` scores 2023 onward once. `[library] enabled = false` in
+  `config/strategies.toml` removes them.
 - **Strategy library** (on Autopilot, formerly Discover): every strategy in plain words with its simulated return over the past 3, 6 or 12
   months next to the S&P 500. **Invest** asks for an amount, a max loss and a take-profit; that
   strategy then trades on its own with that much paper money (never more), and the bot sells and

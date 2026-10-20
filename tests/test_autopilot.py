@@ -116,3 +116,14 @@ def test_autopilot_overrides_shadow_modes_in_the_pipeline():
         s.autopilot_path.write_text(json.dumps({"enabled": False}))
         apply_launcher(c, st, {}, NOW)
         assert [w.mode for w in c.strategies] == ["shadow", "shadow"] and c.risk.trail_giveback is None
+
+
+def test_library_entries_need_the_backtest_to_admit_them():
+    rep = {"entries": {
+        "lib_rsi2_etfs": {"admitted": True, "checks": {}, "validation": {"cagr": 0.08, "sharpe": 0.9, "trades": 40}},
+        "lib_nr7_stocks": {"admitted": False, "checks": {"fdr": False, "dev_sharpe_positive": True, "enough_trades": True},
+                           "validation": {"cagr": 0.01, "sharpe": 0.1, "trades": 90}}}}
+    v = autopilot.decide(["lib_rsi2_etfs", "lib_nr7_stocks", "lib_macd_etfs"], [], NOW, library=rep)
+    assert v["lib_rsi2_etfs"]["status"] == "trading"
+    assert v["lib_nr7_stocks"]["status"] == "benched" and "could be luck" in v["lib_nr7_stocks"]["reason"]
+    assert v["lib_macd_etfs"]["status"] == "benched" and "not tested yet" in v["lib_macd_etfs"]["reason"]

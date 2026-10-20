@@ -23,6 +23,8 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
+
 from ctbot.market_hours import ET
 from ctbot.research import backtest as bt
 from ctbot.research import bars as cache
@@ -120,6 +122,27 @@ def _orb_sip_trades(intraday: dict, stop_atr: float, top_k: int, last_entry: str
     return out
 
 
+_PANELS: dict[str, Any] = {}
+
+
+def _rule_curve(family: str, universe: str, start: date) -> list[tuple[date, float]]:
+    """A strategy-library entry, simulated by the library backtest (same exits as live)."""
+    from ctbot.library import backtest as lbt
+    from ctbot.library import signals as sg
+    from ctbot.research import factors as fx
+
+    for key in (universe, "SPY"):
+        if key not in _PANELS:
+            _PANELS[key] = fx.load_panel(sg.universe(key) if key != "SPY" else ["SPY"])
+    spy = _PANELS["SPY"].get("SPY")
+    if spy is None or not _PANELS[universe]:
+        return []
+    r, _ = lbt.simulate(_PANELS[universe], spy, sg.FAMILIES[family], etf=universe == "etfs")
+    r = r[r.index >= pd.Timestamp(start)]
+    eq = (1 + r).cumprod() * 1000
+    return [(d.date(), float(v)) for d, v in eq.items()]
+
+
 def run(strategies_file: Path, universe: list[str]) -> dict[str, Any]:
     from ctbot.strategies.registry import load_strategy_config
 
@@ -158,6 +181,8 @@ def run(strategies_file: Path, universe: list[str]) -> dict[str, Any]:
                 days = sorted({d for v in bars.values() for d in v})
                 trades = [t for s, dd in bars.items() for d, b in dd.items() for t in bt.STRATEGIES[cls](s, d, b, ctx)]
                 curve, note = _intraday_curve(trades, days, 0.25, 4), "about 8 months of 5-minute history"
+            elif cls == "rule":
+                curve = _rule_curve(p["family"], p["universe"], warm)
             elif cls == "orb_sip":
                 bars = intraday_bars()
                 days = sorted({d for v in bars.values() for d in v})
