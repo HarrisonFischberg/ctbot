@@ -185,3 +185,17 @@ weight = 0.75
 [trend_template.params]
 min_breakout = 75       # 50 = gate only; 75 adds volume surge OR near the 52-week high
 top_n = 5
+
+# ---- Walk-forward ranking model (Qlib-style factors, ridge, TopkDropout; ctbot-rank-research) ----
+# Scores the large-cap list on completed daily bars, decides 09:35-10:00 ET (the research fills at
+# the next open), keeps the top 3, replaces at most 1 name per weekly rebalance. Systematic: no
+# Claude review. Does nothing until `ctbot-rank-research --write-model` writes
+# data/research/ranker_model.json. Shadow until its forward paper record beats the baselines.
+[ranker]
+enabled = true
+mode = "shadow"
+weight = 1.0
+standalone = true
+[ranker.params]
+disaster_stop = 0.15
+max_model_age_days = 120   # refuse to trade a model older than this; retrain monthly

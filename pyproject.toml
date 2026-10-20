@@ -44,6 +44,7 @@ ctbot-lab = "ctbot.research.lab:main"
 ctbot-tearsheet = "ctbot.research.tearsheet:main"
 ctbot-sweep = "ctbot.research.sweep:main"
 ctbot-perf = "ctbot.research.perf:main"
+ctbot-rank-research = "ctbot.research.ranker:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
