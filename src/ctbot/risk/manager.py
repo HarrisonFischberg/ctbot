@@ -141,8 +141,9 @@ class RiskManager:
         max_stop_loss_pct from the fill (the autopilot's max loss per trade when it is on).
 
         With the autopilot's trailing on, a non-systematic entry gets no fixed target: it records
-        its entry, its highest price and a trail distance (the starting stop's distance, capped
-        by the give-back), and `trail` raises the stop behind the price. Systematic models keep
+        its entry, its highest price and a trail distance (Claude's stop distance capped by the
+        give-back, or the give-back for a model's own stop), and `trail` raises the stop behind
+        the price. Systematic models keep
         their own backtested exits."""
         L = self.limits
         systematic = bool(plan and plan.get("systematic"))
@@ -161,7 +162,10 @@ class RiskManager:
             b = {"stop": round(fill_price * (1 - stop_pct), 4),
                  "target": round(fill_price * (1 + tp_pct), 4) if tp_pct else None}
         if self.trail_giveback and not systematic:
-            trail = min((fill_price - b["stop"]) / fill_price, self.trail_giveback)
+            # Claude's stop sets the trail (capped by the give-back); a model's own stop (often a
+            # tight ATR stop) stays the starting stop and the trail uses the give-back itself
+            dist = (fill_price - b["stop"]) / fill_price
+            trail = self.trail_giveback if plan and plan.get("stop") is not None else min(dist, self.trail_giveback)
             b.update(target=None, entry=round(fill_price, 4), peak=round(fill_price, 4), trail=round(trail, 4),
                      stop=round(max(b["stop"], fill_price * (1 - trail)), 4))
         state.brackets[symbol] = b

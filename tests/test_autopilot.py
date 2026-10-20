@@ -38,6 +38,16 @@ def test_knobs_cap_claude_stop_and_trail():
     assert st.brackets["KO"]["stop"] == 98.0 and st.brackets["KO"]["trail"] == 0.02
 
 
+def test_model_stop_starts_tight_then_trails_by_the_giveback():
+    rm, st = _rm(giveback=0.05), AccountState(10_000, 10_000, 10_000, 10_000, 0)
+    rm.set_bracket(st, "AMD", 100.0, None, {"stop": 99.7, "target": 101.0, "exit_at": "2026-10-21T15:50:00-04:00",
+                                            "model": "orb_sip"})
+    b = st.brackets["AMD"]
+    assert b["stop"] == 99.7 and b["target"] is None and b["trail"] == 0.05
+    assert not rm.trail(st, "AMD", 104.0)  # 104 x 0.95 = 98.8 is still below the model's stop
+    assert rm.trail(st, "AMD", 110.0) and b["stop"] == 104.5
+
+
 def test_systematic_models_keep_their_own_exits():
     rm, st = _rm(), AccountState(10_000, 10_000, 10_000, 10_000, 0)
     rm.set_bracket(st, "QQQ", 100.0, None, {"stop": 60.0, "target": None, "exit_at": "2027-10-20T15:50:00-04:00",
