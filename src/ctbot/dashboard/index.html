@@ -333,7 +333,6 @@ body.reordering { user-select: none; cursor: grabbing; }
 body.resizing-any { user-select: none; cursor: nwse-resize; }
 @media (min-width: 1101px) { .card.sized-w { grid-column: span var(--span); } }
 .card.sized-h { height: var(--h); display: flex; flex-direction: column; overflow: auto; }
-.card.sized-min { min-height: var(--h); }  /* no scrolling body: may grow, never cut its text */
 .card.sized-h > :is(.scroll, .log, .chart, .catalog, .limits, .strats, .discover, .holdings, .steps, #runs, .keys, #rh, #wb, #checks) {
   flex: 1 1 auto; min-height: 0; max-height: none !important; height: auto !important; overflow: auto; }
 /* ---- settings ---- */
@@ -413,7 +412,8 @@ code { font: 12px var(--code); background: rgba(var(--tint), .06); padding: 1px 
 .clamp2 { white-space: normal; color: var(--ink-2); font-size: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 520px; }
 /* latest decisions: one compact line per row, fits the card; click a row to wrap it in full */
 .tbl.apdec { table-layout: fixed; min-width: 680px; }
-.tbl.apdec col.c-when { width: 150px; } .tbl.apdec col.c-sym { width: 72px; } .tbl.apdec col.c-from { width: 30%; } .tbl.apdec col.c-out { width: 118px; }
+.tbl.apdec col.c-when { width: 11.5em; } .tbl.apdec col.c-sym { width: 5.5em; } .tbl.apdec col.c-from { width: 28%; } .tbl.apdec col.c-out { width: 9em; }
+.tbl.apdec td { overflow: hidden; text-overflow: ellipsis; }
 .tbl.apdec td.why { max-width: none; }
 .tbl.apdec .more { color: var(--muted); font-size: 11.5px; } .tbl.apdec .full { display: none; }
 .tbl.apdec tr.open td.why { white-space: normal; } .tbl.apdec tr.open .short { display: none; } .tbl.apdec tr.open .full { display: inline; }
@@ -2106,9 +2106,10 @@ main:focus { outline: none; }
     const z = sizes[c.dataset.card] || {};
     c.classList.toggle("sized-w", !!z.span); if (z.span) c.style.setProperty("--span", z.span); else c.style.removeProperty("--span");
     const scrolls = !!c.querySelector(":scope > :is(.scroll, .log, .chart, .catalog, .limits, .strats, .discover, .holdings, .steps, #runs, .keys, #rh, #checks)");
+    // A saved height only sizes cards with a scrolling body. Elsewhere it left empty space under the
+    // content once the content got shorter, so those cards keep their natural height.
     c.classList.toggle("sized-h", !!z.h && scrolls);
-    c.classList.toggle("sized-min", !!z.h && !scrolls);
-    if (z.h) c.style.setProperty("--h", z.h + "px"); else c.style.removeProperty("--h");
+    if (z.h && scrolls) c.style.setProperty("--h", z.h + "px"); else c.style.removeProperty("--h");
   }
   const cardTitle = (c) => {
     const h = c.querySelector(":scope > h2, :scope > .label");
