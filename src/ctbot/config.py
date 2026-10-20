@@ -77,6 +77,7 @@ class Settings:
     claude_effort: str = "medium"
     max_claude_reviews_per_day: int = 40  # API cost cap; later candidates are skipped
     max_reviews_per_model_per_day: int = 15  # so one noisy model can't use the whole budget
+    max_assistant_messages_per_day: int = 100  # dashboard assistant chats; separate from reviews
     starting_capital: float = 250.0
     risk: RiskLimits = RiskLimits()
     ensemble: EnsembleParams = EnsembleParams()
@@ -195,6 +196,7 @@ class Settings:
             claude_effort=env.get("CLAUDE_EFFORT", "medium"),
             max_claude_reviews_per_day=_int(env, "MAX_CLAUDE_REVIEWS_PER_DAY", 40),
             max_reviews_per_model_per_day=_int(env, "MAX_REVIEWS_PER_MODEL_PER_DAY", 15),
+            max_assistant_messages_per_day=_int(env, "MAX_ASSISTANT_MESSAGES_PER_DAY", 100),
             starting_capital=_float(env, "STARTING_CAPITAL", 250.0),
             risk=risk,
             ensemble=ensemble,

@@ -47,6 +47,14 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
   while anything is invested. **Stop** sells what it bought at the next market check. With
   nothing invested, `config/strategies.toml` decides what trades. Paper only.
 - **Activity**: the bot's trade ideas, positions, order history, safety limits and log.
+- **Bub** (bottom right, every tab): ask what the bot did and why, or what to change. It only
+  proposes: each change is a card that applies when you press **Apply**, within bounds, paper only.
+  Knob changes are saved in `~/.ctbot/tuning.json` and reach the running bot within seconds;
+  strategy shadow/trade switches edit `config/strategies.toml` and also apply without a restart.
+  Every proposal and outcome is in `data/assistant_audit.jsonl`; Settings → *Assistant changes*
+  has a Revert for each. Uses the Settings-tab Anthropic key, capped by
+  `MAX_ASSISTANT_MESSAGES_PER_DAY` (default 100). To undo everything at once, delete
+  `~/.ctbot/tuning.json`.
 - Discover's numbers come from `.venv/bin/ctbot-perf` (cached prices only; the scheduled job
   refreshes them twice a day).
 

@@ -58,6 +58,8 @@ src/ctbot/
   analysis/stats.py            z-score, returns, SMA, vol, half-life
   analysis/regime.py           SPY trend/volatility regime label for reviews
   decision/                    Claude review -> JSON Decision; fails closed
+  assistant/                   dashboard assistant (Bub): context, allowlisted proposals, audit, Claude chat
+  tuning.py                    assistant-tunable knobs (~/.ctbot/tuning.json), bounds and denylist
   risk/manager.py              check_entry / check_exit
   execution/                   OrderExecutor protocol + paper-process import guard
   paper/                       PaperBroker + `ctbot-paper` entrypoint

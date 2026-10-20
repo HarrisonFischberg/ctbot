@@ -32,6 +32,7 @@ from ctbot.strategies.registry import (  # noqa: E402
     build_strategies,
     load_strategy_config,
     strategy_risk_overrides,
+    with_modes,
 )
 
 
@@ -132,9 +133,13 @@ def main() -> None:
         state.equity, state.cash = broker.equity(), broker.cash()
         state.open_positions = len(broker.positions())
 
+    toml_stamp = {"v": _mtime(settings.strategies_file)}
+
     def reload_keys() -> None:
-        """Keys saved on the dashboard's Settings tab apply within seconds, no restart."""
-        from ctbot import secret_store
+        """Keys saved on the dashboard's Settings tab, knobs changed by the dashboard assistant
+        (~/.ctbot/tuning.json) and strategy modes in strategies.toml apply within seconds, no
+        restart. Only the tunable fields change (tuning.overlay): live flags and caps never do."""
+        from ctbot import secret_store, tuning
 
         if secret_store.reload_if_changed():
             components.engine._client = None  # next review builds a client with the new key
@@ -142,6 +147,30 @@ def main() -> None:
             if components.context is not None:
                 components.context.news = _news()
             log.info("settings changed on the dashboard: API keys reloaded")
+        if tuning.reload_if_changed():
+            try:
+                components.settings = tuning.overlay(components.settings)
+            except ValueError:
+                log.exception("tuning.json changed but could not be applied; keeping the old limits")
+            else:
+                components.risk = RiskManager(components.settings.risk, components.risk.strategy_overrides)
+                log.info("assistant tuning applied: %s", ", ".join(
+                    f"{k}={tuning.fmt(k, tuning.current(components.settings, k))}" for k in tuning.KNOBS))
+        stamp = _mtime(settings.strategies_file)
+        if stamp != toml_stamp["v"]:
+            toml_stamp["v"] = stamp
+            try:
+                cfg = load_strategy_config(settings.strategies_file)
+            except Exception:  # noqa: BLE001 - a half-edited file: keep the current modes
+                log.exception("strategies.toml changed but could not be read; keeping the current modes")
+                return
+            if components.configured is not None:  # the launcher re-derives what trades from these
+                components.configured = with_modes(components.configured, cfg)
+                components.launched = None
+            else:
+                components.strategies = with_modes(components.strategies, cfg)
+            log.info("strategy modes reloaded: %s", ", ".join(
+                f"{ws.strategy.name}={ws.mode}" for ws in (components.configured or components.strategies)))
 
     asleep_until: datetime | None = None
 
@@ -215,6 +244,13 @@ def main() -> None:
                                  save_account_state(state, settings.paper_risk_state_path)), "position check")
                 next_check = time.monotonic() + 30
             time.sleep(2)
+
+
+def _mtime(path) -> int | None:
+    try:
+        return path.stat().st_mtime_ns
+    except FileNotFoundError:
+        return None
 
 
 def _single_instance(settings: Settings):

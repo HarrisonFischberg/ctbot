@@ -89,12 +89,44 @@ has power and an external display (clamshell mode).
 More commands, including backtests and the research lab: [docs/COMMANDS.md](docs/COMMANDS.md).
 How it fits together: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+## Assistant
+
+**Bub**, the little creature in the bottom-right corner of every tab, answers questions about what
+the paper bot is doing and why ("Why so few trades today?", "Anything broken?"), in plain language
+with the bot's own numbers, and suggests changes when you ask for them ("Take more trades").
+
+<p align="center"><img src="docs/images/assistant.png" alt="Bub's chat panel: why only 2 trades were taken today, and a card proposing Min Claude confidence 0.65 to 0.55 with its reason, risk, and Apply and Dismiss buttons" width="360"></p>
+
+- **What it reads**: the same snapshot the dashboard shows, plus all of today's trade ideas
+  (`data/ideas.jsonl`) and today's paper log, counted by outcome and reason, and which tab, stock
+  or idea you're looking at. Never your keys: `.env` and `~/.ctbot/` are not read into it. Your
+  question and that summary go to Anthropic with your key, as trade reviews do.
+- **What it can change**, each within bounds written in `src/ctbot/tuning.py` and
+  `src/ctbot/assistant/actions.py`: the risk and ensemble knobs (`MIN_CLAUDE_CONFIDENCE`,
+  `MIN_LONG_SCORE`, `MIN_AGREEING_STRATEGIES`, `MAX_CANDIDATES_PER_CYCLE`, `MAX_OPEN_POSITIONS`,
+  the review budgets, `MAX_SPREAD_PCT`, `NO_ENTRIES_LAST_MINUTES`, `MAX_POSITION_PCT`,
+  `ENTRY_MODE`), a strategy's shadow/trade mode, investing in or stopping a strategy, and paper
+  orders, including approving a recommended idea.
+- **Every change needs your click.** Bub only proposes; each suggestion is a card with the
+  change, why, and the risk. Nothing happens until you press **Apply**, and the server checks it
+  again then. Knob changes go to `~/.ctbot/tuning.json` and reach the running paper bot within
+  seconds, no restart.
+- **Everything is logged** in `data/assistant_audit.jsonl`: what you asked, what was proposed, the
+  value before and after, and whether you applied or dismissed it. Settings → *Assistant
+  changes* lists them, each with a one-click **Revert** (orders can't be reverted).
+- **Paper only.** No action can turn on live trading, touch the Robinhood account settings, raise
+  `MAX_TRADING_CAPITAL`, loosen the loss or stop limits, or allow shorting. It has no Robinhood
+  access at all.
+- It uses the Anthropic key from the Settings tab, with its own daily cap
+  (`MAX_ASSISTANT_MESSAGES_PER_DAY`, default 100) that doesn't use up the trade-review budget.
+
 ## What it costs
 
 CTbot is free. Services you connect may charge you:
 
-- **Anthropic API**: billed to your key for each Claude review. The bot caps reviews per day
-  (`MAX_CLAUDE_REVIEWS_PER_DAY`). On a small account the review cost can exceed the edge it is
+- **Anthropic API**: billed to your key for each Claude review and each assistant message. The
+  bot caps reviews per day (`MAX_CLAUDE_REVIEWS_PER_DAY`) and assistant messages separately
+  (`MAX_ASSISTANT_MESSAGES_PER_DAY`). On a small account the review cost can exceed the edge it is
   checking. Strategies that follow a fixed rule never call Claude.
 - **Robinhood**: its own fees and rules apply to your account.
 - **Collective2** (optional): research data; some strategies there are paid subscriptions.
