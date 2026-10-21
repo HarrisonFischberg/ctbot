@@ -333,7 +333,6 @@ body.reordering { user-select: none; cursor: grabbing; }
 body.resizing-any { user-select: none; cursor: nwse-resize; }
 @media (min-width: 1101px) { .card.sized-w { grid-column: span var(--span); } }
 .card.sized-h { height: var(--h); display: flex; flex-direction: column; overflow: auto; }
-.card.sized-min { min-height: var(--h); }  /* no scrolling body: may grow, never cut its text */
 .card.sized-h > :is(.scroll, .log, .chart, .catalog, .limits, .strats, .discover, .holdings, .steps, #runs, .keys, #rh, #wb, #checks) {
   flex: 1 1 auto; min-height: 0; max-height: none !important; height: auto !important; overflow: auto; }
 /* ---- settings ---- */
@@ -411,6 +410,13 @@ code { font: 12px var(--code); background: rgba(var(--tint), .06); padding: 1px 
 .ap-form input[type="number"] { width: 90px; padding: 6px 8px; border-radius: 10px; border: 1px solid rgba(var(--tint), .18); background: var(--panel-2); color: var(--ink); font: inherit; }
 .ap-form .lm { font-size: 11.5px; }
 .clamp2 { white-space: normal; color: var(--ink-2); font-size: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 520px; }
+/* latest decisions: one compact line per row, fits the card; click a row to wrap it in full */
+.tbl.apdec { table-layout: fixed; min-width: 680px; }
+.tbl.apdec col.c-when { width: 11.5em; } .tbl.apdec col.c-sym { width: 5.5em; } .tbl.apdec col.c-from { width: 28%; } .tbl.apdec col.c-out { width: 9em; }
+.tbl.apdec td { overflow: hidden; text-overflow: ellipsis; }
+.tbl.apdec td.why { max-width: none; }
+.tbl.apdec .more { color: var(--muted); font-size: 11.5px; } .tbl.apdec .full { display: none; }
+.tbl.apdec tr.open td.why { white-space: normal; } .tbl.apdec tr.open .short { display: none; } .tbl.apdec tr.open .full { display: inline; }
 .ap-h3 { font: 500 14px var(--sans); color: var(--ink); margin: 20px 0 8px; }
 .empty-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--ink-2); }
 .empty-row p { margin: 0; }
@@ -1923,14 +1929,22 @@ main:focus { outline: none; }
     }
     $("apSave").disabled = !canTrade();
     const on = A.models.filter((m) => m.status === "trading").length;
-    $("apMeta").textContent = A.enabled ? `on · ${on} of ${A.models.length} strategies trading` : "off: the settings below Discover decide";
-    const recent = (S.ideas || []).slice(-12).reverse();
-    $("apDecisions").innerHTML = recent.length ? `<table class="tbl"><thead><tr><th>When</th><th>Stock</th><th>From</th><th>Outcome</th><th>Why</th></tr></thead><tbody>${
-      recent.map((i) => `<tr><td>${fmtTime(i.ts)}</td><td class="sym">${esc(i.symbol)}</td><td>${esc((i.strategies || []).map((n) => plainOf(n).title).join(", "))}</td>
-        <td><span class="tag">${esc(String(i.status || "").replaceAll("_", " "))}</span></td>
-        <td><div class="clamp2">${esc((i.decision && i.decision.rationale) || (i.risk && i.risk.reasons && i.risk.reasons.join(", ")) || "")}</div></td></tr>`).join("")}</tbody></table>`
+    $("apMeta").textContent = A.enabled ? `on · ${on} of ${A.models.length} strategies trading` : "off: only strategies you invested in trade";
+    const recent = (S.ideas || []).slice(0, 12);  // S.ideas is newest first
+    const TAGC = { rec: "rec", bought: "on", no: "rej", blocked: "sell", watch: "q" };
+    $("apDecisions").innerHTML = recent.length ? `<table class="tbl lib apdec"><colgroup><col class="c-when"><col class="c-sym"><col class="c-from"><col class="c-out"><col></colgroup>
+      <thead><tr><th>When</th><th>Stock</th><th>From</th><th>Outcome</th><th>Why</th></tr></thead><tbody>${
+      recent.map((i) => {
+        const names = (i.strategies || []).map((n) => plainOf(n).title), [g, label, why] = ideaOutcome(i);
+        const from = names.length > 1 ? `${esc(names[0])} <span class="more">+${names.length - 1} more</span>` : esc(names[0] || "");
+        return `<tr class="clk" title="Click to show all of it"><td>${fmtTime(i.ts)}</td><td class="sym">${esc(i.symbol)}</td>
+        <td class="why" title="${esc(names.join(", "))}"><span class="short">${from}</span><span class="full">${esc(names.join(", "))}</span></td>
+        <td><span class="tag ${TAGC[g] || ""}">${label}</span></td>
+        <td class="why" title="${esc(why)}">${esc(why)}</td></tr>`;
+      }).join("")}</tbody></table>`
       : `<div class="empty" style="height:60px">No decisions yet: they appear here once the market opens.</div>`;
   }
+  $("apDecisions").addEventListener("click", (e) => { const tr = e.target.closest("tr.clk"); if (tr) tr.classList.toggle("open"); });
   function renderVariants() {
     const V = S.variants || [];
     $("varCard").hidden = V.length < 2;
@@ -2092,9 +2106,10 @@ main:focus { outline: none; }
     const z = sizes[c.dataset.card] || {};
     c.classList.toggle("sized-w", !!z.span); if (z.span) c.style.setProperty("--span", z.span); else c.style.removeProperty("--span");
     const scrolls = !!c.querySelector(":scope > :is(.scroll, .log, .chart, .catalog, .limits, .strats, .discover, .holdings, .steps, #runs, .keys, #rh, #checks)");
+    // A saved height only sizes cards with a scrolling body. Elsewhere it left empty space under the
+    // content once the content got shorter, so those cards keep their natural height.
     c.classList.toggle("sized-h", !!z.h && scrolls);
-    c.classList.toggle("sized-min", !!z.h && !scrolls);
-    if (z.h) c.style.setProperty("--h", z.h + "px"); else c.style.removeProperty("--h");
+    if (z.h && scrolls) c.style.setProperty("--h", z.h + "px"); else c.style.removeProperty("--h");
   }
   const cardTitle = (c) => {
     const h = c.querySelector(":scope > h2, :scope > .label");
