@@ -636,8 +636,9 @@ main:focus { outline: none; }
 
     <div data-tab="trading" class="card span-12" id="varCard" hidden>
       <h2>Settings test <span class="count" id="varMeta"></span></h2>
-      <p class="explain">Extra $10,000 paper accounts running next to yours on the same prices and the same Claude verdicts.
-        Each changes one setting, so after a week or two the best settings stand out. Set them in <code>config/variants.toml</code>.</p>
+      <p class="explain">Practice $10,000 accounts that trade next to yours, on the same prices and with the same yes/no answers from Claude.
+        Each one changes a single setting. After a week or two, the settings that work best will stand out.
+        You can change the list in <code>config/variants.toml</code>.</p>
       <div id="variants" class="xscroll"></div>
     </div>
 
@@ -651,6 +652,7 @@ main:focus { outline: none; }
 
     <div data-tab="activity" class="card span-12">
       <h2>Results by strategy <span class="count" id="modelCount"></span></h2>
+      <p class="explain">How each strategy's trades have done. A trade counts as closed once the stock is sold.</p>
       <div class="scroll" id="models"></div>
       <div class="clicks xscroll" id="filterScore"></div>
     </div>
@@ -1530,28 +1532,35 @@ main:focus { outline: none; }
   function renderModels() {
     const M = S.models || [];
     $("modelCount").textContent = M.length ? `${M.reduce((a, m) => a + m.closed, 0)} closed trades` : "";
-    $("models").innerHTML = M.length ? `<table class="tbl"><thead><tr><th>Model</th><th class="r">Closed</th><th class="r">Win rate</th>
-      <th class="r">Avg / trade</th><th class="r">Realized P&amp;L</th><th class="r">Open</th><th class="r">Open P&amp;L</th><th>Exits</th></tr></thead><tbody>${
-      M.map((m) => `<tr><td class="sym">${esc(m.model)} ${m.paused ? `<span class="tag rej">paused today</span>` : m.losing_streak ? `<span style="color:var(--muted);font-size:11px">${m.losing_streak} loss${m.losing_streak > 1 ? "es" : ""} in a row</span>` : ""}</td><td class="r">${m.closed}</td>
+    $("models").innerHTML = M.length ? `<table class="tbl"><thead><tr><th>Strategy</th><th class="r">Trades closed</th><th class="r">Won</th>
+      <th class="r" title="Average gain or loss per closed trade">Avg per trade</th><th class="r" title="Profit or loss from stocks already sold">Profit (sold)</th>
+      <th class="r">Still holding</th><th class="r" title="Profit or loss so far on stocks still held">Profit (holding)</th><th>Why it sold</th></tr></thead><tbody>${
+      M.map((m) => `<tr><td class="sym">${esc(stratNames(m.model))} ${m.paused ? `<span class="tag rej">paused today</span>` : m.losing_streak ? `<span style="color:var(--muted);font-size:11px">${m.losing_streak} loss${m.losing_streak > 1 ? "es" : ""} in a row</span>` : ""}</td><td class="r">${m.closed}</td>
         <td class="r">${m.win_rate == null ? "—" : pct(m.win_rate, 0)}</td>
         <td class="r ${dir(m.avg_ret ?? 0)}">${m.avg_ret == null ? "—" : sgnPct(m.avg_ret, 2)}</td>
         <td class="r ${dir(m.pnl)}">${sgnUsd(m.pnl)}</td><td class="r">${m.open}</td>
         <td class="r ${dir(m.open_pnl)}">${m.open ? sgnUsd(m.open_pnl) : "—"}</td>
-        <td style="color:var(--muted)">${esc(Object.entries(m.exits).map(([k, v]) => k + " " + v).join(" · "))}</td></tr>`).join("")
-      }</tbody></table>` : `<div class="empty" style="height:80px">No model trades yet. Each paper fill is tagged with the model that produced it.</div>`;
+        <td style="color:var(--muted)">${esc(Object.entries(m.exits).map(([k, v]) => `${exitWord(k)} ×${v}`).join(" · "))}</td></tr>`).join("")
+      }</tbody></table>` : `<div class="empty" style="height:80px">No trades yet. Each practice trade is labeled with the strategy that picked it.</div>`;
   }
+  // "mean_reversion,options_flow" -> "Dip to Average Price + Options Flow"
+  const stratNames = (tag) => tag === "untagged" ? "Unlabeled" : String(tag).split(",").map((n) => plainOf(n).title).join(" + ");
+  const EXIT_WORDS = { stop_loss: "hit stop-loss", trailing_stop: "trailing stop", take_profit: "hit profit target",
+    time_exit: "time limit reached", signal_exit: "strategy said sell", "?": "unknown" };
+  const exitWord = (k) => EXIT_WORDS[k] || stratNames(k);
 
   function renderFilterScore() {
     const I = S.idea_scores || {}, sm = I.summary || {};
     const models = Object.keys(sm).filter((m) => m !== "all").sort();
     if (!I.generated_at || !models.length) {
-      $("filterScore").innerHTML = `<div style="color:var(--muted);font-size:12px">Claude filter scorecard: after the close, every reviewed idea (approved or rejected) is replayed on real bars. Nothing scored yet.</div>`;
+      $("filterScore").innerHTML = `<div style="color:var(--muted);font-size:12px">Did Claude choose well? After the market closes, every idea Claude said yes or no to is checked against what the price really did. Nothing checked yet.</div>`;
       return;
     }
-    const cell = (x) => !x || x.avg_bps == null ? "—" : `<span class="${dir(x.avg_bps)}">${x.avg_bps >= 0 ? "+" : "−"}${Math.abs(x.avg_bps).toFixed(1)} bps</span> <span style="color:var(--muted)">n=${x.n} · win ${pct(x.win_rate, 0)}</span>`;
-    $("filterScore").innerHTML = `<div style="color:var(--muted);font-size:12.5px"><b style="color:var(--ink-2)">Claude filter</b> · every reviewed idea replayed on real bars · ${I.scored} scored, ${I.pending} pending</div>
-      <table class="tbl"><thead><tr><th>Model</th><th>Claude approved</th><th>Claude rejected</th></tr></thead><tbody>${
-      ["all", ...models].map((m) => `<tr><td class="sym">${esc(m)}</td><td>${cell(sm[m].approved)}</td><td>${cell(sm[m].rejected)}</td></tr>`).join("")
+    // avg_bps is basis points: 100 bps = 1%
+    const cell = (x) => !x || x.avg_bps == null ? "—" : `<span class="${dir(x.avg_bps)}">${x.avg_bps >= 0 ? "+" : "−"}${Math.abs(x.avg_bps / 100).toFixed(2)}% avg</span> <span style="color:var(--muted)">${x.n} idea${x.n === 1 ? "" : "s"} · ${pct(x.win_rate, 0)} made money</span>`;
+    $("filterScore").innerHTML = `<div style="color:var(--muted);font-size:12.5px"><b style="color:var(--ink-2)">Did Claude choose well?</b> · each idea Claude said yes or no to, checked against what the price really did · ${I.scored} checked, ${I.pending} waiting for prices</div>
+      <table class="tbl"><thead><tr><th>Strategy</th><th>Ideas Claude said yes to</th><th>Ideas Claude said no to</th></tr></thead><tbody>${
+      ["all", ...models].map((m) => `<tr><td class="sym">${esc(m === "all" ? "All strategies" : stratNames(m))}</td><td>${cell(sm[m].approved)}</td><td>${cell(sm[m].rejected)}</td></tr>`).join("")
     }</tbody></table>`;
   }
 
@@ -1952,10 +1961,18 @@ main:focus { outline: none; }
     if (V.length < 2) return;
     const since = V.map((v) => v.since).filter(Boolean).sort()[0];
     $("varMeta").textContent = `${V.length} accounts${since ? ` · since ${fmtTime(since)}` : ""}`;
+    const ENV_WORDS = {
+      CLAUDE_MODEL: (x) => `Claude ${String(x).replace(/^claude-/, "").replace(/-(\d+)-(\d+)$/, " $1.$2").replace(/^\w/, (c) => c.toUpperCase())}`,
+      MAX_CLAUDE_USD_PER_DAY: (x) => `Claude budget $${x}/day`,
+      MAX_CANDIDATES_PER_CYCLE: (x) => `reviews ${x} ideas each round`,
+      MAX_OPEN_POSITIONS: (x) => `up to ${x} stocks at once`,
+      MAX_POSITION_PCT: (x) => `up to ${pct(+x, 0)} in one stock`,
+    };
     const extra = (v) => Object.entries(v.env || {}).filter(([k]) => k !== "CLAUDE_MODEL" || v.name !== "main")
-      .map(([k, x]) => `${k.toLowerCase().replaceAll("_", " ")} ${x}`).join(" · ");
+      .map(([k, x]) => ENV_WORDS[k] ? ENV_WORDS[k](x) : `${k.toLowerCase().replaceAll("_", " ")} ${x}`).join(" · ");
     $("variants").innerHTML = `<table class="tbl lib"><thead><tr><th>Account</th><th class="r">Value</th><th class="r">Return</th>
-      <th class="r">Worst drop</th><th class="r">Trades</th><th class="r">Won</th><th class="r">Open</th><th>Max loss · trail · Claude floor</th></tr></thead><tbody>${
+      <th class="r" title="Biggest fall from a high point">Worst drop</th><th class="r" title="Trades closed">Trades</th><th class="r">Won</th><th class="r" title="Stocks held now">Holding</th>
+      <th title="Max loss before selling · how far the trailing stop sits below the high · how sure Claude must be to buy">Settings: stop-loss · trail · how sure Claude must be</th></tr></thead><tbody>${
       V.map((v) => `<tr><td class="sym">${esc(v.title)}</td><td class="r">${usd(v.equity, 0)}</td>
         <td class="r ${dir(v.return)}">${sgnPct(v.return, 1)}</td><td class="r">${pct(v.max_dd, 1)}</td><td class="r">${v.trades}</td>
         <td class="r">${v.win_rate == null ? "–" : pct(v.win_rate, 0)}</td><td class="r">${v.open}</td>
