@@ -100,6 +100,8 @@ tests/                         isolation, config, risk, strategies/ensemble/prov
 - **Options flow is noisy**: many large prints are hedges or spreads, not directional bets.
 - **Small cash accounts**: no shorting (bearish signals only exit held longs); no day-trade count limit since FINRA's
   intraday margin standard replaced PDT on 2026-06-04 (`PDT_RULE=true` restores 3 per 5 days); Claude API cost per candidate can exceed expected edge.
+- **Paper margin** (`PAPER_MARGIN`, 1 to 2): buys may borrow up to 2x equity with $2,000+ equity,
+  paused while equity is under 25% of positions; no margin interest is simulated. Default 1 = cash only.
 - **Paid data**: Quiver and Unusual Whales need subscriptions and API keys.
 - **Free public data is unofficial**: the TradingView scanner and Cboe's delayed chains are
   public web endpoints with no API contract or SLA; they can change, rate-limit or vanish.

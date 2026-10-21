@@ -207,3 +207,13 @@ def test_entry_limit_leaves_room_for_the_price_to_move():
     v = RiskManager(s.risk).check_entry(cand, Decision(True, 0.9, "ok", 100.0), AccountState(5000, 5000, 5000, 5000, 0),
                                         Quote("KO", 99.99, 100.0, 100.0), 1e9)
     assert v.allowed and v.orders[0].limit_price == 100.2  # 0.2% above the ask it saw
+
+
+def test_entry_sizes_off_margin_buying_power_and_stops_on_margin_call():
+    rm = RiskManager(RiskLimits(max_trading_capital=20_000, max_position_pct=0.3, size_by="risk"))
+    # $10k equity, all invested in cash terms (-$2k cash = $2k borrowed), $8k loan room left
+    st = _state(equity=10_000, cash=-2_000, peak_equity=10_000, day_start_equity=10_000, buying_power=8_000)
+    v = rm.check_entry(_cand(), _ok_decision(), st, QUOTE, ADV)
+    assert v.allowed and v.orders[0].notional == 3_000.0  # 30% of $10k, paid with the loan
+    st.margin_call = True
+    assert "margin_maintenance" in rm.check_entry(_cand(), _ok_decision(), st, QUOTE, ADV).reasons

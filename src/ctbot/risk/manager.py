@@ -38,6 +38,10 @@ class AccountState:
     sleeves: dict[str, float] = field(default_factory=dict)
     sleeve_used: dict[str, float] = field(default_factory=dict)
     sleeve_reserve: dict[str, float] = field(default_factory=dict)  # model -> its unspent capital
+    # Paper margin (PAPER_MARGIN > 1): what a buy may spend incl. the loan, and the maintenance
+    # flag. None = cash account: buys spend `cash`. Set by the pipeline; not persisted.
+    buying_power: float | None = None
+    margin_call: bool = False
 
 
 def save_account_state(state: AccountState, path: Path) -> None:
@@ -269,6 +273,8 @@ class RiskManager:
             reasons.append("short_not_allowed_in_cash_account")
         if state.kill_switch:
             reasons.append("kill_switch_active")
+        if state.margin_call:
+            reasons.append("margin_maintenance")
         if not decision.approve:
             reasons.append("claude_rejected")
         floor = L.min_claude_confidence if self.min_confidence is None else self.min_confidence
@@ -316,7 +322,8 @@ class RiskManager:
         # A model may request its own size (e.g. the trend core), capped at max_core_pct.
         req = [s.evidence.get("size_pct") for s in candidate.signals
                if s.direction is Direction.LONG and s.evidence.get("size_pct")]
-        cap, cash = L.max_core_pct, state.cash
+        cap = L.max_core_pct
+        cash = state.cash if state.buying_power is None else state.buying_power
         owners = [s.strategy for s in candidate.signals
                   if s.direction is Direction.LONG and s.strategy in state.sleeves]
         if owners:  # launcher: size off the strategy's own capital and never hold more than it
@@ -327,8 +334,8 @@ class RiskManager:
         size = base * (min(max(req), cap) if req else L.max_position_pct)
         if L.size_by == "claude" and not req:  # Claude's suggestion can only shrink the size
             size = min(size, decision.suggested_notional)
-        # Buying power is cash on hand only: the bot never borrows on margin, so it needs no
-        # intraday margin headroom and works below the $2,000 margin minimum.
+        # Buying power: cash on hand, or with paper margin cash plus the loan still available
+        # (PaperBroker.buying_power: $2,000 minimum equity, 25% maintenance).
         notional = min(size, cash, room)
         if room < 1.0:
             reasons.append("trading_capital_cap")

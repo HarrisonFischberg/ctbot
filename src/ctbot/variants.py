@@ -220,7 +220,7 @@ def build(main: Any, reviews: dict) -> list[Book]:
             if scanners.get(ws.strategy.name) is not None:
                 ws.strategy.scanner = scanners[ws.strategy.name]  # one market-wide scan for all books
         broker = PaperBroker(md, s.starting_capital, s.paper_ledger_path,
-                             instant_settlement=s.paper_settlement == "instant")
+                             instant_settlement=s.paper_settlement == "instant", margin=s.paper_margin)
         c = Components(
             settings=s, market_data=md, providers=main.providers, strategies=strategies,
             engine=SharedReviews(ClaudeDecisionEngine(s.claude_model, s.claude_effort, usage_path=s.llm_usage_path),
@@ -252,7 +252,10 @@ def _sync_halt(main_halt: Path, book_halt: Path) -> None:
 
 
 def _refresh(b: Book) -> None:
-    b.state.equity, b.state.cash = b.broker.equity(), b.broker.cash()
+    from ctbot.pipeline import sync_cash
+
+    b.state.equity = b.broker.equity()
+    sync_cash(b.broker, b.state)
     b.state.open_positions = len(b.broker.positions())
 
 

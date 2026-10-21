@@ -100,6 +100,9 @@ class Settings:
     # t1: sale proceeds usable next business day (cash account, conservative);
     # instant: usable at once (Robinhood margin accounts). MCP is "limited margin".
     paper_settlement: str = "t1"
+    # Paper margin: 1 = cash only (never borrows); up to 2 = buy up to 2x equity (Reg T initial
+    # margin), only with $2,000+ equity and while equity covers 25% maintenance. Paper only.
+    paper_margin: float = 1.0
     market_data: str = "csv"  # csv | robinhood (read-only MCP; run ctbot-robinhood-login first)
     # Public TradingView scanner for earnings dates and review context (robinhood market data only)
     tradingview_data: bool = True
@@ -241,6 +244,7 @@ class Settings:
             tradingview_data=_bool(env, "TRADINGVIEW_DATA", True),
             entry_mode=env.get("ENTRY_MODE", "manual").strip().lower(),
             paper_settlement=env.get("PAPER_SETTLEMENT", "t1").strip().lower(),
+            paper_margin=min(2.0, max(1.0, _float(env, "PAPER_MARGIN", 1.0))),
             paper_ledger_path=Path(env.get("PAPER_LEDGER_PATH", "data/paper_ledger.json")),
             paper_risk_state_path=Path(
                 env.get("PAPER_RISK_STATE_PATH", "data/paper_risk_state.json")
