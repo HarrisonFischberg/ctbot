@@ -403,6 +403,7 @@ def build_state(
             "max_open_positions": L.max_open_positions,
             "max_daily_loss_pct": L.max_daily_loss_pct,
             "max_total_drawdown_pct": L.max_total_drawdown_pct,
+            "pdt_rule": L.pdt_rule,
             "max_day_trades_5d": L.max_day_trades_5d,
             "max_trading_capital": L.max_trading_capital,
             "max_spread_pct": L.max_spread_pct,

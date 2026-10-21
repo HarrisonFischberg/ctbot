@@ -55,8 +55,8 @@ def test_already_held_rejected():
     assert "already_held" in v.reasons
 
 
-def test_exit_sells_full_position_and_respects_pdt():
-    rm = RiskManager(RiskLimits())
+def test_exit_sells_full_position_and_respects_pdt_when_enabled():
+    rm = RiskManager(RiskLimits(pdt_rule=True))
     old = Position("KO", 0.5, 55.0, datetime(2026, 10, 1, tzinfo=timezone.utc))
     v = rm.check_exit(_cand(Direction.EXIT), old, _state(), QUOTE, date(2026, 10, 13))
     assert v.allowed and v.orders[0].side is Side.SELL and v.orders[0].notional == 30.0
@@ -65,6 +65,24 @@ def test_exit_sells_full_position_and_respects_pdt():
     busy = _state(day_trade_dates=[date(2026, 10, 9), date(2026, 10, 10), date(2026, 10, 12)])
     v = rm.check_exit(_cand(Direction.EXIT), same_day, busy, QUOTE, date(2026, 10, 13))
     assert "pdt_guard" in v.reasons
+
+
+def test_same_day_exit_not_limited_by_day_trade_count_by_default():
+    """FINRA's intraday margin standard replaced the PDT cap on 2026-06-04."""
+    rm = RiskManager(RiskLimits())
+    same_day = Position("KO", 0.5, 55.0, datetime(2026, 10, 13, 15, tzinfo=timezone.utc))
+    busy = _state(day_trade_dates=[date(2026, 10, 9), date(2026, 10, 12)] + [date(2026, 10, 13)] * 5)
+    v = rm.check_exit(_cand(Direction.EXIT), same_day, busy, QUOTE, date(2026, 10, 13))
+    assert v.allowed and v.orders[0].side is Side.SELL
+    assert not rm.pdt_limit_hit(busy, date(2026, 10, 13))
+
+
+def test_entry_never_spends_more_than_cash():
+    """Buying power is cash only: no margin borrowing, whatever the size cap allows."""
+    v = RiskManager(RiskLimits()).check_entry(_cand(), _ok_decision(), _state(cash=12.0), QUOTE, ADV)
+    assert v.allowed and v.orders[0].notional == 12.0
+    v = RiskManager(RiskLimits()).check_entry(_cand(), _ok_decision(), _state(cash=0.5), QUOTE, ADV)
+    assert not v.allowed
 
 
 def test_refresh_rolls_day_tracks_peak_and_latches_kill_switch():
