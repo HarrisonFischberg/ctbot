@@ -137,6 +137,32 @@ def model_stats(fills: list[dict[str, Any]], marks: dict[str, float]) -> list[di
     return sorted(out, key=lambda s: s["pnl"] + s["open_pnl"], reverse=True)
 
 
+def fills_with_pnl(fills: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Copies of the fills; each sell gains 'pnl' and 'pnl_pct': what it made or lost against
+    the buy price of the shares it closed (FIFO per symbol, like model_stats)."""
+    lots: dict[str, list[list[float]]] = {}  # symbol -> [[qty, price], ...]
+    out = []
+    for f in sorted(fills, key=lambda f: f["ts"]):
+        f = dict(f)
+        sym, qty, px = f["symbol"], float(f["quantity"]), float(f["price"])
+        if f["side"] == "buy":
+            lots.setdefault(sym, []).append([qty, px])
+        else:
+            q, cost, matched = lots.get(sym, []), 0.0, 0.0
+            while qty - matched > 1e-9 and q:
+                take = min(qty - matched, q[0][0])
+                cost += take * q[0][1]
+                matched += take
+                q[0][0] -= take
+                if q[0][0] <= 1e-9:
+                    q.pop(0)
+            if matched > 1e-9:
+                f["pnl"] = matched * px - cost
+                f["pnl_pct"] = px / (cost / matched) - 1
+        out.append(f)
+    return out
+
+
 def _research() -> dict[str, Any]:
     """Lab leaderboard, trend sweep and tearsheet list (files written by ctbot-lab/-sweep/-tearsheet)."""
     lab = _read_json(Path("data/lab/leaderboard.json"))
@@ -423,7 +449,7 @@ def build_state(
             "model_max_losing_streak": L.model_max_losing_streak,
         },
         "positions": pos_out,
-        "fills": list(reversed(ledger.get("fills", [])))[:MAX_FILLS],
+        "fills": list(reversed(fills_with_pnl(ledger.get("fills", []))))[:MAX_FILLS],
         "equity_history": _read_history(settings.equity_history_path),
         "watchlist": [
             {"symbol": s, "bid": quotes[s].bid, "ask": quotes[s].ask, "last": quotes[s].last,

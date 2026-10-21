@@ -162,3 +162,16 @@ def test_model_stats_pairs_fills_fifo_per_model():
     assert m["orb"]["closed"] == 1 and m["orb"]["pnl"] == 2 and m["orb"]["open"] == 1
     assert round(m["orb"]["open_pnl"], 6) == 1.0 and m["orb"]["exits"] == {"take_profit": 1}
     assert m["overnight"]["pnl"] == -2 and m["overnight"]["win_rate"] == 0
+
+
+def test_fills_with_pnl_prices_each_sell_against_its_buys():
+    from ctbot.dashboard.state import fills_with_pnl
+
+    f = lambda side, sym, q, px, ts: {"side": side, "symbol": sym, "quantity": q, "price": px, "ts": ts}  # noqa: E731
+    fills = [f("buy", "KO", 1, 100, "1"), f("buy", "KO", 1, 110, "2"), f("sell", "KO", 1.5, 120, "3"),
+             f("sell", "XLE", 1, 50, "4")]  # a sell with no buy on record gets no profit figure
+    out = fills_with_pnl(fills)
+    assert "pnl" not in out[0] and "pnl" not in fills[2]  # buys untouched, inputs not mutated
+    assert round(out[2]["pnl"], 6) == 25.0  # 1 @100 + 0.5 @110 sold at 120
+    assert round(out[2]["pnl_pct"], 6) == round(120 / (155 / 1.5) - 1, 6)
+    assert "pnl" not in out[3]
