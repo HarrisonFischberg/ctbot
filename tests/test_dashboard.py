@@ -162,3 +162,8 @@ def test_model_stats_pairs_fills_fifo_per_model():
     assert m["orb"]["closed"] == 1 and m["orb"]["pnl"] == 2 and m["orb"]["open"] == 1
     assert round(m["orb"]["open_pnl"], 6) == 1.0 and m["orb"]["exits"] == {"take_profit": 1}
     assert m["overnight"]["pnl"] == -2 and m["overnight"]["win_rate"] == 0
+
+
+def test_what_you_own_shows_on_home_and_autopilot():
+    html = (ROOT / "src" / "ctbot" / "dashboard" / "index.html").read_text()
+    assert '<div data-tab="home trading" class="card span-12 own">' in html
