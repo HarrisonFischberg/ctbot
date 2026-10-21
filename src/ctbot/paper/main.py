@@ -22,7 +22,8 @@ from ctbot.decision.engine import ClaudeDecisionEngine  # noqa: E402
 from ctbot.market_data.csv_provider import CsvMarketData  # noqa: E402
 from ctbot.paper.simulator import PaperBroker  # noqa: E402
 from ctbot import manual_queue, market_hours, variants  # noqa: E402
-from ctbot.pipeline import Components, manage_positions, process_manual_order, run_cycle  # noqa: E402
+from ctbot.pipeline import (  # noqa: E402
+    Components, manage_positions, process_manual_order, run_cycle, sync_cash)
 from ctbot.providers.registry import build_providers  # noqa: E402
 from ctbot.risk.manager import (  # noqa: E402
     AccountState,
@@ -97,7 +98,8 @@ def main() -> None:
     else:
         raise SystemExit(f"unknown MARKET_DATA {settings.market_data!r} (use csv or robinhood)")
     broker = PaperBroker(md, settings.starting_capital, settings.paper_ledger_path,
-                         instant_settlement=settings.paper_settlement == "instant")
+                         instant_settlement=settings.paper_settlement == "instant",
+                         margin=settings.paper_margin)
     strategies = build_strategies(load_strategy_config(settings.strategies_file))
     if settings.market_data == "robinhood":
         from ctbot.market_data.scanner import StocksInPlayScanner
@@ -143,7 +145,8 @@ def main() -> None:
              settings.market_data)
 
     def refresh_state() -> None:
-        state.equity, state.cash = broker.equity(), broker.cash()
+        state.equity = broker.equity()
+        sync_cash(broker, state)
         state.open_positions = len(broker.positions())
 
     toml_stamp = {"v": _mtime(settings.strategies_file)}

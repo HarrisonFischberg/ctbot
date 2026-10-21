@@ -260,9 +260,18 @@ def _submit(c: Components, state: AccountState, order, positions, today, decisio
         if owner in state.sleeves:  # its spent money is no longer held back for it this cycle
             state.sleeve_used[owner] = state.sleeve_used.get(owner, 0.0) + fill.quantity * fill.price
             state.sleeve_reserve[owner] = max(0.0, state.sleeves[owner] - state.sleeve_used[owner])
-    state.cash = c.executor.cash()
+    sync_cash(c.executor, state)
     state.open_positions = len(c.executor.positions())
     return True
+
+
+def sync_cash(executor, state: AccountState) -> None:
+    """Cash, plus buying power and the maintenance flag when the paper broker runs on margin."""
+    state.cash = executor.cash()
+    if getattr(executor, "margin", 1.0) > 1.0:
+        state.buying_power, state.margin_call = executor.margin_status()
+    else:
+        state.buying_power, state.margin_call = None, False
 
 
 def _maybe_top_up(c: Components, state: AccountState, cand: Candidate, pos, quote, now: datetime,
@@ -290,11 +299,12 @@ def _maybe_top_up(c: Components, state: AccountState, cand: Candidate, pos, quot
         if fill:  # partial: bracket and day-trade count untouched
             _book_sleeve_gain(c, state, cand.symbol, pos.avg_cost, fill)
             log.info("trim %s: -$%.2f to its target $%.0f", cand.symbol, -gap, target)
-            state.cash = c.executor.cash()
+            sync_cash(c.executor, state)
         return
-    if not buys_ok or state.kill_switch or state.equity <= state.day_start_equity * (1 - L.max_daily_loss_pct):
+    if not buys_ok or state.kill_switch or state.margin_call or state.equity <= state.day_start_equity * (1 - L.max_daily_loss_pct):
         return
-    cash = state.cash - sum(v for k, v in state.sleeve_reserve.items() if k != owner)  # others' money stays theirs
+    spendable = state.cash if state.buying_power is None else state.buying_power
+    cash = spendable - sum(v for k, v in state.sleeve_reserve.items() if k != owner)  # others' money stays theirs
     if gap <= band or cash < 1:
         return
 
@@ -306,7 +316,7 @@ def _maybe_top_up(c: Components, state: AccountState, cand: Candidate, pos, quot
             state.sleeve_used[owner] = state.sleeve_used.get(owner, 0.0) + fill.quantity * fill.price
             state.sleeve_reserve[owner] = max(0.0, sleeve - state.sleeve_used[owner])
         log.info("top-up %s: +$%.2f to its target $%.0f", cand.symbol, order.notional, target)
-        state.cash = c.executor.cash()
+        sync_cash(c.executor, state)
 
 
 def manage_positions(c: Components, state: AccountState, now: datetime) -> None:

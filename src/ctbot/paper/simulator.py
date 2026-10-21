@@ -2,6 +2,9 @@
 
 Models a cash account: sale proceeds settle T+1 (next weekday) and only settled cash
 can buy, so the bot cannot trade on unsettled funds (a good-faith violation at a broker).
+With margin > 1 it models a margin account instead: buys may borrow (cash goes negative) up
+to margin x equity in total positions, only with at least $2,000 equity and while equity
+covers the 25% maintenance requirement. No margin interest is charged.
 """
 
 from __future__ import annotations
@@ -16,6 +19,22 @@ from ctbot.market_data.base import MarketDataProvider
 from ctbot.market_hours import next_business_day, trading_date
 from ctbot.models import Fill, OrderRequest, Position, Side
 
+MARGIN_MIN_EQUITY = 2_000.0   # FINRA: no borrowing below this equity
+MAINTENANCE_PCT = 0.25        # FINRA baseline for long, margin-eligible stock (brokers may ask more)
+
+
+def buying_power(cash: float, equity: float, market_value: float, margin: float) -> float:
+    """Dollars a new buy may spend now. Cash only unless margin > 1, equity is at least
+    $2,000 and the account meets maintenance; then up to margin x equity in positions."""
+    if margin <= 1.0 or equity < MARGIN_MIN_EQUITY or margin_call(equity, market_value):
+        return max(0.0, cash)
+    return max(0.0, cash, margin * equity - market_value)
+
+
+def margin_call(equity: float, market_value: float) -> bool:
+    """Equity below the maintenance requirement on the positions held."""
+    return market_value > 0 and equity < MAINTENANCE_PCT * market_value
+
 
 class PaperBroker:
     is_live = False
@@ -28,12 +47,14 @@ class PaperBroker:
         slippage_bps: float = 5.0,
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
         instant_settlement: bool = False,
+        margin: float = 1.0,
     ) -> None:
         self.md = market_data
         self.slippage_bps = slippage_bps
         self.ledger_path = ledger_path
         self.clock = clock
         self.instant_settlement = instant_settlement  # margin-style: proceeds usable at once
+        self.margin = margin  # 1 = cash only; 2 = buy up to 2x equity (paper margin account)
         self._cash = starting_cash  # settled cash only
         self._unsettled: list[tuple[date, float]] = []  # (settle date, proceeds)
         self._positions: dict[str, Position] = {}
@@ -51,7 +72,7 @@ class PaperBroker:
             price = quote.ask * (1 + slip)
             if order.limit_price is not None and price > order.limit_price * (1 + slip):
                 return None
-            notional = min(order.notional, self._cash)
+            notional = min(order.notional, self.buying_power())
             if notional <= 0:
                 return None
             qty = notional / price
@@ -99,12 +120,27 @@ class PaperBroker:
         self._settle()
         return sum(amount for _, amount in self._unsettled)
 
-    def equity(self) -> float:
+    def market_value(self) -> float:
         quotes = self.md.quotes(list(self._positions))
-        mv = sum(
+        return sum(
             p.quantity * quotes[p.symbol].mid for p in self._positions.values() if p.symbol in quotes
         )
-        return self.cash() + self.unsettled_cash() + mv
+
+    def equity(self) -> float:
+        return self.cash() + self.unsettled_cash() + self.market_value()
+
+    def buying_power(self) -> float:
+        """What a buy may spend now: settled cash, plus a margin loan when margin > 1."""
+        if self.margin <= 1.0:
+            return max(0.0, self.cash())
+        mv = self.market_value()
+        return buying_power(self.cash(), self.cash() + self.unsettled_cash() + mv, mv, self.margin)
+
+    def margin_status(self) -> tuple[float, bool]:
+        """(buying power, in a maintenance call) from one price snapshot."""
+        mv = self.market_value()
+        equity = self.cash() + self.unsettled_cash() + mv
+        return buying_power(self.cash(), equity, mv, self.margin), margin_call(equity, mv)
 
     def _settle(self) -> None:
         today = trading_date(self.clock())

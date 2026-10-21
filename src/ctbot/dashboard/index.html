@@ -1058,6 +1058,7 @@ main:focus { outline: none; }
     if (pf.ok === false) alerts.push(["crit", "!", "Preflight " + fmtTime(pf.ts) + " failed: " +
       (pf.checks || []).filter((c) => !c.ok).map((c) => c.check + " (" + c.detail + ")").join("; ")]);
     if (a.day_pnl_pct <= -S.limits.max_daily_loss_pct) alerts.push(["warn", "△", "Daily loss limit reached: no new entries today."]);
+    if (a.margin_call) alerts.push(["crit", "!", "Margin maintenance: equity is under 25% of positions, so new buys are paused until it recovers."]);
     if (S.limits.pdt_rule && a.day_trades_5d >= S.limits.max_day_trades_5d) alerts.push(["warn", "△", `Day-trade limit reached (${a.day_trades_5d}/${S.limits.max_day_trades_5d} in 5 days): same-day exits are blocked.`]);
     $("alerts").innerHTML = alerts.map(([k, ic, t]) => `<div class="alert ${k}"><span class="ic">${ic}</span><span>${esc(t)}</span></div>`).join("");
   }
@@ -1083,7 +1084,7 @@ main:focus { outline: none; }
       ["Down from high", `<div class="value ${a.drawdown_pct < -1e-9 ? "down" : "flat"}">${sgnPct(a.drawdown_pct)}</div>
         <div class="sub">high ${usd(a.peak_equity)} · bot stops at −${pct(L.max_total_drawdown_pct, 0)}</div>${meter(ddUsed, ddUsed >= 1 ? "crit" : ddUsed > .6 ? "warn" : "")}`],
       ["Cash", `<div class="value">${usd(M.cash)}</div>
-        <div class="sub">free to trade now${M.cash - M.free > 1 ? ` · ${usd(M.cash - M.free, 0)} is over your ${usd(L.max_trading_capital, 0)} limit` : ""}${a.unsettled ? " · " + usd(a.unsettled) + " settling" : ""}</div>`, "Buying power"],
+        <div class="sub">free to trade now${M.cash - M.free > 1 ? ` · ${usd(M.cash - M.free, 0)} is over your ${usd(L.max_trading_capital, 0)} limit` : ""}${a.unsettled ? " · " + usd(a.unsettled) + " settling" : ""}${L.paper_margin > 1 ? ` · margin ${L.paper_margin}x: ${usd(a.buying_power, 0)} buying power${a.borrowed ? `, ${usd(a.borrowed, 0)} borrowed` : ""}` : ""}</div>`, "Buying power"],
       ["Invested", `<div class="value">${usd(M.invested)}</div>
         <div class="sub">${inv}</div>${meter(a.equity ? M.invested / a.equity : 0)}`],
       ["Positions", `<div class="value">${nRuns + M.loose}</div>
@@ -1355,7 +1356,7 @@ main:focus { outline: none; }
     const L = S.limits, rows = [
       ["Biggest single position", pct(L.max_position_pct, 0) + " of your money"], ["Most positions at once", L.max_open_positions],
       ["Paper money the bot can use", usd(L.max_trading_capital, 0)], ["Pauses for the day if down", pct(L.max_daily_loss_pct, 0)],
-      ["Stops everything if down from high", pct(L.max_total_drawdown_pct, 0)], ["Day trades allowed (5 days)", L.pdt_rule ? L.max_day_trades_5d : "No limit"], null,
+      ["Stops everything if down from high", pct(L.max_total_drawdown_pct, 0)], ["Day trades allowed (5 days)", L.pdt_rule ? L.max_day_trades_5d : "No limit"], ["Margin (paper)", L.paper_margin > 1 ? `up to ${L.paper_margin}x equity` : "Cash only"], null,
       ["Standard stop-loss", "−" + pct(L.default_stop_loss_pct, 0)], ["Widest stop-loss", "−" + pct(L.max_stop_loss_pct, 0)],
       ["Skips if bid/ask gap over", pct(L.max_spread_pct, 1)], ["AI must be at least", pct(L.min_claude_confidence, 0) + " confident"],
       ["Skips stocks under", usd(L.min_share_price)], ["Skips if trading volume under", "$" + (L.min_avg_dollar_volume / 1e6).toFixed(0) + "M a day"],
@@ -1407,7 +1408,7 @@ main:focus { outline: none; }
     illiquid: "too little trading volume", already_held: "already owned", max_open_positions: "already holding the most positions allowed",
     daily_loss_limit: "the daily loss limit was hit", max_drawdown_kill: "the account's max drop was hit", kill_switch_active: "the kill switch is on",
     trading_capital_cap: "no paper money left to use", notional_too_small: "the trade would be too small", pdt_guard: "day-trade limit (PDT rule)",
-    pdt_budget_used: "day-trade limit used up", earnings_before_exit: "earnings come out before it would sell", no_quote: "no price quote",
+    pdt_budget_used: "day-trade limit used up", margin_maintenance: "margin maintenance call", earnings_before_exit: "earnings come out before it would sell", no_quote: "no price quote",
     bad_quote: "the price quote looked wrong", no_position: "nothing to sell", short_not_allowed_in_cash_account: "short selling isn't allowed",
     model_losing_streak: "this strategy is paused after a losing streak",
   };
@@ -1608,7 +1609,7 @@ main:focus { outline: none; }
   const runOf = (name) => ((S.launcher || {}).runs || []).find((r) => r.strategy === name && r.status !== "stopped");
   const freeCash = () => {  // what a new investment can really use: unassigned AND in buying power
     const L = S.launcher || { allocated: 0, max_total: 0, reserved: 0 };
-    return Math.max(0, Math.min(L.max_total - L.allocated, S.account_summary.cash - (L.reserved || 0)));
+    return Math.max(0, Math.min(L.max_total - L.allocated, (S.account_summary.buying_power ?? S.account_summary.cash) - (L.reserved || 0)));
   };
   // One picture of the account, used by every card. Money you hand a strategy counts as invested,
   // like buying a fund, even while that strategy holds it as cash between trades:
@@ -1617,7 +1618,7 @@ main:focus { outline: none; }
     const a = S.account_summary, LR = S.launcher || { runs: [], reserved: 0 };
     const runs = (LR.runs || []).filter((r) => r.status !== "stopped");
     const names = new Set(runs.map((r) => r.strategy)), P = S.positions || [];
-    const held = Math.min(a.cash, LR.reserved || 0), inside = P.filter((p) => names.has(p.model)).length;
+    const held = Math.max(0, Math.min(a.cash, LR.reserved || 0)), inside = P.filter((p) => names.has(p.model)).length;
     return { runs, held, inside, loose: P.length - inside, stocks: a.market_value, cash: a.cash - held,
              invested: a.market_value + held, free: freeCash() };
   }

@@ -21,6 +21,7 @@ from typing import Any
 from ctbot import manual_queue, market_hours
 from ctbot.config import Settings, load_universe
 from ctbot.models import Quote
+from ctbot.paper.simulator import buying_power, margin_call
 
 log = logging.getLogger(__name__)
 
@@ -397,6 +398,9 @@ def build_state(
             "kill_switch": bool(risk_state.get("kill_switch", False)),
             "day_trades_5d": len(day_trades),
             "deployed": max(0.0, equity - cash),
+            "buying_power": buying_power(cash, equity, market_value, settings.paper_margin),
+            "borrowed": max(0.0, -cash),
+            "margin_call": settings.paper_margin > 1.0 and margin_call(equity, market_value),
         },
         "limits": {
             "max_position_pct": L.max_position_pct,
@@ -404,6 +408,7 @@ def build_state(
             "max_daily_loss_pct": L.max_daily_loss_pct,
             "max_total_drawdown_pct": L.max_total_drawdown_pct,
             "pdt_rule": L.pdt_rule,
+            "paper_margin": settings.paper_margin,
             "max_day_trades_5d": L.max_day_trades_5d,
             "max_trading_capital": L.max_trading_capital,
             "max_spread_pct": L.max_spread_pct,
