@@ -264,7 +264,10 @@ body { min-height: 100vh; }
   .tabs button { flex: none; padding: 8px 12px; font-size: 13.5px; } }  /* last tab peeks past the edge as a scroll hint */
 [data-tab][hidden], .tab-off { display: none !important; }
 /* ---- catalog ---- */
-.catalog { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); }
+.catalog { overflow-x: auto; }
+.tbl.lib td { padding-top: 7px; padding-bottom: 7px; } .tbl.lib td.sym { white-space: nowrap; }
+.tbl.lib td.why { color: var(--ink-2); font-size: 12px; max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tbl.lib tr[data-detail]:hover td { background: var(--panel-2); }
 .model { border-radius: 16px; padding: 18px; background: var(--panel-2); display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; border: 1px solid transparent; }
 .model.trade { border-color: var(--neon-dim); }
 .model .hd { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; } .model .hd .spark { margin-left: auto; max-width: 100%; } .model .hd .n { font: 400 17px var(--serif); }
@@ -401,6 +404,14 @@ code { font: 12px var(--code); background: rgba(var(--tint), .06); padding: 1px 
 .steps li.ok .sn { background: var(--neon); color: var(--on-neon); }
 .steps b { font-size: 15px; font-weight: 600; }
 .steps p { margin: 2px 0 0; color: var(--ink-2); font-size: 13px; line-height: 1.5; }
+.ap-form { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: flex-end; }
+.ap-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink); max-width: 260px; }
+.ap-form label.ap-switch { flex-direction: row; align-items: center; gap: 8px; font-size: 15px; flex-basis: 100%; max-width: none; }
+.ap-form .ap-in { display: flex; align-items: center; gap: 6px; }
+.ap-form input[type="number"] { width: 90px; padding: 6px 8px; border-radius: 10px; border: 1px solid rgba(var(--tint), .18); background: var(--panel-2); color: var(--ink); font: inherit; }
+.ap-form .lm { font-size: 11.5px; }
+.clamp2 { white-space: normal; color: var(--ink-2); font-size: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 520px; }
+.ap-h3 { font: 500 14px var(--sans); color: var(--ink); margin: 20px 0 8px; }
 .empty-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--ink-2); }
 .empty-row p { margin: 0; }
 /* ---- home positions ---- */
@@ -553,9 +564,8 @@ main:focus { outline: none; }
   </header>
   <nav class="tabs" role="tablist" aria-label="Views">
     <button role="tab" data-tab="home" class="on">Home</button>
+    <button role="tab" data-tab="trading">Autopilot</button>
     <button role="tab" data-tab="activity">Activity</button>
-    <button role="tab" data-tab="discover">Discover</button>
-    <button role="tab" data-tab="research">Research</button>
     <button role="tab" data-tab="settings">Settings</button>
   </nav>
 
@@ -599,13 +609,30 @@ main:focus { outline: none; }
       <h2>Your strategies <span class="count" id="runMeta"></span></h2>
       <div id="runs" class="xscroll"></div>
     </div>
-    <div data-tab="discover" class="card span-12">
-      <h2>Discover strategies <span class="count" id="discMeta"></span><span class="spacer"></span>
-        <span class="seg" role="group" aria-label="Period"><button data-period="3M">3M</button><button data-period="6M">6M</button><button data-period="1Y">1Y</button></span></h2>
-      <p class="note" style="margin:0 0 16px">How each strategy would have done with $1,000 on its own, simulated on real prices after trading costs.
-        Simulated results aren't a promise of future returns.</p>
-      <div class="free-note" id="discFree" hidden></div>
-      <div class="discover" id="discover"></div>
+    <div data-tab="trading" class="card span-12">
+      <h2>Autopilot <span class="count" id="apMeta"></span></h2>
+      <p class="explain">Autopilot trades the paper account by itself. It picks from every strategy below: day trades,
+        overnight holds, multi-day swings and the long-term trend funds. Claude reviews each short-term trade and sets its
+        starting stop; code sizes the trade and enforces every safety limit. Winners have no fixed sell price: the stop
+        follows the highest price up and sells when the price falls back through it. Strategies that research rejected,
+        or that lose money over 10+ recent paper trades, sit on the bench.</p>
+      <form class="ap-form" id="apForm">
+        <label class="ap-switch"><input type="checkbox" id="apOn"> <b>Autopilot on</b></label>
+        <label>Max loss per trade <span class="ap-in"><input type="number" id="apLoss" min="1" max="25" step="0.5" required> %</span>
+          <span class="lm">furthest a new trade's starting stop can sit below what it paid</span></label>
+        <label>Give back from the high <span class="ap-in"><input type="number" id="apGive" min="1" max="30" step="0.5" required> %</span>
+          <span class="lm">how far the trailing stop follows below each position's highest price</span></label>
+        <button class="btn solid" type="submit" id="apSave">Save</button>
+      </form>
+      <h3 class="ap-h3">Latest decisions</h3>
+      <div id="apDecisions" class="xscroll"></div>
+    </div>
+
+    <div data-tab="trading" class="card span-12" id="varCard" hidden>
+      <h2>Settings test <span class="count" id="varMeta"></span></h2>
+      <p class="explain">Extra $10,000 paper accounts running next to yours on the same prices and the same Claude verdicts.
+        Each changes one setting, so after a week or two the best settings stand out. Set them in <code>config/variants.toml</code>.</p>
+      <div id="variants" class="xscroll"></div>
     </div>
 
     <div data-tab="activity" class="card span-12 ideas">
@@ -627,13 +654,14 @@ main:focus { outline: none; }
       <dl class="limits" id="limits"></dl>
     </div>
 
-    <div data-tab="research" class="card span-12">
-      <h2>Every strategy <span class="count" id="catMeta"></span></h2>
-      <p class="explain">Each strategy's real paper record and its long-term test. Click one for the full story, charts and to invest.</p>
+    <div data-tab="trading" class="card span-12">
+      <h2>Strategy library <span class="count" id="catMeta"></span></h2>
+      <p class="explain">Every strategy Autopilot can use, one per row: trading or benched and why, its simulated past year and its real
+        paper record. Click a row for the full story and charts. Simulated results aren't a promise of future returns.</p>
       <div class="catalog" id="catalog"></div>
     </div>
 
-    <div data-tab="research" class="card span-12">
+    <div data-tab="trading" class="card span-12">
       <h2>Growth of $5,000 since 2010 <span class="count" id="cmpMeta"></span><span class="spacer"></span>
         <span class="seg" role="group" aria-label="Scale"><button data-scale="log" class="on">Log</button><button data-scale="lin">Linear</button></span></h2>
       <p class="explain">What $5,000 would have grown to with each test. Higher is better; a smoother line means fewer scary drops.
@@ -642,20 +670,20 @@ main:focus { outline: none; }
       <div id="cmpLegend" class="legend"></div>
     </div>
 
-    <div data-tab="research" class="card span-6">
+    <div data-tab="trading" class="card span-6">
       <h2>Crash test <span class="count">1999-2026, including the dot-com crash</span></h2>
       <p class="explain">How each idea would have survived the 2000-02 crash (Nasdaq fell about 80%), 2008 and 2020.
         Leveraged funds didn't exist back then, so they're rebuilt from QQQ's daily moves. A red worst drop (60%+) means it nearly wiped out.</p>
       <div class="scroll" id="stress"></div>
     </div>
-    <div data-tab="research" class="card span-6">
+    <div data-tab="trading" class="card span-6">
       <h2>No-hindsight test <span class="count">walk-forward</span></h2>
       <p class="explain">A fairer test: each year, the setting (how many days of trend to look at) is picked using only the 5 years before it,
         as if you were living through it. If these numbers stay close to the leaderboard's, the result wasn't just hindsight.</p>
       <div class="scroll" id="wf"></div>
     </div>
 
-    <div data-tab="research" class="card span-12">
+    <div data-tab="trading" class="card span-12">
       <h2>Backtest leaderboard <span class="count" id="labMeta"></span></h2>
       <p class="explain">Every idea tested on 16 years of real prices after trading costs, best first. Designed on 2010-19, then judged on 2020-26,
         which it never saw. Click a row for the full explanation and a chart; tick the box to add it to the growth chart.</p>
@@ -663,7 +691,7 @@ main:focus { outline: none; }
       <div id="labNote" style="margin-top:10px;color:var(--muted);font-size:12.5px"></div>
     </div>
 
-    <div data-tab="research" class="card span-12">
+    <div data-tab="trading" class="card span-12">
       <h2>Outside traders we track <span class="count" id="c2Meta"></span><span class="spacer"></span>
         <span class="seg" role="group" aria-label="Collective2 view">
           <button data-c2="watch" class="on">Watchlist</button><button data-c2="runners">Runners-up</button>
@@ -810,7 +838,7 @@ main:focus { outline: none; }
 
   let S = null, range = "all", view = "chart", logFilter = "all", ideaFilter = "all", c2View = "watch", cmpScale = "log";
   let tab = "home", cmpSel = ["LIVE core: trend QQQ 170d", "hold QQQ", "lev: trend QQQ 170d -> QLD capped at 30% vol"];
-  try { tab = ({ trading: "activity", strategies: "discover" })[localStorage.getItem("ctbot.tab")] || localStorage.getItem("ctbot.tab") || tab; cmpSel = JSON.parse(localStorage.getItem("ctbot.cmp")) || cmpSel; } catch (e) {}
+  try { tab = ({ strategies: "trading", discover: "trading", research: "trading" })[localStorage.getItem("ctbot.tab")] || localStorage.getItem("ctbot.tab") || tab; cmpSel = JSON.parse(localStorage.getItem("ctbot.cmp")) || cmpSel; } catch (e) {}
   const COLORS = ["#36a558", "#3690e3", "#c97500", "#a272d4", "#d7606e", "#9b9000"]; // OKLCH L 0.64, validated (dataviz)
   const LAB_FOR = { trend_core: "LIVE core: trend QQQ 170d", rsi2_etf: "rsi2 + turn-of-month book", turn_of_month: "rsi2 + turn-of-month book" };
   function spark(curve) {
@@ -1272,7 +1300,7 @@ main:focus { outline: none; }
       ${M.held > 1 ? `<div><span class="lm">Waiting inside strategies</span><b>${usd(M.held)}</b></div>` : ""}
       <div><span class="lm">Cash</span><b>${usd(M.cash)}</b></div>
       <div><span class="lm">Account value</span><b>${usd(S.account_summary.equity)}</b></div>`;
-    if (!P.length) { $("positions").innerHTML = `<div class="empty-row"><p>You don't own any stocks right now: it's all cash. Invest in a strategy and the bot buys for you.</p><button class="btn" type="button" data-goto="discover">Discover strategies</button></div>`; return; }
+    if (!P.length) { $("positions").innerHTML = `<div class="empty-row"><p>You don't own any stocks right now: it's all cash. Invest in a strategy and the bot buys for you.</p><button class="btn" type="button" data-goto="trading">Open Autopilot</button></div>`; return; }
     $("positions").innerHTML = `<table class="tbl"><thead><tr>
       <th>Stock</th><th>Bought by</th><th class="r">Shares</th><th class="r">Paid (avg)</th><th class="r">Price now</th><th class="r">Worth</th>
       <th class="r">Gain / loss</th><th>Stop-loss ← price → target</th><th>Sells</th><th>Bought</th><th></th></tr></thead><tbody>${P.map((p) => {
@@ -1287,7 +1315,7 @@ main:focus { outline: none; }
           <td class="r">${qty(p.quantity)}</td><td class="r">${usd(p.avg_cost)}</td>
           <td class="r">${p.last == null ? "—" : usd(p.last)}</td><td class="r"><b>${usd(p.market_value)}</b></td>
           <td class="r ${dir(p.pnl)}">${arrow(p.pnl)} ${sgnUsd(p.pnl)} <span style="opacity:.75">${sgnPct(p.pnl_pct)}</span></td>
-          <td>${rng} <span style="color:var(--muted);font-size:11px">${stop == null ? "" : "stop " + usd(stop)}${p.target ? " · target " + usd(p.target) : ""}</span></td>
+          <td>${rng} <span style="color:var(--muted);font-size:11px">${stop == null ? "" : (p.trail ? "trailing stop " : "stop ") + usd(stop)}${p.trail ? ` · ${pct(p.trail, 1)} below high ${usd(p.peak)}` : ""}${p.target ? " · target " + usd(p.target) : ""}</span></td>
           <td class="lm">${p.exit_at ? fmtTime(p.exit_at) : p.target || stop != null ? "at stop or target" : "when the strategy says"}${p.swings ? ` · held overnight ${p.swings}×` : ""}</td>
           <td>${fmtTime(p.opened_at)}</td>
           <td class="r"><button class="btn sell" data-close="${esc(p.symbol)}" ${canTrade() ? "" : "disabled"}>Sell</button></td></tr>`;
@@ -1365,6 +1393,7 @@ main:focus { outline: none; }
       too_close_to_close: `<span class="tag off">near close</span>`,
       review_budget_used: `<span class="tag off">review budget used</span>`,
       shadow: `<span class="tag q">shadow · not traded</span>`,
+      shadow_unreviewed: `<span class="tag q">shadow · not reviewed</span>`,
     })[i.status] || `<span class="tag">${esc(i.status)}</span>`;
   }
   const REASON = {  // risk-check codes in words
@@ -1384,6 +1413,7 @@ main:focus { outline: none; }
     if (i.status === "auto_submitted") return ["bought", long ? "Auto-bought" : "Auto-sold", long ? "The bot bought it: every check passed." : "The bot sold it on its exit rule."];
     if (i.status === "recommended") return ["rec", "★ Recommended", "Passed every check. Buy it below if you want it."];
     if (i.status === "shadow") return ["watch", "Watching only", "It passed, but this strategy isn't invested, so nothing was bought."];
+    if (i.status === "shadow_unreviewed") return ["watch", "Watching only", "This strategy isn't invested, so the idea was saved without a paid AI review."];
     if (i.status === "too_close_to_close") return ["blocked", "Too late", "Too close to the market close to buy."];
     if (i.status === "review_budget_used") return ["blocked", "Skipped", "Claude's review limit for today was used up."];
     if ((d && !d.approve) || rs.includes("claude_rejected")) return ["no", "AI said no", d && d.rationale ? d.rationale : "Claude didn't approve it."];
@@ -1546,29 +1576,25 @@ main:focus { outline: none; }
   function renderCatalog() {
     if (document.activeElement && document.activeElement.closest && document.activeElement.closest("#catalog form")) return;  // typing an amount
     const strats = S.strategies || [], models = Object.fromEntries((S.models || []).map((m) => [m.model, m]));
-    const scores = (S.idea_scores || {}).summary || {};
-    const labRows = Object.fromEntries((((S.research || {}).lab || {}).rows || []).map((r) => [r.strategy, r]));
-    const rank = (s) => runOf(s.name) ? 0 : s.enabled ? 1 : 9;
+    const A = S.autopilot || { enabled: false, models: [] }, apOf = Object.fromEntries(A.models.map((m) => [m.name, m]));
+    const rank = (s) => runOf(s.name) ? 0 : apOf[s.name] && apOf[s.name].status === "trading" ? 1 : s.enabled ? 2 : 9;
     const list = strats.slice().sort((a, b) => rank(a) - rank(b));
-    $("catMeta").textContent = `${strats.filter((s) => runOf(s.name)).length} invested · ${strats.filter((s) => !runOf(s.name)).length} watching`;
-    $("catalog").innerHTML = list.map((s) => {
-      const P = s.plain || {}, m = models[s.name], sc = scores[s.name], lab = labRows[LAB_FOR[s.name]], run = runOf(s.name);
-      const badge = run ? `<span class="tag on">● Invested</span>` : s.enabled ? `<span class="tag q">◐ Watching</span>` : `<span class="tag off">○ Off</span>`;
-      const verdict = (x) => !x || x.avg_bps == null ? null : x.avg_bps >= 0 ? `<span class="up">helped</span>` : `<span class="down">didn't help</span>`;
-      const claudeV = sc && sc.approved && sc.rejected && sc.approved.avg_bps != null && sc.rejected.avg_bps != null
-        ? (sc.approved.avg_bps > sc.rejected.avg_bps ? `<span class="up">picked better ideas</span>` : `<span class="down">no better than chance</span>`) : null;
-      const rows = [
-        ["Real paper trades", m ? `${m.closed} done${m.win_rate == null ? "" : ` · won ${pct(m.win_rate, 0)}`}` : "none yet"],
-        m ? ["Profit / loss", `<span class="${dir(m.pnl + (m.open_pnl || 0))}">${sgnUsd(m.pnl + (m.open_pnl || 0))}</span>`] : null,
-        lab ? ["Long test, 2020-26", `${sgnPct(lab.out_of_sample.cagr, 1)} a year · worst drop ${pct(lab.out_of_sample.max_dd, 0)}`] : null,
-        claudeV ? ["Claude's filter", claudeV] : sc ? ["Its ideas, on average", verdict(sc.approved) || "not scored yet"] : null,
-      ].filter(Boolean);
-      return `<div class="model ${run ? "trade" : "shadow"}" data-detail="${esc(s.name)}" tabindex="0" aria-label="${esc(P.title || s.name)}: details and invest">
-        <div class="hd"><span class="n">${esc(P.title || s.name)}</span>${badge}<span class="spacer" style="margin-left:auto"></span>${lab ? spark(lab.curve) : ""}</div>
-        <div class="ds">${esc(P.tagline || s.description || "No description.")}</div>
-        <dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>
-        <span class="more">Full details →</span>${launchBox(s)}</div>`;
-    }).join("");
+    $("catMeta").textContent = A.enabled
+      ? `${A.models.filter((m) => m.status === "trading").length} trading · ${A.models.filter((m) => m.status !== "trading").length} benched`
+      : `${strats.filter((s) => runOf(s.name)).length} invested · ${strats.filter((s) => !runOf(s.name)).length} watching`;
+    $("catalog").innerHTML = `<table class="tbl lib"><thead><tr><th>Strategy</th><th>Status</th><th>Why</th>
+      <th class="r" title="Simulated over the past year">Past year</th><th class="r">Paper trades</th><th class="r">Profit / loss</th></tr></thead><tbody>${list.map((s) => {
+      const P = s.plain || {}, m = models[s.name], run = runOf(s.name), ap = apOf[s.name], yr = ((s.performance || {}).windows || {})["1Y"];
+      const badge = !s.enabled ? `<span class="tag off">Off</span>`
+        : A.enabled && ap ? `<span class="tag ${ap.status === "trading" ? "on" : "rej"}">${ap.status === "trading" ? "Trading" : "Benched"}</span>`
+        : run ? `<span class="tag on">Invested</span>` : `<span class="tag q">Watching</span>`;
+      const pnl = m ? m.pnl + (m.open_pnl || 0) : null;
+      return `<tr data-detail="${esc(s.name)}" tabindex="0" title="${esc(P.tagline || s.description || "")}">
+        <td class="sym">${esc(P.title || s.name)}</td><td>${badge}</td><td class="why">${ap ? esc(ap.reason) : ""}</td>
+        <td class="r">${yr ? `<span class="${dir(yr.return)}">${sgnPct(yr.return, 1)}</span>` : "–"}</td>
+        <td class="r">${m ? `${m.closed}${m.win_rate == null ? "" : ` · ${pct(m.win_rate, 0)} won`}` : "0"}</td>
+        <td class="r">${pnl == null ? "–" : `<span class="${dir(pnl)}">${sgnUsd(pnl)}</span>`}</td></tr>`;
+    }).join("")}</tbody></table>`;
   }
   // ---- strategies in plain words, the invest sheet and "your strategies" -------------
   const plainOf = (name) => ((S.strategies || []).find((x) => x.name === name) || {}).plain || { title: name };
@@ -1626,37 +1652,6 @@ main:focus { outline: none; }
       ? `All ${usd(L.max_total, 0)} of paper money is already in your strategies. Stop one on Home to free its money, then invest it here.`
       : `Your cash is already handed to strategies you invested in that haven't bought yet. Stop one on Home to free it.`;
   }
-  function renderDiscover() {
-    const fn = freeNote(); $("discFree").hidden = !fn; $("discFree").innerHTML = fn ? `${esc(fn)} <button class="btn" type="button" data-goto="home">Go to Home</button>` : "";
-    document.querySelectorAll("[data-period]").forEach((b) => b.classList.toggle("on", b.dataset.period === period));
-    const B = S.benchmarks || {}, w = (x) => ((x || {}).windows || {})[period];
-    const bret = (sym) => w(B[sym]) ? `<b class="${dir(w(B[sym]).return)}">${sgnPct(w(B[sym]).return, 1)}</b>` : "—";
-    $("discMeta").innerHTML = `${PERIOD_LABEL[period]}: S&P 500 ${bret("SPY")} · Nasdaq-100 ${bret("QQQ")}`;
-    const days = { "3M": 91, "6M": 182, "1Y": 365 }[period];
-    const list = (S.strategies || []).slice().sort((a, b) => {
-      const ra = w(a.performance), rb = w(b.performance);
-      return (rb ? rb.return : -9) - (ra ? ra.return : -9);
-    });
-    $("discover").innerHTML = list.map((s) => {
-      const P = s.plain || {}, perf = s.performance || {}, r = w(perf), run = runOf(s.name);
-      const status = run ? `<span class="tag on">● Invested ${usd(run.capital, 0)}</span>`
-        : !s.enabled ? `<span class="tag off">Off</span>` : "";
-      const big = r ? `<div class="dret ${dir(r.return)}">${sgnPct(r.return, 1)}</div>
-          <div class="dlab">${PERIOD_LABEL[period]} · worst drop ${pct(r.worst_drop, 1)}${perf.kind === "stand-in" ? " · estimate" : ""}</div>`
-        : `<div class="dret flat">—</div><div class="dlab">${perf.kind === "none" || !perf.windows ? "No simulated history yet" : "Not enough history for this period"}</div>`;
-      const act = run ? `<span class="lm">${sgnUsd(run.gain)} so far</span><button class="btn sell" type="button" data-stop="${esc(s.name)}">Stop</button>`
-        : s.enabled ? `<button class="btn solid" type="button" data-invest="${esc(s.name)}" ${canTrade() && freeCash() >= 10 ? "" : `disabled title="${esc(freeNote() || "Start the dashboard with ./run_ctbot.sh to invest")}"`}>Invest</button>`
-        : `<span class="lm">Off in config/strategies.toml</span>`;
-      return `<article class="disc ${s.enabled ? "" : "is-off"}" data-detail="${esc(s.name)}" tabindex="0" aria-label="${esc(P.title || s.name)}: details and invest">
-        <div class="dh"><div><div class="dt">${esc(P.title || s.name)}</div>
-          <div class="dmeta">${riskTag(P.risk)}<span class="lm">Holds ${esc((P.holds || "?").toLowerCase())}</span></div></div>${status}</div>
-        ${big}
-        ${miniChart(perf.curve, (B.SPY || {}).curve, days)}
-        <p class="dtag">${esc(P.tagline || s.description || "")}</p>
-        <span class="more">Details, chart and how it works →</span>
-        <div class="dact">${act}</div></article>`;
-    }).join("");
-  }
   function renderSteps() {
     const st = SETTINGS, keys = st ? st.keys : {}, rh = st ? st.robinhood : {};
     const runs = ((S.launcher || {}).runs || []).filter((r) => r.status === "running");
@@ -1671,7 +1666,7 @@ main:focus { outline: none; }
           ` Practice money: prices are real, trades are simulated, and your real Robinhood account isn't touched.`, ""],
       [runs.length > 0, "Find a strategy you like",
         "Compare how each one did over the past 3, 6 and 12 months, how far it fell at its worst, and how it works.",
-        `<button class="btn" type="button" data-goto="discover">Discover</button>`],
+        `<button class="btn" type="button" data-goto="trading">Autopilot</button>`],
       [runs.length > 0 && S.bot.running, "Invest and let it run",
         runs.length ? (S.bot.running ? `${runs.length} running. The bot trades them on its own, within your max loss and take profit.`
           : `The bot is stopped. Start it in Terminal with <code>./run_ctbot.sh</code>.`)
@@ -1697,7 +1692,7 @@ main:focus { outline: none; }
       <td class="r ${dir(r.gain)}">${sgnUsd(r.gain)} (${sgnPct(r.gain_pct, 1)})</td><td class="lm">${limits(r)}</td>
       <td>${fmtTime(r.started_at)}</td>
       <td class="r">${r.status === "running" ? `<button class="btn sell" data-stop="${esc(r.strategy)}" type="button">Stop</button>` : ""}</td></tr>`).join("")}</tbody></table>`
-      : `<div class="empty-row"><p>You haven't invested in a strategy yet.</p><button class="btn solid" type="button" data-goto="discover">Discover strategies</button></div>`;
+      : `<div class="empty-row"><p>You haven't invested in a strategy yet.</p><button class="btn solid" type="button" data-goto="trading">Open Autopilot</button></div>`;
   }
   let investOpener = null;
   const stratOf = (name) => (S.strategies || []).find((x) => x.name === name) || { name, plain: { title: name } };
@@ -1869,7 +1864,7 @@ main:focus { outline: none; }
     const go = e.target.closest("[data-goto]");
     if (go) { tab = go.dataset.goto; try { localStorage.setItem("ctbot.tab", tab); } catch (err) {} applyTab(); scrollTo(0, 0); return; }
     const per = e.target.closest("[data-period]");
-    if (per) { period = per.dataset.period; try { localStorage.setItem("ctbot.period", period); } catch (err) {} renderDiscover(); return; }
+    if (per) { period = per.dataset.period; try { localStorage.setItem("ctbot.period", period); } catch (err) {} renderCatalog(); return; }
     const b = e.target.closest("[data-stop]");
     if (!b) return;
     const name = b.dataset.stop;
@@ -1920,10 +1915,53 @@ main:focus { outline: none; }
       : `<div class="empty" style="height:80px">Run ctbot-lab to populate.</div>`;
   }
 
+  let apDirty = false;  // don't overwrite the form while you're editing it
+  function renderAutopilot() {
+    const A = S.autopilot; if (!A) return;
+    if (!apDirty) {
+      $("apOn").checked = A.enabled; $("apLoss").value = +(A.max_loss_pct * 100).toFixed(2); $("apGive").value = +(A.giveback_pct * 100).toFixed(2);
+    }
+    $("apSave").disabled = !canTrade();
+    const on = A.models.filter((m) => m.status === "trading").length;
+    $("apMeta").textContent = A.enabled ? `on · ${on} of ${A.models.length} strategies trading` : "off: the settings below Discover decide";
+    const recent = (S.ideas || []).slice(-12).reverse();
+    $("apDecisions").innerHTML = recent.length ? `<table class="tbl"><thead><tr><th>When</th><th>Stock</th><th>From</th><th>Outcome</th><th>Why</th></tr></thead><tbody>${
+      recent.map((i) => `<tr><td>${fmtTime(i.ts)}</td><td class="sym">${esc(i.symbol)}</td><td>${esc((i.strategies || []).map((n) => plainOf(n).title).join(", "))}</td>
+        <td><span class="tag">${esc(String(i.status || "").replaceAll("_", " "))}</span></td>
+        <td><div class="clamp2">${esc((i.decision && i.decision.rationale) || (i.risk && i.risk.reasons && i.risk.reasons.join(", ")) || "")}</div></td></tr>`).join("")}</tbody></table>`
+      : `<div class="empty" style="height:60px">No decisions yet: they appear here once the market opens.</div>`;
+  }
+  function renderVariants() {
+    const V = S.variants || [];
+    $("varCard").hidden = V.length < 2;
+    if (V.length < 2) return;
+    const since = V.map((v) => v.since).filter(Boolean).sort()[0];
+    $("varMeta").textContent = `${V.length} accounts${since ? ` · since ${fmtTime(since)}` : ""}`;
+    const extra = (v) => Object.entries(v.env || {}).filter(([k]) => k !== "CLAUDE_MODEL" || v.name !== "main")
+      .map(([k, x]) => `${k.toLowerCase().replaceAll("_", " ")} ${x}`).join(" · ");
+    $("variants").innerHTML = `<table class="tbl lib"><thead><tr><th>Account</th><th class="r">Value</th><th class="r">Return</th>
+      <th class="r">Worst drop</th><th class="r">Trades</th><th class="r">Won</th><th class="r">Open</th><th>Max loss · trail · Claude floor</th></tr></thead><tbody>${
+      V.map((v) => `<tr><td class="sym">${esc(v.title)}</td><td class="r">${usd(v.equity, 0)}</td>
+        <td class="r ${dir(v.return)}">${sgnPct(v.return, 1)}</td><td class="r">${pct(v.max_dd, 1)}</td><td class="r">${v.trades}</td>
+        <td class="r">${v.win_rate == null ? "–" : pct(v.win_rate, 0)}</td><td class="r">${v.open}</td>
+        <td class="why">${pct(v.max_loss_pct, 0)} · ${pct(v.giveback_pct, 0)} · ${pct(v.min_confidence, 0)}${extra(v) ? " · " + esc(extra(v)) : ""}</td></tr>`).join("")
+    }</tbody></table>`;
+  }
+  ["apOn", "apLoss", "apGive"].forEach((id) => $(id).addEventListener("input", () => (apDirty = true)));
+  $("apForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = { enabled: $("apOn").checked, max_loss_pct: +$("apLoss").value / 100, giveback_pct: +$("apGive").value / 100 };
+    const [ok, j] = await api("/api/autopilot", body);
+    if (!ok) return toast(j.error || "could not save", true);
+    apDirty = false;
+    Object.assign(S.autopilot, { enabled: j.enabled, max_loss_pct: j.max_loss_pct, giveback_pct: j.giveback_pct });
+    renderAutopilot();
+    toast(j.enabled ? `Autopilot on: max loss ${pct(j.max_loss_pct, 1)}, give-back ${pct(j.giveback_pct, 1)}. The bot picks it up next cycle.` : "Autopilot off");
+  });
   function renderAll() {
-    renderChrome(); renderKpis(); renderIdeas(); renderChart(); renderLimits(); renderPositions();
+    renderChrome(); renderAutopilot(); renderVariants(); renderKpis(); renderIdeas(); renderChart(); renderLimits(); renderPositions();
     renderWatchlist(); renderFills(); renderStrategies(); renderLog(); renderC2(); renderModels(); renderFilterScore(); renderLab();
-    renderRuns(); renderCatalog(); renderCompare(); renderStressWF(); renderDiscover(); renderSteps();
+    renderRuns(); renderCatalog(); renderCompare(); renderStressWF(); renderSteps();
     loadPx();
     applySorts();
     $("updated").textContent = "updated " + new Date(S.generated_at).toLocaleTimeString("en-US", { timeZone: ET, hour12: false }) + " ET";
@@ -2076,7 +2114,7 @@ main:focus { outline: none; }
   // ---- minimize / close, and the Drawer that keeps closed cards ----
   const CLOSED = "ctbot.closed", MINI = "ctbot.min";
   const closed = new Set(readJSON(CLOSED, [])), mini = new Set(readJSON(MINI, []));
-  const TAB_NAME = { home: "Home", discover: "Discover", activity: "Activity", research: "Research", settings: "Settings" };
+  const TAB_NAME = { home: "Home", trading: "Autopilot", activity: "Activity", settings: "Settings" };
   function applyShown(c) {
     const k = c.dataset.card, isMin = mini.has(k);
     c.classList.toggle("card-closed", closed.has(k));

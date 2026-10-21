@@ -32,14 +32,16 @@ no servers, no tracking: your keys and data stay on your machine.
     portfolio value chart, a stock chart and your strategies.
   - **Activity**: the bot's trade ideas, results by strategy, safety limits, a watchlist, order
     history and a live log.
-  - **Discover**: every strategy in plain English, with simulated returns over the past 3, 6 and 12
-    months next to the S&P 500. Press **Invest** to start one.
-  - **Research**: every strategy's paper record, growth of $5,000 since 2010, a crash test back to
-    1999, a no-hindsight (walk-forward) test and the backtest leaderboard.
+  - **Autopilot**: switch it on and set two numbers (max loss per trade, and how much of a run-up
+    to give back before selling). CTbot then picks trades from every strategy by itself, with
+    trailing stops and no fixed profit cap, and shows what it trades and why. Below it: every
+    strategy in plain English with simulated returns (Invest still starts one by hand), each
+    strategy's paper record, growth of $5,000 since 2010, a crash test back to 1999, a no-hindsight
+    (walk-forward) test and the backtest leaderboard.
   - **Settings**: add your API keys, connect Robinhood, run a health check.
 - **Strategies** you can run alone or together: Nasdaq-100 trend (plain and 2× leveraged), buy the
   dip on index funds, turn of the month, and same-day breakout models. Each is described, with its
-  risk level, on the Discover tab.
+  risk level, on the Autopilot tab.
 - **Hard limits** no model can override: per-position size, total money, daily loss pause,
   drawdown stop, day-trade count, bid/ask spread and liquidity checks, no holding through earnings,
   and your own max loss and take-profit per strategy.
@@ -60,7 +62,7 @@ cp .env.example .env              # optional: you can also add keys in the dashb
 ```
 
 Open `http://127.0.0.1:8787`, go to **Settings**, add your keys and press **Connect Robinhood**.
-Then pick a strategy on **Discover**. The bot trades during US market hours while
+Then turn on **Autopilot** (or invest in one strategy below it). The bot trades during US market hours while
 `./run_ctbot.sh` is running.
 
 ### Start at login (macOS, optional)

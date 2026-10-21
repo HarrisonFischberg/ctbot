@@ -11,6 +11,7 @@ are not read, and the Robinhood account number is reduced to its last 4 digits.
 from __future__ import annotations
 
 import json
+import logging
 from collections import deque
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -20,6 +21,8 @@ from typing import Any
 from ctbot import manual_queue, market_hours
 from ctbot.config import Settings, load_universe
 from ctbot.models import Quote
+
+log = logging.getLogger(__name__)
 
 QuotesFn = Callable[[list[str]], dict[str, Quote]]
 
@@ -221,8 +224,10 @@ def _strategies(path: Path) -> list[dict[str, Any]]:
 
     perf = _read_json(PERF_PATH).get("strategies", {})
 
+    from ctbot.strategies.registry import with_library
+
     try:
-        cfg = tomllib.loads(path.read_text())
+        cfg = with_library(tomllib.loads(path.read_text()))
     except (FileNotFoundError, tomllib.TOMLDecodeError):
         return []
     return [
@@ -240,6 +245,32 @@ def _strategies(path: Path) -> list[dict[str, Any]]:
         }
         for name, t in cfg.items()
     ]
+
+
+def _variants(settings: Settings) -> list[dict[str, Any]]:
+    """The side-by-side paper books (config/variants.toml) next to the main one."""
+    from ctbot import variants
+
+    try:
+        return variants.summary(settings)
+    except Exception:  # noqa: BLE001 - a results table must never break the page
+        log.exception("variants summary failed")
+        return []
+
+
+def _autopilot(settings: Settings, strategies: list[dict[str, Any]], fills: list[dict[str, Any]],
+               now: datetime) -> dict[str, Any]:
+    """Autopilot page: the two knobs, and which models it lets trade now and why."""
+    from ctbot import autopilot
+
+    cfg = autopilot.load(settings.autopilot_path)
+    enabled = [s for s in strategies if s["enabled"]]
+    verdicts = autopilot.decide([s["name"] for s in enabled], fills, now)
+    models = [{"name": s["name"], "plain": s.get("plain"), "description": s.get("description"),
+               "systematic": s["name"].startswith("trend_core"), "configured_mode": s["mode"],
+               **verdicts[s["name"]]} for s in enabled]
+    return {"enabled": cfg.enabled, "max_loss_pct": cfg.max_loss_pct, "giveback_pct": cfg.giveback_pct,
+            "limits": autopilot.LIMITS, "models": models}
 
 
 def _launcher(settings: Settings, positions: list[dict[str, Any]]) -> dict[str, Any]:
@@ -299,6 +330,7 @@ def build_state(
             "last": last, "market_value": mv, "pnl": mv - p["quantity"] * p["avg_cost"],
             "pnl_pct": (px / p["avg_cost"] - 1) if p["avg_cost"] else 0.0,
             "stop": b.get("stop"), "target": b.get("target"), "opened_at": p.get("opened_at"),
+            "trail": b.get("trail"), "peak": b.get("peak"),
             "model": b.get("model"), "exit_at": b.get("exit_at"), "swings": b.get("swings", 0),
         })
 
@@ -338,6 +370,8 @@ def build_state(
         "preflight": _read_json(settings.paper_ledger_path.with_name("preflight.json")),
         "bot": _bot_status(settings, now),
         "ideas": _ideas(settings),
+        "autopilot": _autopilot(settings, _strategies(settings.strategies_file), ledger.get("fills", []), now),
+        "variants": _variants(settings),
         "manual_orders": _manual_activity(settings),
         "collective2": _c2(),
         "research": _research(),

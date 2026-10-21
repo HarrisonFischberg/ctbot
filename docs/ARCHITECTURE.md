@@ -54,16 +54,25 @@ src/ctbot/
     event_cluster.py           congressional / institutional / copy_trading
     options_flow.py            net bullish premium of large prints
     trend_template.py          stage-2 trend template (maverick-mcp supply/demand screen)
+    ranker_signal.py           frozen walk-forward ranking model (shadow, systematic, no review)
   aggregation/ensemble.py      weighted agreement score; min agreeing strategies; caps Claude calls
   analysis/stats.py            z-score, returns, SMA, vol, half-life
   analysis/regime.py           SPY trend/volatility regime label for reviews
-  decision/                    Claude review -> JSON Decision; fails closed
+  decision/                    Claude review -> JSON Decision; fails closed; memory.py (settled paper
+                               results per model, as-of); optional bounded for/against debate
+  contracts.py                 MarketSnapshot / StrategyResult / ProposedOrder / ExecutionOutcome /
+                               CycleSummary; append-only journal (data/journal.jsonl)
+  llm_costs.py                 measured Claude spend per call; daily $ cap
+  dayplan.py                   ctbot-dayplan (premarket plan, explicit no-trade) / ctbot-reconcile (EOD)
   assistant/                   dashboard assistant (Bub): context, allowlisted proposals, audit, Claude chat
   tuning.py                    assistant-tunable knobs (~/.ctbot/tuning.json), bounds and denylist
   risk/manager.py              check_entry / check_exit
   execution/                   OrderExecutor protocol + paper-process import guard
   paper/                       PaperBroker + `ctbot-paper` entrypoint
   live/                        RobinhoodLiveExecutor (guarded, not implemented) + `ctbot-live`
+  research/                    backtest (5-min), lab (daily portfolios, --lag), factors (Alpha158 subset),
+                               ranker (purged walk-forward + TopkDropout), registry (trial log, holdout
+                               lock), validation (PBO, FDR); see docs/RESEARCH_AND_OPERATIONS.md
 tests/                         isolation, config, risk, strategies/ensemble/providers
 ```
 

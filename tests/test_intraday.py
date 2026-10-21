@@ -94,7 +94,7 @@ def test_end_to_end_buy_once_tagged_then_time_exit():
     md, engine = _MD(100.0), _Engine()
     with tempfile.TemporaryDirectory() as d:
         broker = PaperBroker(md, 250.0, Path(d) / "l.json", slippage_bps=0, clock=lambda: now)
-        settings = Settings.from_env({"ENTRY_MODE": "auto", "MIN_AGREEING_STRATEGIES": "2"})
+        settings = Settings.from_env({"PAPER_LEDGER_PATH": str(broker.ledger_path), "ENTRY_MODE": "auto", "MIN_AGREEING_STRATEGIES": "2"})
         c = Components(settings, md, [], [WeightedStrategy(_Fixed(exit_at), 1.0, standalone=True),
                                           WeightedStrategy(_MeanRevExit(), 0.75)],
                        engine, RiskManager(settings.risk), broker, ["KO"])
@@ -195,7 +195,7 @@ def test_daily_claude_review_budget():
     with tempfile.TemporaryDirectory() as d:
         md = _MD(100.0)
         broker = PaperBroker(md, 250.0, Path(d) / "l.json", clock=lambda: now)
-        settings = Settings.from_env({"ENTRY_MODE": "manual", "MAX_CLAUDE_REVIEWS_PER_DAY": "2"})
+        settings = Settings.from_env({"PAPER_LEDGER_PATH": str(broker.ledger_path), "ENTRY_MODE": "manual", "MAX_CLAUDE_REVIEWS_PER_DAY": "2"})
         c = Components(settings, md, [], [WeightedStrategy(_Many(), 1.0, standalone=True)], engine,
                        RiskManager(settings.risk), broker, syms, recorder=ideas.append)
         run_cycle(c, AccountState(250, 250, 250, 250, 0), now)
@@ -218,7 +218,7 @@ def test_per_model_review_cap():
     with tempfile.TemporaryDirectory() as d:
         md = _MD(100.0)
         broker = PaperBroker(md, 250.0, Path(d) / "l.json", clock=lambda: now)
-        settings = Settings.from_env({"ENTRY_MODE": "manual", "MAX_REVIEWS_PER_MODEL_PER_DAY": "1",
+        settings = Settings.from_env({"PAPER_LEDGER_PATH": str(broker.ledger_path), "ENTRY_MODE": "manual", "MAX_REVIEWS_PER_MODEL_PER_DAY": "1",
                                       "MAX_CANDIDATES_PER_CYCLE": "10"})
         c = Components(settings, md, [], [WeightedStrategy(_Model("vwap_revert", ["KO", "PEP"]), 1.0, standalone=True),
                                           WeightedStrategy(_Model("orb", ["XLE"]), 1.0, standalone=True)],
@@ -241,7 +241,7 @@ def test_model_exit_only_closes_its_own_positions():
         broker = PaperBroker(md, 250.0, Path(d) / "l.json", slippage_bps=0, clock=lambda: now)
         broker._positions["KO"] = Position("KO", 0.5, 100.0, now)
         broker._positions["PEP"] = Position("PEP", 0.5, 100.0, now)
-        settings = Settings.from_env({"ENTRY_MODE": "auto"})
+        settings = Settings.from_env({"PAPER_LEDGER_PATH": str(broker.ledger_path), "ENTRY_MODE": "auto"})
         c = Components(settings, md, [], [WeightedStrategy(_Exit(), 1.0, standalone=True)], _Engine(),
                        RiskManager(settings.risk), broker, ["KO", "PEP"])
         st = AccountState(250, 200, 250, 250, 2, brackets={
@@ -258,12 +258,36 @@ def test_shadow_model_is_reviewed_and_recorded_but_not_traded():
     with tempfile.TemporaryDirectory() as d:
         md = _MD(100.0)
         broker = PaperBroker(md, 250.0, Path(d) / "l.json", clock=lambda: now)
-        settings = Settings.from_env({"ENTRY_MODE": "auto"})
+        settings = Settings.from_env({"ENTRY_MODE": "auto", "REVIEW_SHADOW_IDEAS": "true",
+                                      "PAPER_LEDGER_PATH": str(Path(d) / "l.json")})
         c = Components(settings, md, [], [WeightedStrategy(_Fixed(exit_at), 1.0, standalone=True, mode="shadow")],
                        engine, RiskManager(settings.risk), broker, ["KO"], recorder=ideas.append)
         run_cycle(c, AccountState(250, 250, 250, 250, 0), now)
     assert engine.calls == 1 and broker._fills == []
     assert [(i["symbol"], i["status"], i["risk"]["allowed"]) for i in ideas] == [("KO", "shadow", True)]
+
+
+def test_shadow_ideas_are_not_reviewed_by_default_and_spend_cap_stops_reviews():
+    import json
+
+    exit_at = datetime(2026, 10, 13, 19, 50, tzinfo=timezone.utc).isoformat()
+    now = datetime(2026, 10, 13, 15, tzinfo=timezone.utc)
+    with tempfile.TemporaryDirectory() as d:
+        md = _MD(100.0)
+        settings = Settings.from_env({"ENTRY_MODE": "auto", "PAPER_LEDGER_PATH": str(Path(d) / "l.json")})
+        engine, ideas = _Engine(), []
+        broker = PaperBroker(md, 250.0, Path(d) / "l.json", clock=lambda: now)
+        c = Components(settings, md, [], [WeightedStrategy(_Fixed(exit_at), 1.0, standalone=True, mode="shadow")],
+                       engine, RiskManager(settings.risk), broker, ["KO"], recorder=ideas.append)
+        run_cycle(c, AccountState(250, 250, 250, 250, 0), now)
+        assert engine.calls == 0 and [i["status"] for i in ideas] == ["shadow_unreviewed"]
+        # a trading model is reviewed until today's logged spend reaches the cap
+        settings.llm_usage_path.write_text(json.dumps({"day": "2026-10-13", "usd": 5.0}) + "\n")
+        engine2, ideas2 = _Engine(), []
+        c2 = Components(settings, md, [], [WeightedStrategy(_Fixed(exit_at), 1.0, standalone=True, mode="trade")],
+                        engine2, RiskManager(settings.risk), broker, ["KO"], recorder=ideas2.append)
+        run_cycle(c2, AccountState(250, 250, 250, 250, 0), now)
+        assert engine2.calls == 0 and [i["status"] for i in ideas2] == ["review_budget_used"]
 
 
 def test_registry_rejects_bad_mode():

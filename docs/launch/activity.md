@@ -1,5 +1,17 @@
 # Activity log
 
+## 2026-10-20: reference-repo integration (research rigor, ranker, cost and safety controls)
+
+- Evaluated TradingAgents, OpenAlice, Vibe-Trading and Qlib in separate environments outside the
+  repo, offline with mocked data and LLMs (`docs/research/reference_repos/`); no accounts, keys,
+  trades or paid calls.
+- Added the factor library, walk-forward ranker, trial registry, PBO/FDR, lab `--lag`, shadow
+  `ranker` model, review spend cap and log, unreviewed shadow ideas, stale-quote/HALT/duplicate
+  guards, decision journal, outcome memory, optional debate, `ctbot-dayplan`, `ctbot-reconcile`.
+- Live trading untouched: `LIVE_TRADING_ENABLED=false`, `tests/test_isolation.py` passes.
+- Real-data backtests not run in this environment (price cache not available there); synthetic
+  tests only. See the PR and `docs/RESEARCH_AND_OPERATIONS.md`.
+
 ## 2026-10-15: rename, open-source preparation, launch-readiness sweep
 
 - Renamed the project to CTbot: package `rhbot` -> `ctbot`, commands `ctbot-*`, env `CTBOT_MODE`,

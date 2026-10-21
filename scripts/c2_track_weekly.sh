@@ -4,6 +4,8 @@
 # 2) refresh SPY daily bars for the Collective2 SPY comparison
 # 3) update data/c2/track.json (Collective2, read-only GET endpoints only)
 # 4) score the day's reviewed trade ideas (approved vs rejected) from the fresh bar cache
+# 5) daily bars for the ranking model's stock list, the premarket plan and the end-of-day
+#    reconciliation (data/day_plan/, data/eod/; read-only)
 set -u -o pipefail
 cd "$(dirname "$0")/.." || exit 1
 LOG=logs/c2-track.log
@@ -15,8 +17,13 @@ mkdir -p logs
   .venv/bin/ctbot-fetch-bars --interval day --since "$(date -v-30d +%Y-%m-%d)" \
     SPY QQQ QLD IWM DIA XLK XLF XLV XLY XLI XLP XLU XLE XLB SMH 2>&1 | tail -1 \
     || echo "daily bar refresh failed (Robinhood sign-in expired? run ctbot-robinhood-login); tracking anyway"
+  .venv/bin/ctbot-fetch-bars --interval day --since "$(date -v-30d +%Y-%m-%d)" \
+    $(.venv/bin/python -c 'from ctbot.research.ranker import default_universe as u; print(" ".join(u()))') \
+    2>&1 | tail -1 || echo "stock daily bar refresh failed"
   .venv/bin/ctbot-c2-track 2>&1
   .venv/bin/ctbot-score-ideas 2>&1 || echo "idea scoring failed"
   .venv/bin/ctbot-perf > /dev/null 2>&1 || echo "strategy performance refresh failed"
   .venv/bin/ctbot-preflight 2>&1 || echo "PREFLIGHT FAILED (see data/preflight.json and the dashboard)"
+  .venv/bin/ctbot-dayplan 2>&1 || echo "day plan failed"
+  .venv/bin/ctbot-reconcile 2>&1 || echo "RECONCILIATION MISMATCH (see data/eod/)"
 } >> "$LOG" 2>&1

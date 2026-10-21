@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from ctbot.models import Candidate, Direction, Signal
@@ -29,6 +30,7 @@ def combine(
     weights: dict[str, float],
     params: EnsembleParams,
     standalone: frozenset[str] = frozenset(),
+    deprioritize: Callable[[Candidate], bool] | None = None,
 ) -> list[Candidate]:
     """`standalone` strategies (e.g. copy_trading) can open a LONG alone: their own signal
     strength is checked against min_long_score, skipping the agreement and weighting rules.
@@ -76,6 +78,8 @@ def combine(
     # The cap limits paid Claude reviews; rule-based (systematic) entries cost nothing and always pass.
     rule = [c for c in longs if all(s.evidence.get("systematic") for s in c.signals if s.direction is Direction.LONG)]
     reviewed = [c for c in longs if c not in rule]
+    if deprioritize is not None:  # e.g. already reviewed today, or earnings would block it: last in line
+        reviewed.sort(key=deprioritize)  # stable: score order within each group
     if len(reviewed) > params.max_candidates:
         log.info("over %d ideas this cycle; not reviewing %s", params.max_candidates,
                  ", ".join(c.symbol for c in reviewed[params.max_candidates:]))

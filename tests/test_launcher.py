@@ -50,7 +50,7 @@ def test_launched_core_trades_alone_with_its_own_capital_and_stop_sells():
     md = _MD([400 + i for i in range(200)], 650.0)
     with tempfile.TemporaryDirectory() as d:
         broker = PaperBroker(md, 5000.0, Path(d) / "l.json", slippage_bps=0, clock=lambda: NOW)
-        s = Settings.from_env({"ENTRY_MODE": "auto", "MAX_TRADING_CAPITAL": "5000", "STARTING_CAPITAL": "5000"})
+        s = Settings.from_env({"PAPER_LEDGER_PATH": str(broker.ledger_path), "ENTRY_MODE": "auto", "MAX_TRADING_CAPITAL": "5000", "STARTING_CAPITAL": "5000"})
         spy_core = TrendCore(symbol="SPY", size_pct=0.4)
         spy_core.name = "spy_core"
         c = Components(s, md, [], [WeightedStrategy(TrendCore(size_pct=0.4), 1.0, standalone=True),
@@ -116,6 +116,12 @@ def test_launch_endpoints_validate_and_need_the_token(tmp_path):
         assert state["launcher"]["allocated"] == 1000.0
         assert post("/api/launch/stop", {"strategy": "trend_core"}) == 200
         assert allocations.stopping(s.allocations_path) == {"trend_core"}
+        from ctbot import autopilot  # the page's save keeps a floor it doesn't send
+
+        autopilot.save(s.autopilot_path, autopilot.AutopilotConfig(min_confidence=0.45))
+        assert post("/api/autopilot", {"enabled": True, "max_loss_pct": 0.05, "giveback_pct": 0.06}) == 200
+        assert autopilot.load(s.autopilot_path) == autopilot.AutopilotConfig(True, 0.05, 0.06, 0.45)
+        assert post("/api/autopilot", {"enabled": True, "max_loss_pct": 0.9, "giveback_pct": 0.06}) == 400
     finally:
         httpd.shutdown()
         httpd.server_close()
@@ -125,7 +131,7 @@ def test_max_loss_stops_the_run_and_sells():
     md = _MD([400 + i for i in range(200)], 650.0)
     with tempfile.TemporaryDirectory() as d:
         broker = PaperBroker(md, 5000.0, Path(d) / "l.json", slippage_bps=0, clock=lambda: NOW)
-        s = Settings.from_env({"ENTRY_MODE": "auto", "MAX_TRADING_CAPITAL": "5000", "STARTING_CAPITAL": "5000"})
+        s = Settings.from_env({"PAPER_LEDGER_PATH": str(broker.ledger_path), "ENTRY_MODE": "auto", "MAX_TRADING_CAPITAL": "5000", "STARTING_CAPITAL": "5000"})
         c = Components(s, md, [], [WeightedStrategy(TrendCore(size_pct=0.4, disaster_stop=0.5), 1.0, standalone=True)],
                        None, RiskManager(s.risk), broker, ["QQQ"])
         st = AccountState(5000, 5000, 5000, 5000, 0)
@@ -156,7 +162,7 @@ def test_each_strategy_keeps_its_own_cash_and_rule_entries_retry():
     with tempfile.TemporaryDirectory() as d:
         broker = PaperBroker(md, 5000.0, Path(d) / "l.json", slippage_bps=0, clock=lambda: NOW)
         broker._cash = 1000.0
-        s = Settings.from_env({"ENTRY_MODE": "auto", "MAX_TRADING_CAPITAL": "5000", "STARTING_CAPITAL": "5000"})
+        s = Settings.from_env({"PAPER_LEDGER_PATH": str(broker.ledger_path), "ENTRY_MODE": "auto", "MAX_TRADING_CAPITAL": "5000", "STARTING_CAPITAL": "5000"})
         spy_core = TrendCore(symbol="SPY", size_pct=0.4)
         spy_core.name = "spy_core"
         c = Components(s, md, [], [WeightedStrategy(TrendCore(size_pct=0.4), 1.0, standalone=True),

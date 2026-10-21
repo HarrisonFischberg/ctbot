@@ -18,6 +18,8 @@ from ctbot.strategies.event_cluster import (
 from ctbot.strategies.intraday import OpeningRangeBreakout, OvernightHold, VwapReversion
 from ctbot.strategies.mean_reversion import MeanReversionStrategy
 from ctbot.strategies.orb_sip import OrbStocksInPlay
+from ctbot.strategies.ranker_signal import RankerSignal
+from ctbot.strategies.rule import RuleStrategy
 from ctbot.strategies.swing import Rsi2Etf, TrendCore, TurnOfMonth
 from ctbot.strategies.trend_template import TrendTemplate
 from ctbot.strategies.momentum import MomentumStrategy
@@ -40,6 +42,8 @@ STRATEGY_CLASSES: dict[str, type] = {
     "trend_core": TrendCore,
     "orb_sip": OrbStocksInPlay,
     "trend_template": TrendTemplate,
+    "ranker": RankerSignal,
+    "rule": RuleStrategy,
 }
 
 
@@ -70,10 +74,27 @@ def strategy_risk_overrides(strategies: list[WeightedStrategy]) -> dict[str, dic
 
 
 def load_strategy_config(path: Path) -> dict[str, dict[str, Any]]:
+    """strategies.toml plus the strategy library (ctbot.library): one watch-only entry per family
+    and universe, unless the file has `[library] enabled = false` or its own table of that name."""
     import tomllib  # Python 3.11+
 
     with path.open("rb") as fh:
-        return tomllib.load(fh)
+        cfg = tomllib.load(fh)
+    return with_library(cfg)
+
+
+def with_library(cfg: dict[str, Any]) -> dict[str, Any]:
+    from ctbot.library import signals as sg
+
+    cfg = dict(cfg)
+    lib = cfg.pop("library", {})
+    if not lib.get("enabled", True):
+        return cfg
+    for fam in sg.FAMILIES:
+        for uni in sg.UNIVERSES:
+            cfg.setdefault(sg.entry_name(fam, uni), {"enabled": True, "mode": "shadow", "standalone": True,
+                                                     "class": "rule", "params": {"family": fam, "universe": uni}})
+    return cfg
 
 
 def build_strategies(config: dict[str, dict[str, Any]]) -> list[WeightedStrategy]:

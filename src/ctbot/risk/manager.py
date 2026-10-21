@@ -84,6 +84,10 @@ class RiskManager:
     ) -> None:
         self.limits = limits
         self.strategy_overrides = strategy_overrides or {}
+        # Set each cycle by the autopilot (ctbot.autopilot); None = fixed brackets as before.
+        self.max_loss_pct: float | None = None
+        self.trail_giveback: float | None = None
+        self.min_confidence: float | None = None  # replaces MIN_CLAUDE_CONFIDENCE while set
 
     def liquidity_limits(self, candidate: Candidate) -> tuple[float, float]:
         """(min_share_price, min_avg_dollar_volume) for this candidate.
@@ -135,23 +139,51 @@ class RiskManager:
     ) -> None:
         """A model's exit plan (stop/target/exit_at) wins; otherwise Claude's stop (capped) or
         the default stop, plus Claude's target if it gave one. Stops are never wider than
-        max_stop_loss_pct from the fill."""
+        max_stop_loss_pct from the fill (the autopilot's max loss per trade when it is on).
+
+        With the autopilot's trailing on, a non-systematic entry gets no fixed target: it records
+        its entry, its highest price and a trail distance (Claude's stop distance capped by the
+        give-back, or the give-back for a model's own stop), and `trail` raises the stop behind
+        the price. Systematic models keep
+        their own backtested exits."""
         L = self.limits
-        floor = fill_price * (1 - L.max_stop_loss_pct)
+        systematic = bool(plan and plan.get("systematic"))
+        max_loss = L.max_stop_loss_pct if systematic or not self.max_loss_pct else self.max_loss_pct
+        floor = fill_price * (1 - max_loss)
         if plan and plan.get("stop") is not None:
             stop = max(min(float(plan["stop"]), fill_price * 0.999), floor)
             tgt = plan.get("target")
             target = float(tgt) if tgt is not None and float(tgt) > fill_price else None
-            state.brackets[symbol] = {"stop": round(stop, 4), "target": round(target, 4) if target else None,
-                                      "exit_at": plan.get("exit_at"), "model": plan.get("model")}
-            return
-        stop_pct = decision.stop_loss_pct if decision and decision.stop_loss_pct else None
-        stop_pct = min(stop_pct or L.default_stop_loss_pct, L.max_stop_loss_pct)
-        tp_pct = decision.take_profit_pct if decision else None
-        state.brackets[symbol] = {
-            "stop": round(fill_price * (1 - stop_pct), 4),
-            "target": round(fill_price * (1 + tp_pct), 4) if tp_pct else None,
-        }
+            b = {"stop": round(stop, 4), "target": round(target, 4) if target else None,
+                 "exit_at": plan.get("exit_at"), "model": plan.get("model")}
+        else:
+            stop_pct = decision.stop_loss_pct if decision and decision.stop_loss_pct else None
+            stop_pct = min(stop_pct or L.default_stop_loss_pct, max_loss)
+            tp_pct = decision.take_profit_pct if decision else None
+            b = {"stop": round(fill_price * (1 - stop_pct), 4),
+                 "target": round(fill_price * (1 + tp_pct), 4) if tp_pct else None}
+        if self.trail_giveback and not systematic:
+            # Claude's stop sets the trail (capped by the give-back); a model's own stop (often a
+            # tight ATR stop) stays the starting stop and the trail uses the give-back itself
+            dist = (fill_price - b["stop"]) / fill_price
+            trail = self.trail_giveback if plan and plan.get("stop") is not None else min(dist, self.trail_giveback)
+            b.update(target=None, entry=round(fill_price, 4), peak=round(fill_price, 4), trail=round(trail, 4),
+                     stop=round(max(b["stop"], fill_price * (1 - trail)), 4))
+        state.brackets[symbol] = b
+
+    @staticmethod
+    def trail(state: AccountState, symbol: str, bid: float) -> bool:
+        """Ratchet a trailing bracket: a new high since entry raises the stop to trail below it.
+        The stop never moves down. True if the stop moved."""
+        b = state.brackets.get(symbol)
+        if not b or not b.get("trail") or not bid or bid <= b.get("peak", 0.0):
+            return False
+        b["peak"] = round(bid, 4)
+        new = round(bid * (1 - b["trail"]), 4)
+        if new <= b["stop"]:
+            return False
+        b["stop"] = new
+        return True
 
     def bracket_hit(self, state: AccountState, position: Position, quote: Quote,
                     now: datetime | None = None) -> str | None:
@@ -161,7 +193,7 @@ class RiskManager:
             self.set_bracket(state, position.symbol, position.avg_cost, None)
         b = state.brackets[position.symbol]
         if quote.bid <= b["stop"]:
-            return "stop_loss"
+            return "trailing_stop" if b.get("trail") and b["stop"] >= b.get("entry", float("inf")) else "stop_loss"
         if b.get("target") is not None and quote.bid >= b["target"]:
             return "take_profit"
         if now is not None and b.get("exit_at") and now >= datetime.fromisoformat(b["exit_at"]):
@@ -172,7 +204,8 @@ class RiskManager:
                     now: datetime, next_earnings: datetime | None = None) -> bool:
         """Let a winner run: within 15 minutes before a model's exit time, if the position is up
         at least swing_min_profit_pct, push the exit to the next session's 15:50 ET close and
-        raise the stop to lock in a small gain (entry +0.2%). Limited to swing_max_days."""
+        raise the stop to lock in a small gain (entry +0.2%). Limited to swing_max_days, except
+        for autopilot positions with a trailing stop, which keep rolling while they are up."""
         from ctbot.market_hours import ET, next_business_day
 
         L, b = self.limits, state.brackets.get(position.symbol)
@@ -181,7 +214,8 @@ class RiskManager:
         exit_at = datetime.fromisoformat(b["exit_at"])
         if not (exit_at - timedelta(minutes=15) <= now < exit_at):
             return False
-        if b.get("swings", 0) >= L.swing_max_days or not position.avg_cost:
+        if (b.get("swings", 0) >= L.swing_max_days and not b.get("trail")) or not position.avg_cost:
+            # a trailing (autopilot) winner keeps rolling forward: its trailing stop is the exit
             return False
         if quote.bid / position.avg_cost - 1 < L.swing_min_profit_pct:
             return False
@@ -220,6 +254,7 @@ class RiskManager:
         today: date | None = None,
         next_earnings: datetime | None = None,
         now: datetime | None = None,
+        check_quote_age: bool = True,
     ) -> RiskVerdict:
         L = self.limits
         reasons: list[str] = []
@@ -232,8 +267,9 @@ class RiskManager:
             reasons.append("kill_switch_active")
         if not decision.approve:
             reasons.append("claude_rejected")
-        if decision.confidence < L.min_claude_confidence:
-            reasons.append(f"confidence_{decision.confidence:.2f}_below_{L.min_claude_confidence}")
+        floor = L.min_claude_confidence if self.min_confidence is None else self.min_confidence
+        if decision.confidence < floor:
+            reasons.append(f"confidence_{decision.confidence:.2f}_below_{floor}")
         if candidate.symbol in held_symbols:
             reasons.append("already_held")
         plan = self.exit_plan(candidate)
@@ -258,6 +294,8 @@ class RiskManager:
         if quote is None:
             reasons.append("no_quote")
         else:
+            if check_quote_age and now is not None and (now - quote.ts).total_seconds() > L.max_quote_age_s:
+                reasons.append("stale_quote")  # off for daily-bar quotes (CSV mode): they are never fresh
             if quote.last < min_price:
                 reasons.append("price_below_min")
             if quote.bid <= 0 or quote.ask <= 0 or quote.ask < quote.bid:

@@ -5,17 +5,29 @@ The executor is injected by the entrypoint. This module must not import ctbot.li
 
 from __future__ import annotations
 
+import json
 import logging
+import time
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
-from ctbot import allocations, market_hours
+from ctbot import allocations, autopilot, llm_costs, market_hours
 from ctbot.aggregation.ensemble import combine
 from ctbot.config import Settings
+from ctbot.contracts import (
+    CycleSummary,
+    ExecutionOutcome,
+    MarketSnapshot,
+    ProposedOrder,
+    StrategyResult,
+    strategy_version,
+)
 from ctbot.decision.engine import ClaudeDecisionEngine
+from ctbot.decision.memory import outcome_memory
 from ctbot.execution.base import OrderExecutor
 from ctbot.market_data.base import MarketDataProvider
 from ctbot.models import Candidate, Decision, Direction, Quote, Side, Signal
@@ -53,6 +65,24 @@ class Components:
     # strategies as configured in strategies.toml; `strategies` is this, as the launcher sees it
     configured: list[WeightedStrategy] | None = None
     launched: tuple | None = None  # last applied launcher state: (in use, {name: capital})
+    # (symbol, side) -> monotonic time of the last submission: refuses an identical order within
+    # DUPLICATE_WINDOW_S (a retried cycle, a double click, a strategy firing twice)
+    recent_orders: dict = field(default_factory=dict)
+    journal: Any = None  # ctbot.contracts.Journal: snapshot -> results -> order -> outcome
+    fills: int = 0       # fills submitted by this process (cycle summaries count the difference)
+
+
+DUPLICATE_WINDOW_S = 120.0
+
+
+def _journal(c: Components, record) -> None:
+    if c.journal is not None:
+        c.journal.write(record)
+
+
+def halted(c: Components) -> bool:
+    """Kill-switch file (data/HALT next to the paper ledger): no new entries while it exists."""
+    return c.settings.halt_path.exists()
 
 
 def apply_launcher(c: Components, state: AccountState, positions: dict, now: datetime) -> None:
@@ -62,6 +92,15 @@ def apply_launcher(c: Components, state: AccountState, positions: dict, now: dat
     an empty data/allocations.json hands control back to strategies.toml."""
     if c.configured is None:
         c.configured = list(c.strategies)
+    ap = autopilot.load(c.settings.autopilot_path)
+    if ap.enabled and not c.executor.is_live:  # paper only: replaces the launcher
+        try:
+            fills = json.loads(c.settings.paper_ledger_path.read_text()).get("fills", [])
+        except (OSError, ValueError):
+            fills = []
+        autopilot.apply(c, state, ap, fills, now)
+        return
+    c.risk.max_loss_pct = c.risk.trail_giveback = c.risk.min_confidence = None
     path = c.settings.allocations_path
     used: dict[str, float] = {}
     open_gain: dict[str, float] = {}
@@ -163,6 +202,21 @@ def _idea(
     }
 
 
+def _earnings_block(c: Components, cand: Candidate, now: datetime) -> datetime | None:
+    """The earnings report that falls before this long's planned exit (the hard rule refuses it)."""
+    report = c.context.next_earnings(cand.symbol) if c.context else None
+    if report is None:
+        return None
+    plan = c.risk.exit_plan(cand)
+    horizon = max((s.horizon_days for s in cand.signals if s.direction is Direction.LONG), default=1.0)
+    planned_exit = datetime.fromisoformat(plan["exit_at"]) if plan else now + timedelta(days=horizon)
+    return report if now < report < planned_exit else None
+
+
+def live_quotes(md: MarketDataProvider) -> bool:
+    return getattr(md, "quotes_are_live", True)
+
+
 def avg_dollar_volume(md: MarketDataProvider, symbol: str, days: int = 20) -> float:
     bars = md.daily_bars(symbol, days)
     return sum(b.close * b.volume for b in bars) / len(bars) if bars else 0.0
@@ -172,10 +226,27 @@ def _submit(c: Components, state: AccountState, order, positions, today, decisio
             plan=None, tag: str | None = None) -> bool:
     if tag:
         order = replace(order, candidate_ref=tag)
+    _journal(c, ProposedOrder(order.client_order_id, order.symbol, order.side.value, order.notional,
+                              order.limit_price, tag))
+    if order.side is Side.BUY and halted(c):
+        log.warning("refused %s %s: HALT file present (%s)", order.side.value, order.symbol, c.settings.halt_path)
+        _journal(c, ExecutionOutcome(order.client_order_id, order.symbol, "refused", reason="halt_file"))
+        return False
+    key, t = (order.symbol, order.side), time.monotonic()
+    if order.side is Side.BUY and key in c.recent_orders and t - c.recent_orders[key] < DUPLICATE_WINDOW_S:
+        log.warning("refused duplicate %s %s within %.0fs", order.side.value, order.symbol, DUPLICATE_WINDOW_S)
+        _journal(c, ExecutionOutcome(order.client_order_id, order.symbol, "refused", reason="duplicate_order"))
+        return False
     fill = c.executor.submit(order)
     log.info("submitted %s live=%s fill=%s", order, c.executor.is_live, fill)
     if fill is None:
+        _journal(c, ExecutionOutcome(order.client_order_id, order.symbol, "no_fill"))
         return False
+    c.fills += 1
+    if order.side is Side.BUY:  # exits are never blocked, and an order that didn't fill may retry
+        c.recent_orders[key] = t
+    _journal(c, ExecutionOutcome(order.client_order_id, order.symbol, "filled", fill.quantity, fill.price,
+                                 simulated=fill.simulated))
     if order.side is Side.SELL:
         _book_sleeve_gain(c, state, order.symbol, positions[order.symbol].avg_cost, fill)
         c.risk.record_exit_fill(state, positions[order.symbol], today, fill.price)
@@ -194,9 +265,10 @@ def _submit(c: Components, state: AccountState, order, positions, today, decisio
     return True
 
 
-def _maybe_top_up(c: Components, state: AccountState, cand: Candidate, pos, quote, now: datetime) -> None:
+def _maybe_top_up(c: Components, state: AccountState, cand: Candidate, pos, quote, now: datetime,
+                  buys_ok: bool = True) -> None:
     """Systematic core only: rebalance to its target size when it is off by more than 5% of
-    equity. Buys respect the kill switch and the daily-loss halt; trims (partial sells, used
+    equity. Buys respect the kill switch, the daily-loss halt, HALT and the close cutoff; trims (partial sells, used
     by the volatility-capped core) always may run and keep the position's exit plan."""
     sig = next((s for s in cand.signals if s.direction is Direction.LONG and s.evidence.get("rebalance")), None)
     owner = (state.brackets.get(cand.symbol) or {}).get("model")
@@ -220,7 +292,7 @@ def _maybe_top_up(c: Components, state: AccountState, cand: Candidate, pos, quot
             log.info("trim %s: -$%.2f to its target $%.0f", cand.symbol, -gap, target)
             state.cash = c.executor.cash()
         return
-    if state.kill_switch or state.equity <= state.day_start_equity * (1 - L.max_daily_loss_pct):
+    if not buys_ok or state.kill_switch or state.equity <= state.day_start_equity * (1 - L.max_daily_loss_pct):
         return
     cash = state.cash - sum(v for k, v in state.sleeve_reserve.items() if k != owner)  # others' money stays theirs
     if gap <= band or cash < 1:
@@ -247,6 +319,9 @@ def manage_positions(c: Components, state: AccountState, now: datetime) -> None:
     positions = {p.symbol: p for p in c.executor.positions()}
     for sym, pos in list(positions.items()):
         quote = c.market_data.quotes([sym]).get(sym)
+        if quote and c.risk.trail(state, sym, quote.bid):
+            b = state.brackets[sym]
+            log.info("trail %s: new high %.2f, stop raised to %.2f", sym, b["peak"], b["stop"])
         report = c.context.next_earnings(sym) if c.context else None
         if quote and c.risk.maybe_swing(state, pos, quote, now, report):
             b = state.brackets[sym]
@@ -267,15 +342,45 @@ def manage_positions(c: Components, state: AccountState, now: datetime) -> None:
 
 
 def run_cycle(c: Components, state: AccountState, now: datetime) -> None:
-    """Caller must set state.equity to the current value before each cycle. `now` is tz-aware."""
+    """Caller must set state.equity to the current value before each cycle. `now` is tz-aware.
+    With a journal, every cycle that runs ends in a CycleSummary: "traded" or an explicit
+    "no_trade" with the reasons (no candidates, rejected by risk, shadow only, ...)."""
+    if c.journal is None:
+        _run_cycle(c, state, now)
+        return
+    statuses: Counter = Counter()
+    recorder, fills_before = c.recorder, c.fills
+
+    def counting(idea: dict[str, Any]) -> None:
+        statuses[idea.get("status") or "?"] += 1
+        recorder(idea)
+
+    c.recorder = counting
+    try:
+        ran = _run_cycle(c, state, now)
+    finally:
+        c.recorder = recorder
+    if ran is None:
+        return
+    n_signals, n_candidates, snap = ran
+    if snap:
+        _journal(c, MarketSnapshot(type(c.market_data).__name__, snap))
+    n_fills = c.fills - fills_before
+    outcome = "traded" if n_fills else "no_trade"
+    reasons = dict(statuses) if n_candidates else {"no_candidates": 1}
+    _journal(c, CycleSummary(now.isoformat(), n_signals, n_candidates, n_fills, outcome, reasons))
+
+
+def _run_cycle(c: Components, state: AccountState, now: datetime):
     today = market_hours.trading_date(now)
     c.risk.refresh(state, today)
     if c.settings.respect_market_hours and not market_hours.session_open(now):
         log.info("market closed at %s; skipping cycle", now.isoformat())
-        return
+        return None
     allow_entries = not c.settings.respect_market_hours or (
         market_hours.minutes_to_close(now) > c.settings.risk.no_entries_last_minutes
     )
+    halt = halted(c)
     if hasattr(c.market_data, "warm"):
         c.market_data.warm(c.universe)
     if c.context is not None and hasattr(c.context, "warm"):
@@ -294,18 +399,34 @@ def run_cycle(c: Components, state: AccountState, now: datetime) -> None:
         if c.risk.model_paused(state, ws.strategy.name):
             continue  # too many losses in a row today
         try:
-            signals.extend(_sleeve_signals(ws, ws.strategy.generate(ctx), state.sleeves))
+            produced = _sleeve_signals(ws, ws.strategy.generate(ctx), state.sleeves)
         except Exception:
             log.exception("strategy %s failed", ws.strategy.name)
+            continue
+        signals.extend(produced)
+        if produced and c.journal is not None:
+            _journal(c, StrategyResult(ws.strategy.name, strategy_version(ws.strategy), ws.mode, [
+                {"symbol": g.symbol, "direction": g.direction.value, "strength": g.strength,
+                 "horizon_days": g.horizon_days, "evidence": g.evidence, "ts": g.ts.isoformat()}
+                for g in produced]))
     weights = {ws.strategy.name: ws.weight for ws in c.strategies}
     standalone = frozenset(ws.strategy.name for ws in c.strategies if ws.standalone)
     shadow_models = frozenset(ws.strategy.name for ws in c.strategies if ws.mode == "shadow")
-    candidates = combine(signals, weights, c.settings.ensemble, standalone)
+    def stale_or_blocked(cand: Candidate) -> bool:
+        """Spend the review cap on ideas that can still trade: setups already reviewed today and
+        names the earnings rule would refuse go to the back of the line."""
+        buyers = tuple(sorted({s.strategy for s in cand.signals if s.direction is Direction.LONG}))
+        return (today, cand.symbol, buyers) in c.reviewed or _earnings_block(c, cand, now) is not None
+
+    candidates = combine(signals, weights, c.settings.ensemble, standalone, stale_or_blocked)
     log.info("%d events, %d signals, %d candidates", len(events), len(signals), len(candidates))
 
+    snap: dict[str, dict[str, Any]] = {}
     for cand in candidates:
         decision = None
         quote = c.market_data.quotes([cand.symbol]).get(cand.symbol)
+        if quote is not None:
+            snap[cand.symbol] = {"bid": quote.bid, "ask": quote.ask, "last": quote.last, "ts": quote.ts.isoformat()}
         if cand.direction is Direction.EXIT:
             if cand.symbol not in held:
                 continue
@@ -314,14 +435,18 @@ def run_cycle(c: Components, state: AccountState, now: datetime) -> None:
                 continue  # opened by another model: only its owner's exits (or its plan) apply
             verdict = c.risk.check_exit(cand, positions[cand.symbol], state, quote, today)
         else:
+            if cand.symbol in held:  # trims always run; top-up buys respect HALT and the close cutoff
+                _maybe_top_up(c, state, cand, positions[cand.symbol], quote, now, buys_ok=allow_entries and not halt)
+                continue  # one position per symbol: no point paying for a review
+            if halt:
+                log.info("skipping entry %s: HALT file present", cand.symbol)
+                c.recorder(_idea(now, cand, quote, None, None, "halted"))
+                continue
             if not allow_entries:
                 log.info("skipping entry %s: within %s min of close", cand.symbol,
                          c.settings.risk.no_entries_last_minutes)
                 c.recorder(_idea(now, cand, quote, None, None, "too_close_to_close"))
                 continue
-            if cand.symbol in held:
-                _maybe_top_up(c, state, cand, positions[cand.symbol], quote, now)
-                continue  # one position per symbol: no point paying for a review
             buyers = tuple(sorted({s.strategy for s in cand.signals if s.direction is Direction.LONG}))
             longs = [s for s in cand.signals if s.direction is Direction.LONG]
             systematic = bool(longs) and all(s.evidence.get("systematic") for s in longs)
@@ -330,8 +455,7 @@ def run_cycle(c: Components, state: AccountState, now: datetime) -> None:
                 continue  # same setup already reviewed today (rule-based entries are free: they retry)
             c.reviewed.add(key)
             report = c.context.next_earnings(cand.symbol) if c.context else None
-            plan = c.risk.exit_plan(cand)
-            if report and plan and now < report < datetime.fromisoformat(plan["exit_at"]):
+            if _earnings_block(c, cand, now) is not None:
                 # the hard rule would refuse it anyway: skip the paid review
                 verdict = RiskVerdict(False, ("earnings_before_exit",))
                 log.info("rejected long %s: earnings_before_exit (%s)", cand.symbol, report.isoformat())
@@ -344,11 +468,17 @@ def run_cycle(c: Components, state: AccountState, now: datetime) -> None:
                 "max_open_positions": c.settings.risk.max_open_positions,
                 "held_symbols": sorted(held),
             }
+            if c.risk.trail_giveback:
+                account["exit_policy"] = (
+                    f"autopilot: trailing stop, no fixed take-profit. Your stop_loss_pct sets the starting stop "
+                    f"(at most {c.risk.max_loss_pct:.0%}) and the trail distance below the highest price "
+                    f"(at most {c.risk.trail_giveback:.0%}); pick it from the stock's normal volatility")
             if systematic:
                 # mechanical allocation rule: no Claude review; every hard risk check still runs
                 decision = Decision(True, 1.0, "systematic rule (no review)", 0.0)
                 adv = avg_dollar_volume(c.market_data, cand.symbol)
-                verdict = c.risk.check_entry(cand, decision, state, quote, adv, held, today, report, now)
+                verdict = c.risk.check_entry(cand, decision, state, quote, adv, held, today, report, now,
+                                         live_quotes(c.market_data))
                 if not verdict.allowed:
                     log.info("rejected long %s: %s", cand.symbol, ", ".join(verdict.reasons))
                     c.recorder(_idea(now, cand, quote, decision, verdict, "rejected"))
@@ -364,6 +494,16 @@ def run_cycle(c: Components, state: AccountState, now: datetime) -> None:
                         positions = {p.symbol: p for p in c.executor.positions()}
                         held = frozenset(positions)
                 continue
+            if set(buyers) <= shadow_models and not c.settings.review_shadow_ideas:
+                # a shadow model never trades: record the idea without paying for a review
+                log.info("shadow long %s (%s): not reviewed (REVIEW_SHADOW_IDEAS=false)", cand.symbol, ",".join(buyers))
+                c.recorder(_idea(now, cand, quote, None, None, "shadow_unreviewed"))
+                continue
+            if llm_costs.spent(c.settings.llm_usage_path, today) >= c.settings.max_claude_usd_per_day:
+                log.info("skipping review of %s: daily Claude spend cap $%.2f reached", cand.symbol,
+                         c.settings.max_claude_usd_per_day)
+                c.recorder(_idea(now, cand, quote, None, None, "review_budget_used"))
+                continue
             used = c.reviews_today.get(today, 0)
             per_model = [c.reviews_today.get((today, m), 0) for m in buyers]
             if used >= c.settings.max_claude_reviews_per_day or (
@@ -377,9 +517,18 @@ def run_cycle(c: Components, state: AccountState, now: datetime) -> None:
                 c.reviews_today[(today, m)] = c.reviews_today.get((today, m), 0) + 1
             if c.context:
                 account["market_context"] = c.context.for_symbol(cand.symbol)
-            decision = c.engine.evaluate(cand, account)
+            if c.settings.review_outcome_memory:
+                try:
+                    account["outcome_memory"] = outcome_memory(
+                        c.settings.paper_ledger_path, list(buyers), cand.symbol, now,
+                        c.settings.ideas_path.with_name("idea_scores.json"))
+                except Exception:  # noqa: BLE001 - memory is optional context, never a blocker
+                    log.exception("outcome memory failed for %s", cand.symbol)
+            decision = (c.engine.evaluate(cand, account, debate=True) if c.settings.review_debate
+                        else c.engine.evaluate(cand, account))
             adv = avg_dollar_volume(c.market_data, cand.symbol)
-            verdict = c.risk.check_entry(cand, decision, state, quote, adv, held, today, report, now)
+            verdict = c.risk.check_entry(cand, decision, state, quote, adv, held, today, report, now,
+                                         live_quotes(c.market_data))
 
         if not verdict.allowed:
             log.info("rejected %s %s: %s", cand.direction.value, cand.symbol, ", ".join(verdict.reasons))
@@ -404,6 +553,7 @@ def run_cycle(c: Components, state: AccountState, now: datetime) -> None:
                 # Keep later candidates in this cycle checked against post-fill positions.
                 positions = {p.symbol: p for p in c.executor.positions()}
                 held = frozenset(positions)
+    return len(signals), len(candidates), snap
 
 
 def process_manual_order(
@@ -435,6 +585,8 @@ def process_manual_order(
                                     positions.get(sym), state, quote, today)
         decision = None
     elif order["side"] == "buy":
+        if halted(c):
+            return "rejected", ["halt_file_present"], None
         if c.settings.respect_market_hours and (
             market_hours.minutes_to_close(now) <= c.settings.risk.no_entries_last_minutes
         ):
@@ -449,7 +601,8 @@ def process_manual_order(
         adv = avg_dollar_volume(c.market_data, sym)
         report = c.context.next_earnings(sym) if c.context else None
         verdict = c.risk.check_entry(Candidate(sym, Direction.LONG, 1.0, sigs), decision, state,
-                                     quote, adv, frozenset(positions), today, report, now)
+                                     quote, adv, frozenset(positions), today, report, now,
+                                     live_quotes(c.market_data))
     else:
         return "rejected", [f"unknown side {order['side']!r}"], None
 

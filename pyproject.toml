@@ -44,6 +44,11 @@ ctbot-lab = "ctbot.research.lab:main"
 ctbot-tearsheet = "ctbot.research.tearsheet:main"
 ctbot-sweep = "ctbot.research.sweep:main"
 ctbot-perf = "ctbot.research.perf:main"
+ctbot-rank-research = "ctbot.research.ranker:main"
+ctbot-library-research = "ctbot.library.backtest:main"
+ctbot-variants = "ctbot.variants:main"
+ctbot-dayplan = "ctbot.dayplan:plan_main"
+ctbot-reconcile = "ctbot.dayplan:reconcile_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

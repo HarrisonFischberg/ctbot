@@ -8,7 +8,7 @@ from dataclasses import asdict
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from ctbot.decision.prompts import SYSTEM_PROMPT
+from ctbot.decision.prompts import DEBATE_PROMPTS, SYSTEM_PROMPT
 from ctbot.models import Candidate, Decision
 
 log = logging.getLogger(__name__)
@@ -51,10 +51,11 @@ def _reject(reason: str) -> Decision:
 
 
 class ClaudeDecisionEngine:
-    def __init__(self, model: str, effort: str = "medium", client=None) -> None:
+    def __init__(self, model: str, effort: str = "medium", client=None, usage_path=None) -> None:
         self.model = model
         self.effort = effort
         self._client = client  # injected in tests; created lazily otherwise
+        self.usage_path = usage_path  # data/llm_usage.jsonl: measured spend per call
 
     @property
     def client(self):
@@ -63,6 +64,16 @@ class ClaudeDecisionEngine:
 
             self._client = anthropic.Anthropic()
         return self._client
+
+    def _log_usage(self, response, purpose: str) -> None:
+        if self.usage_path is None or getattr(response, "usage", None) is None:
+            return
+        from ctbot.llm_costs import record
+
+        try:
+            record(self.usage_path, self.model, response.usage, purpose)
+        except (OSError, TypeError, ValueError):
+            log.exception("could not log Claude usage")
 
     def build_user_message(self, candidate: Candidate, account: dict) -> str:
         payload = {
@@ -88,16 +99,44 @@ class ClaudeDecisionEngine:
             payload, indent=2, sort_keys=True, default=str
         )
 
-    def evaluate(self, candidate: Candidate, account: dict) -> Decision:
+    def debate(self, message: str) -> dict[str, str] | None:
+        """Two short advocacy calls (for / against) at low effort, after TradingAgents' bull/bear
+        researchers, bounded to one round. Any failure returns None: the review goes ahead without it."""
+        import anthropic
+
+        out = {}
+        for side, prompt in DEBATE_PROMPTS.items():
+            try:
+                r = self.client.messages.create(
+                    model=self.model, max_tokens=2000, system=prompt,
+                    messages=[{"role": "user", "content": message}],
+                    output_config={"effort": "low"},
+                )
+            except (anthropic.APIStatusError, anthropic.APIConnectionError) as e:
+                log.warning("debate (%s) skipped: %s", side, e)
+                return None
+            self._log_usage(r, "debate")
+            text = next((b.text for b in r.content if b.type == "text"), "").strip()
+            if r.stop_reason != "end_turn" or not text:
+                return None
+            out[side] = text[:1500]
+        return out
+
+    def evaluate(self, candidate: Candidate, account: dict, debate: bool = False) -> Decision:
         """Any failure (API error, refusal, bad JSON) fails closed to a rejection."""
         import anthropic
 
+        message = self.build_user_message(candidate, account)
+        if debate:
+            args = self.debate(message)
+            if args:
+                message += "\n\ndebate:\n" + json.dumps(args, indent=2)
         try:
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=16000,
                 system=SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": self.build_user_message(candidate, account)}],
+                messages=[{"role": "user", "content": message}],
                 output_config={
                     "effort": self.effort,
                     "format": {"type": "json_schema", "schema": api_schema()},
@@ -113,6 +152,7 @@ class ClaudeDecisionEngine:
             log.error("Claude connection error: %s", e)
             return _reject("connection_error")
 
+        self._log_usage(response, "review")
         if response.stop_reason != "end_turn":
             return _reject(f"stop_reason_{response.stop_reason}")
 

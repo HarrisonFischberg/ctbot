@@ -36,4 +36,28 @@ Decide whether to act on the candidate. Weigh:
 You do not place orders. An independent risk manager can veto your verdict.
 Approving nothing is an acceptable outcome. Be calibrated: confidence is your
 probability the trade is profitable after costs over the stated horizon.
+
+account.outcome_memory, when present, is this bot's own settled paper record: for each model
+behind the candidate, closed round trips, win rate and average return, the last closed trades in
+this symbol, and (from replaying past ideas) how approved vs rejected ideas of that model did.
+Small samples are mostly noise; use them to temper confidence, not as a base rate on their own.
+
+account.exit_policy, when it starts with "autopilot", means the position has no fixed target: a
+capped starting stop and a trailing stop below the highest price. Losses are cut at the stop while
+winners run, so a trade is worth taking when its expected value is positive even if it wins less
+than half the time (trend and breakout entries typically win 35-45%). Approve unless you see a
+concrete reason the setup is bad (stale signal, falling market, news against it, poor liquidity);
+confidence stays your honest probability of a profit, and the risk manager accepts approvals at
+30% or more.
+
+debate, when present, holds two short arguments written just before your review: the strongest
+case for and against taking this trade. Both are advocacy on the same evidence, not new facts.
 """
+
+DEBATE_PROMPTS = {
+    "for": ("You argue FOR taking the candidate trade below, as strongly as the evidence honestly allows. "
+            "Use only the evidence given. At most 120 words, plain text."),
+    "against": ("You argue AGAINST taking the candidate trade below, as strongly as the evidence honestly "
+                "allows: costs, staleness, crowding, regime, base rates. Use only the evidence given. "
+                "At most 120 words, plain text."),
+}

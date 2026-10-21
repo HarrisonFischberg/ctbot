@@ -16,6 +16,8 @@ cd path/to/ctbot
 | Paper bot only | `.venv/bin/ctbot-paper --loop --interval 300` |
 | Dashboard only | `.venv/bin/ctbot-dashboard` then open http://127.0.0.1:8787 |
 | Pre-open health check | `.venv/bin/ctbot-preflight` |
+| Premarket plan: trade or no-trade today, and why | `.venv/bin/ctbot-dayplan` |
+| Stop all new entries now (exits still run) / resume | `touch data/HALT` / `rm data/HALT` |
 | Robinhood sign-in (when preflight says it expired) | `.venv/bin/ctbot-robinhood-login` |
 
 Only one paper bot can run at a time (a lock refuses a second). Start it before 9:30 ET;
@@ -40,7 +42,35 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
   sign-in in your browser; **Run check** tests every connection. Restart the bot after a change.
 - **Home**: portfolio value, a 4-step *Get started* checklist, and *Your strategies* (what you
   invested, value now, total return, Stop).
-- **Discover**: every strategy in plain words with its simulated return over the past 3, 6 or 12
+- **Autopilot**: turn it on and set two numbers: *max loss per trade* (how far below the fill a
+  new trade's starting stop may sit) and *give back from the high* (how far the trailing stop
+  follows below each position's highest price). Saved in `data/autopilot.json`; the bot reads it
+  every cycle. While on, every enabled strategy may trade on its own (day trades, overnight holds,
+  swings, the trend cores), except ones research rejected (the ranker) or that lost money over 10+
+  paper trades in the last 30 days (shown as benched, with the reason). Claude reviews each
+  non-systematic entry and sets its starting stop; those positions have no fixed take-profit, and
+  winners keep rolling past their usual exit time while they are up. The trend cores keep their own
+  backtested exits. The page also lists the latest decisions with Claude's reasons, and below it the
+  strategy library and research (the old Discover and Research tabs). Autopilot replaces Invest
+  runs while it is on. Paper only.
+- **Settings test**: `config/variants.toml` lists extra $10,000 paper accounts that the paper bot
+  runs next to the main one, each changing one setting (trail, starting stop, Claude's confidence
+  floor, position count, ideas per cycle, reviewer model). They share the bot's market data and
+  Claude's verdicts, so they add almost no data calls or cost. Each keeps its files in
+  `data/variants/<name>/`; `data/HALT` stops entries in all of them. The Autopilot page's *Settings
+  test* card and `.venv/bin/ctbot-variants` compare them. Edit the file and restart the bot to change
+  them; delete a folder to restart that account; `enabled = false` turns them off.
+- **Strategy library growth**: `ctbot.library` adds 12 published rule families (52-week high,
+  channel breakout, pullback, Bollinger dip, NR7, gap-down reversal, golden cross, MACD, three down
+  days, volume breakout, relative strength, RSI(2)) on two universes (index/sector funds, 60 large
+  caps): 24 watch-only entries named `lib_<family>_<universe>`. `.venv/bin/ctbot-library-research`
+  backtests all of them with the live exits (next-open fills, 2×ATR starting stop capped at 8%, 8%
+  trailing stop, longest hold), logs every trial in `data/research/trials.jsonl`, and writes
+  `data/research/library_report.json`. The autopilot trades an entry only if that report admits it
+  (2018-22 excess over cash survives Benjamini-Hochberg at q=10% across all entries, positive
+  2000-17 Sharpe, 20+ trades). `--holdout` scores 2023 onward once. `[library] enabled = false` in
+  `config/strategies.toml` removes them.
+- **Strategy library** (on Autopilot, formerly Discover): every strategy in plain words with its simulated return over the past 3, 6 or 12
   months next to the S&P 500. **Invest** asks for an amount, a max loss and a take-profit; that
   strategy then trades on its own with that much paper money (never more), and the bot sells and
   stops it when the max loss or take-profit is reached. Every other model only suggests ideas
@@ -72,6 +102,7 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
 | Cache the last 2 weeks of 5-minute bars | `.venv/bin/ctbot-fetch-bars --interval 5minute --since $(date -v-14d +%Y-%m-%d)` |
 | Score today's reviewed ideas (approved vs rejected) | `.venv/bin/ctbot-score-ideas` |
 | Paper book tearsheet (after ~5 sessions) | `.venv/bin/ctbot-tearsheet` |
+| Reconcile ledger, brackets and journal; P&L per model today | `.venv/bin/ctbot-reconcile` |
 
 ## Research
 
@@ -81,6 +112,10 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
 | Trend length sweep (chosen on 2010-19, checked on 2020-26) | `.venv/bin/ctbot-sweep` |
 | Tearsheet for a lab strategy | `.venv/bin/ctbot-tearsheet --lab "lev: trend QQQ 170d -> QLD capped at 30% vol"` |
 | Intraday backtest (5-minute data) | `.venv/bin/ctbot-backtest` |
+| Lab with next-close execution (stricter) | `.venv/bin/ctbot-lab --lag 1 --cash-apy 0.035` |
+| Stock ranking model: walk-forward vs SPY, equal weight, momentum (dev + validation) | `.venv/bin/ctbot-rank-research` |
+| Score the locked holdout once, after choosing | `.venv/bin/ctbot-rank-research --holdout` |
+| Write the shadow model file for the bot (retrain monthly) | `.venv/bin/ctbot-rank-research --write-model` |
 | Tests | `.venv/bin/pytest -q` |
 | Known-vulnerability scan of installed packages | `.venv/bin/pip-audit --skip-editable` |
 

@@ -27,6 +27,7 @@ from ctbot.research import bars as cache
 from ctbot.research.backtest import cost_bps
 
 OUT = Path("data/lab/leaderboard.json")
+LAG = 0  # execution delay in days for simulate(); `ctbot-lab --lag 1` sets it
 PERIODS = {"in_sample": (date(2010, 11, 1), date(2019, 12, 31)),
            "out_of_sample": (date(2020, 1, 1), date(2100, 1, 1))}
 SECTORS = ["XLK", "XLF", "XLV", "XLY", "XLI", "XLP", "XLU", "XLE", "XLB"]
@@ -287,7 +288,12 @@ class Result:
 
 def simulate(lab: Lab, strat: Callable[[Lab, int], Weights], start: date, end: date,
              capital: float = 5000.0, cash_apy: float = 0.0, band: float = 0.02,
-             curve_out: list | None = None) -> Result:
+             curve_out: list | None = None, lag: int | None = None) -> Result:
+    """lag=0 trades at the close the signal was computed on (the live models decide 15:30-15:44 ET
+    on the live price, so this is close to how they trade); lag=1 trades at the next close, a
+    stricter check that the result does not depend on same-close execution."""
+    lag = LAG if lag is None else lag
+    queue: list[Weights] = []
     lab.state = {}
     idx = [i for i, d in enumerate(lab.days) if start <= d <= end and i >= 200]
     shares: dict[str, float] = {}
@@ -297,7 +303,12 @@ def simulate(lab: Lab, strat: Callable[[Lab, int], Weights], start: date, end: d
         px = {s: lab.px[s][i] for s in lab.px if lab.px[s][i] is not None}
         cash *= 1 + daily_cash
         eq = cash + sum(q * px.get(s, 0) for s, q in shares.items())
-        target = strat(lab, i)
+        queue.append(strat(lab, i))
+        if len(queue) <= lag:
+            curve.append((lab.days[i], eq))
+            expo.append(1 - cash / eq if eq else 0)
+            continue
+        target = queue.pop(0)
         for s in set(shares) | set(target):
             if s not in px:
                 continue
@@ -331,7 +342,7 @@ def simulate(lab: Lab, strat: Callable[[Lab, int], Weights], start: date, end: d
         months.setdefault((d.year, d.month), [v, v])[1] = v
     yr = [b / a - 1 for a, b in years.values()]
     mo = [b / a - 1 for a, b in months.values()]
-    cagr = (curve[-1][1] / capital) ** (1 / yrs) - 1
+    cagr = max(curve[-1][1] / capital, 0.0) ** (1 / yrs) - 1  # a wiped-out book is -100%, not complex
     mean = statistics.mean(rets) if rets else 0
     return Result(
         final=curve[-1][1], cagr=cagr, vol=sd * math.sqrt(252),
@@ -371,12 +382,21 @@ def run(cash_apy: float = 0.0) -> dict[str, Any]:
         row["deflated_vs_qqq"] = (deflated_sharpe(excess[row["strategy"]], len(excess), ex_var)
                                   if row["strategy"] in excess else None)
     rows.sort(key=lambda r: r["out_of_sample"]["sharpe"] or -9, reverse=True)
+    pbo_stats = None
+    n = min(len(v) for v in full_rets.values())
+    if n > 500 and len(full_rets) > 2:
+        import numpy as np
+
+        from ctbot.research.validation import pbo
+
+        pbo_stats = pbo(np.array([v[-n:] for v in full_rets.values()]).T, n_blocks=10)
     wf = {
         "trend QQQ (length)": walk_forward(lab, lambda n: trend("QQQ", n), list(range(100, 301, 20)), cash_apy=cash_apy),
         "trend QQQ -> QLD 30% cap (length)": walk_forward(lab, lambda n: vol_capped_trend("QQQ", "QLD", 0.30, n),
                                                           list(range(100, 301, 20)), cash_apy=cash_apy),
     }
-    return {"walk_forward": wf, "stress": stress(),"generated_at": datetime.now(timezone.utc).isoformat(), "cash_apy": cash_apy,
+    return {"walk_forward": wf, "stress": stress(), "pbo": pbo_stats, "lag_days": LAG,
+            "generated_at": datetime.now(timezone.utc).isoformat(), "cash_apy": cash_apy,
             "periods": {p: [s.isoformat(), min(e, lab.days[-1]).isoformat()] for p, (s, e) in PERIODS.items()},
             "note": "daily closes, split-adjusted, dividends excluded; costs 2 bps/side ETFs",
             "rows": rows}
@@ -385,10 +405,14 @@ def run(cash_apy: float = 0.0) -> dict[str, Any]:
 def main() -> None:
     p = argparse.ArgumentParser(description="Rank portfolio strategies on cached daily bars")
     p.add_argument("--cash-apy", type=float, default=0.0, help="yield on idle cash, e.g. 0.035")
+    p.add_argument("--lag", type=int, default=0, help="trade N closes after the signal (1 = stricter check)")
     a = p.parse_args()
+    global LAG
+    LAG = a.lag
     rep = run(a.cash_apy)
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(rep, indent=2, default=str))
+    out = OUT if LAG == 0 else OUT.with_name(f"leaderboard_lag{LAG}.json")  # the dashboard reads OUT
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(rep, indent=2, default=str))
     print(f"cash yield {a.cash_apy:.1%} · ranked by out-of-sample Sharpe · dividends excluded")
     print(f"{'strategy':<46}{'OOS CAGR':>9}{'MaxDD':>8}{'Sharpe':>7}{'DSR':>6}{'vsQQQ':>6} |{'IS CAGR':>8}{'MaxDD':>8}{'Sharpe':>7}")
     for r in rep["rows"]:
@@ -403,7 +427,10 @@ def main() -> None:
     for name, w in rep["walk_forward"].items():
         print(f"walk-forward {name}: {w['from']}..{w['to']} CAGR {w['cagr'] * 100:+.1f}% maxDD {w['max_dd'] * 100:.1f}% "
               f"Sharpe {w['sharpe'] or 0:.2f} · picks {w['picks']}")
-    print(f"written: {OUT}")
+    if rep.get("pbo"):
+        print(f"PBO across the catalog: {rep['pbo']['pbo']:.2f} ({rep['pbo']['n_splits']} splits; ~0.5 = picking the "
+              f"top Sharpe here is luck)")
+    print(f"written: {out}")
 
 
 if __name__ == "__main__":
@@ -464,7 +491,7 @@ def walk_forward(lab: Lab, family: Callable[[int], Callable[[Lab, int], Weights]
         mdd = min(mdd, v / peak - 1)
     rets = [b[1] / a[1] - 1 for a, b in zip(curve, curve[1:])]
     sd = statistics.pstdev(rets)
-    return {"picks": picks, "cagr": (eq / 5000) ** (1 / yrs) - 1, "max_dd": mdd,
+    return {"picks": picks, "cagr": max(eq / 5000, 0.0) ** (1 / yrs) - 1, "max_dd": mdd,
             "sharpe": statistics.mean(rets) / sd * math.sqrt(252) if sd else None,
             "from": curve[0][0].isoformat(), "to": curve[-1][0].isoformat()}
 
@@ -511,7 +538,7 @@ def stress(windows: dict[str, tuple[str, str]] | None = None) -> dict[str, Any]:
                 mdd = min(mdd, eq / peak - 1)
             yrs = len(rets) / 252
             sd = statistics.pstdev(rets)
-            rows.append({"strategy": name, "cagr": eq ** (1 / yrs) - 1, "max_dd": mdd,
+            rows.append({"strategy": name, "cagr": max(eq, 0.0) ** (1 / yrs) - 1, "max_dd": mdd,
                          "sharpe": statistics.mean(rets) / sd * math.sqrt(252) if sd else None, "growth_of_5000": 5000 * eq})
         out[wname] = rows
     return out

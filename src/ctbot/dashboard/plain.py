@@ -26,8 +26,11 @@ PARAMS: dict[str, tuple[str, Any] | None] = {
     "hold": ("Fund it buys", _fund),
     "sma_days": ("Uptrend test", lambda v: f"price above its {v}-day average (~{round(int(v) / 21)} months)"),
     "size_pct": None,
+    "family": None,
+    "universe": ("Trades", lambda v: {"etfs": "index & sector funds", "stocks": "60 large-cap stocks"}.get(v, v)),
     "vol_cap": ("Calm-market sizing", lambda v: f"shrinks the position when yearly swings exceed {_pct(v)}"),
     "disaster_stop": ("Emergency stop-loss", lambda v: f"sells if it falls {_pct(v)} below the buy price"),
+    "max_model_age_days": ("Model must be newer than", lambda v: f"{v} days (retrain monthly)"),
     "stop_atr": ("Stop-loss", lambda v: f"tight: {_pct(v)} of the stock's typical daily move"),
     "top_k": ("Stocks checked each morning", lambda v: f"the {v} most unusually active"),
     "last_entry": ("Last buy of the day", lambda v: f"{v} AM ET" if int(str(v).split(':')[0]) < 12 else f"{v} ET"),
@@ -144,17 +147,40 @@ STRATEGIES: dict[str, dict[str, Any]] = {
                                 "with the 200-day average still rising."),
                                "Scores extra for heavy volume and for being within 25% of the 52-week high.",
                                "Votes with other models rather than buying alone; votes to sell below the 50-day average."]},
+    "ranker": {"title": "Stock Ranking Model", "risk": "Medium", "holds": "Weeks",
+               "tagline": "Holds the 3 large caps a trained price-pattern model ranks highest, swapping one a week.",
+               "how": [("Scores each stock on about 25 price and volume patterns (momentum, trend, volatility, "
+                        "volume) with weights learned from past data, retrained on a rolling window."),
+                       "Decides each Monday morning on the previous close; replaces at most one holding per week.",
+                       "Does nothing until the research command has trained a model. No AI review, so no API cost."]},
 }
 
 MODES = {"trade": "Active", "shadow": "Watching", "off": "Off"}
+
+
+def _library(params: dict[str, Any]) -> dict[str, Any] | None:
+    from ctbot.library import signals as sg
+
+    fam = sg.FAMILIES.get(str(params.get("family")))
+    if fam is None:
+        return None
+    uni = str(params.get("universe"))
+    return {"title": f"{fam.title} ({sg.UNIVERSE_TITLE.get(uni, uni)})", "tagline": fam.tagline,
+            "how": [fam.tagline, f"Idea from: {fam.source}.",
+                    "Buys at the next open after the signal, up to 5 positions at 20% each.",
+                    "Starting stop 2× the stock's typical daily range (at most 8%), then a trailing stop; "
+                    f"sells after {fam.max_hold} trading days at the latest.",
+                    "Watch-only until its backtest (ctbot-library-research) admits it."],
+            "risk": "Medium" if uni == "etfs" else "High", "holds": f"Up to {fam.max_hold} trading days"}
 
 
 def describe(name: str, cls: str | None, params: dict[str, Any]) -> dict[str, Any]:
     key = cls or name
     if key == "trend_core" and params.get("hold") and params.get("hold") != params.get("symbol"):
         key = "trend_core_leveraged"
-    base = STRATEGIES.get(key) or {"title": name.replace("_", " ").title(), "tagline": "", "how": [],
-                                   "risk": "Unknown", "holds": "Varies"}
+    base = _library(params) if key == "rule" else STRATEGIES.get(key)
+    base = base or {"title": name.replace("_", " ").title(), "tagline": "", "how": [], "risk": "Unknown",
+                    "holds": "Varies"}
     settings = []
     for k, v in params.items():
         spec = PARAMS.get(k, (k.replace("_", " ").capitalize(), lambda x: str(x)))
