@@ -189,14 +189,14 @@ def run(holdout: bool = False, registry=None) -> dict[str, Any]:
 def reason(report: dict[str, Any] | None, name: str) -> tuple[bool, str]:
     """(admitted, plain reason) for one library entry, for the autopilot and the page."""
     if not report or name not in report.get("entries", {}):
-        return False, "not tested yet: run ctbot-library-research"
+        return False, "not tested yet, so it can't trade (run ctbot-library-research to test it)"
     row = report["entries"][name]
     v = row.get("validation", {})
-    stats = f"2018-22 test: {v.get('cagr', 0):+.1%} a year, Sharpe {v.get('sharpe', 0):.2f}, {v.get('trades', 0)} trades"
+    stats = f"2018-22 test: {v.get('cagr', 0):+.1%} a year, smoothness {v.get('sharpe', 0):.2f}, {v.get('trades', 0)} trades"
     if row.get("admitted"):
         return True, f"passed its test ({stats})"
     failed = [k for k, ok in row.get("checks", {}).items() if not ok]
-    words = {"fdr": "could be luck", "dev_sharpe_positive": "lost money 2000-17", "enough_trades": "too few trades"}
+    words = {"fdr": "its results could be luck", "dev_sharpe_positive": "it lost money in 2000-17", "enough_trades": "too few trades to judge"}
     return False, f"failed its test: {', '.join(words.get(f, f) for f in failed)} ({stats})"
 
 

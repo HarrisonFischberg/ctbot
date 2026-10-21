@@ -30,7 +30,7 @@ log = logging.getLogger(__name__)
 
 # Rejected by research: never given money by the autopilot (reason shown on the page).
 EXCLUDED = {
-    "ranker": "failed its real-data test on 2026-10-20 (no edge over equal weight, PBO 0.62)",
+    "ranker": "failed its test on real prices (2026-10-20): it did no better than buying every stock equally, and its best results looked like luck",
 }
 MIN_TRADES_TO_BENCH = 10
 BENCH_WINDOW_DAYS = 30
@@ -102,10 +102,10 @@ def decide(models: list[str], fills: list[dict[str, Any]], now: datetime,
             out[m] = {**rec, "status": "benched", "reason": verdict[1]}
         elif closed >= MIN_TRADES_TO_BENCH and pnl < 0:
             out[m] = {**rec, "status": "benched",
-                      "reason": f"lost ${-pnl:,.2f} over its last {closed} paper trades ({BENCH_WINDOW_DAYS} days)"}
+                      "reason": f"lost ${-pnl:,.2f} over its last {closed} practice trades ({BENCH_WINDOW_DAYS} days)"}
         else:
-            why = (f"{closed} paper trades, {'+' if pnl >= 0 else '-'}${abs(pnl):,.2f} in {BENCH_WINDOW_DAYS} days"
-                   if closed else "no recent paper trades yet: trading to build a record")
+            why = (f"{closed} practice trades in the last {BENCH_WINDOW_DAYS} days, {'+' if pnl >= 0 else '-'}${abs(pnl):,.2f} in total"
+                   if closed else "no practice trades lately: it's trading to build a record")
             out[m] = {**rec, "status": "trading", "reason": why}
     return out
 
