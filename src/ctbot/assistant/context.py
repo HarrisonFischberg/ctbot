@@ -199,7 +199,7 @@ def binding_limits(state: dict[str, Any], settings: Settings, ideas: dict[str, A
         out.append(f"daily loss halt: down {a['day_pnl_pct']:.1%} today vs {L['max_daily_loss_pct']:.0%} limit")
     if open_n >= L["max_open_positions"]:
         out.append(f"max_open_positions reached: {open_n}/{L['max_open_positions']}")
-    if a["day_trades_5d"] >= L["max_day_trades_5d"]:
+    if L.get("pdt_rule") and a["day_trades_5d"] >= L["max_day_trades_5d"]:
         out.append(f"PDT counter: {a['day_trades_5d']}/{L['max_day_trades_5d']} day trades in 5 days")
     if a["deployed"] >= L["max_trading_capital"] - 5:
         out.append(f"MAX_TRADING_CAPITAL: ${a['deployed']:.0f} of ${L['max_trading_capital']:.0f} deployed")

@@ -113,7 +113,7 @@ def test_end_to_end_buy_once_tagged_then_time_exit():
 
 
 def test_day_trade_entry_refused_when_pdt_budget_used():
-    rm = RiskManager(Settings.from_env({}).risk)
+    rm = RiskManager(Settings.from_env({"PDT_RULE": "true"}).risk)
     sig = Signal("orb", "KO", Direction.LONG, 0.8, 0.25,
                  {"stop": 98, "target": 104, "exit_at": "2026-10-13T15:50:00-04:00"})
     from ctbot.models import Candidate
@@ -124,6 +124,9 @@ def test_day_trade_entry_refused_when_pdt_budget_used():
     assert "pdt_budget_used" in v.reasons
     free = AccountState(250, 250, 250, 250, 0)
     assert rm.check_entry(cand, Decision(True, 0.9, "", 50), free, Quote("KO", 100, 100, 100), 1e9, today=DAY).allowed
+    # default (no PDT rule): the same busy account may still open a day trade
+    rm = RiskManager(Settings.from_env({"MAX_DAY_TRADES_5D": "3"}).risk)
+    assert rm.check_entry(cand, Decision(True, 0.9, "", 50), busy, Quote("KO", 100, 100, 100), 1e9, today=DAY).allowed
 
 
 def test_fill_tag_survives_ledger_reload():

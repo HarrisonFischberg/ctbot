@@ -1058,7 +1058,7 @@ main:focus { outline: none; }
     if (pf.ok === false) alerts.push(["crit", "!", "Preflight " + fmtTime(pf.ts) + " failed: " +
       (pf.checks || []).filter((c) => !c.ok).map((c) => c.check + " (" + c.detail + ")").join("; ")]);
     if (a.day_pnl_pct <= -S.limits.max_daily_loss_pct) alerts.push(["warn", "△", "Daily loss limit reached: no new entries today."]);
-    if (a.day_trades_5d >= S.limits.max_day_trades_5d) alerts.push(["warn", "△", `Day-trade limit reached (${a.day_trades_5d}/${S.limits.max_day_trades_5d} in 5 days): same-day exits are blocked.`]);
+    if (S.limits.pdt_rule && a.day_trades_5d >= S.limits.max_day_trades_5d) alerts.push(["warn", "△", `Day-trade limit reached (${a.day_trades_5d}/${S.limits.max_day_trades_5d} in 5 days): same-day exits are blocked.`]);
     $("alerts").innerHTML = alerts.map(([k, ic, t]) => `<div class="alert ${k}"><span class="ic">${ic}</span><span>${esc(t)}</span></div>`).join("");
   }
 
@@ -1087,7 +1087,7 @@ main:focus { outline: none; }
       ["Invested", `<div class="value">${usd(M.invested)}</div>
         <div class="sub">${inv}</div>${meter(a.equity ? M.invested / a.equity : 0)}`],
       ["Positions", `<div class="value">${nRuns + M.loose}</div>
-        <div class="sub">${what} · day trades ${a.day_trades_5d} of ${L.max_day_trades_5d} (5 days)</div>${meter(a.day_trades_5d / L.max_day_trades_5d, a.day_trades_5d >= L.max_day_trades_5d ? "crit" : "")}`],
+        <div class="sub">${what} · ${L.pdt_rule ? `day trades ${a.day_trades_5d} of ${L.max_day_trades_5d} (5 days)</div>${meter(a.day_trades_5d / L.max_day_trades_5d, a.day_trades_5d >= L.max_day_trades_5d ? "crit" : "")}` : `${a.day_trades_5d} day trades in 5 days (no limit)</div>`}`],
     ];
     const box = $("kpis");
     let added = false;
@@ -1355,7 +1355,7 @@ main:focus { outline: none; }
     const L = S.limits, rows = [
       ["Biggest single position", pct(L.max_position_pct, 0) + " of your money"], ["Most positions at once", L.max_open_positions],
       ["Paper money the bot can use", usd(L.max_trading_capital, 0)], ["Pauses for the day if down", pct(L.max_daily_loss_pct, 0)],
-      ["Stops everything if down from high", pct(L.max_total_drawdown_pct, 0)], ["Day trades allowed (5 days)", L.max_day_trades_5d], null,
+      ["Stops everything if down from high", pct(L.max_total_drawdown_pct, 0)], ["Day trades allowed (5 days)", L.pdt_rule ? L.max_day_trades_5d : "No limit"], null,
       ["Standard stop-loss", "−" + pct(L.default_stop_loss_pct, 0)], ["Widest stop-loss", "−" + pct(L.max_stop_loss_pct, 0)],
       ["Skips if bid/ask gap over", pct(L.max_spread_pct, 1)], ["AI must be at least", pct(L.min_claude_confidence, 0) + " confident"],
       ["Skips stocks under", usd(L.min_share_price)], ["Skips if trading volume under", "$" + (L.min_avg_dollar_volume / 1e6).toFixed(0) + "M a day"],

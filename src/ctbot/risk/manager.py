@@ -119,7 +119,7 @@ class RiskManager:
 
     def record_exit_fill(self, state: AccountState, position: Position, today: date,
                          exit_price: float | None = None) -> None:
-        """A sell of a position opened today is a day trade (counts toward the PDT limit).
+        """A sell of a position opened today is a day trade (counted; limited only with PDT_RULE).
         Also updates the losing streak of the model that opened the position."""
         if trading_date(position.opened_at) == today:
             state.day_trade_dates.append(today)
@@ -243,6 +243,10 @@ class RiskManager:
         cutoff = today - timedelta(days=7)  # ~5 business days
         return sum(1 for d in state.day_trade_dates if d > cutoff)
 
+    def pdt_limit_hit(self, state: AccountState, today: date | None = None) -> bool:
+        """True only with the old PDT rule switched on and its day trades used up."""
+        return self.limits.pdt_rule and self.day_trades_last_5d(state, today) >= self.limits.max_day_trades_5d
+
     def check_entry(
         self,
         candidate: Candidate,
@@ -273,10 +277,10 @@ class RiskManager:
         if candidate.symbol in held_symbols:
             reasons.append("already_held")
         plan = self.exit_plan(candidate)
-        if plan:  # a planned same-day exit needs a day trade still available
+        if plan and L.pdt_rule:  # with the old PDT rule, a same-day exit needs a day trade left
             exit_day = trading_date(datetime.fromisoformat(plan["exit_at"]))
             today = today or trading_date(datetime.now(timezone.utc))
-            if exit_day == today and self.day_trades_last_5d(state, today) >= L.max_day_trades_5d:
+            if exit_day == today and self.pdt_limit_hit(state, today):
                 reasons.append("pdt_budget_used")
         if next_earnings is not None:  # never hold through an earnings report
             now = now or datetime.now(timezone.utc)
@@ -323,6 +327,8 @@ class RiskManager:
         size = base * (min(max(req), cap) if req else L.max_position_pct)
         if L.size_by == "claude" and not req:  # Claude's suggestion can only shrink the size
             size = min(size, decision.suggested_notional)
+        # Buying power is cash on hand only: the bot never borrows on margin, so it needs no
+        # intraday margin headroom and works below the $2,000 margin minimum.
         notional = min(size, cash, room)
         if room < 1.0:
             reasons.append("trading_capital_cap")
@@ -347,18 +353,15 @@ class RiskManager:
         quote: Quote | None,
         today: date | None = None,
     ) -> RiskVerdict:
-        """Exits reduce risk, so they bypass Claude and loss limits, but not the PDT guard."""
+        """Exits reduce risk, so they bypass Claude and loss limits (and the PDT guard unless
+        PDT_RULE is on)."""
         today = today or datetime.now(timezone.utc).date()
         reasons: list[str] = []
         if position is None or position.quantity <= 0:
             reasons.append("no_position")
         if quote is None:
             reasons.append("no_quote")
-        if (
-            position is not None
-            and trading_date(position.opened_at) == today
-            and self.day_trades_last_5d(state, today) >= self.limits.max_day_trades_5d
-        ):
+        if position is not None and trading_date(position.opened_at) == today and self.pdt_limit_hit(state, today):
             reasons.append("pdt_guard")
         if reasons:
             return RiskVerdict(False, tuple(reasons))

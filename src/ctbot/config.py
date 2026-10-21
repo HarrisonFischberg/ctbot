@@ -45,6 +45,10 @@ class RiskLimits:
     min_share_price: float = 5.0
     min_avg_dollar_volume: float = 20_000_000
     allow_short: bool = False
+    # Old FINRA pattern-day-trader cap. FINRA's intraday margin standard replaced it on 2026-06-04
+    # (Robinhood adopted it that day), so the cap only applies with pdt_rule on, e.g. at a broker
+    # still in the transition period. Day trades are always counted for the dashboard.
+    pdt_rule: bool = False
     max_day_trades_5d: int = 3
     min_claude_confidence: float = 0.65
     max_spread_pct: float = 0.01          # (ask - bid) / mid; entries only
@@ -186,6 +190,7 @@ class Settings:
             min_share_price=_float(env, "MIN_SHARE_PRICE", 5.0),
             min_avg_dollar_volume=_float(env, "MIN_AVG_DOLLAR_VOLUME", 20_000_000),
             allow_short=_bool(env, "ALLOW_SHORT", False),
+            pdt_rule=_bool(env, "PDT_RULE", False),
             max_day_trades_5d=_int(env, "MAX_DAY_TRADES_5D", 3),
             min_claude_confidence=_float(env, "MIN_CLAUDE_CONFIDENCE", 0.65),
             max_spread_pct=_float(env, "MAX_SPREAD_PCT", 0.01),

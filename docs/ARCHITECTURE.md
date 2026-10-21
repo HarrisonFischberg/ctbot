@@ -98,8 +98,8 @@ tests/                         isolation, config, risk, strategies/ensemble/prov
 - **Disclosure lag**: congressional trades can be disclosed up to 45 days late; 13F up
   to 45 days after quarter end. Much of the edge may be priced in by then.
 - **Options flow is noisy**: many large prints are hedges or spreads, not directional bets.
-- **Small cash accounts**: no shorting (bearish signals only exit held longs); PDT limit of
-  3 day trades / 5 business days; Claude API cost per candidate can exceed expected edge.
+- **Small cash accounts**: no shorting (bearish signals only exit held longs); no day-trade count limit since FINRA's
+  intraday margin standard replaced PDT on 2026-06-04 (`PDT_RULE=true` restores 3 per 5 days); Claude API cost per candidate can exceed expected edge.
 - **Paid data**: Quiver and Unusual Whales need subscriptions and API keys.
 - **Free public data is unofficial**: the TradingView scanner and Cboe's delayed chains are
   public web endpoints with no API contract or SLA; they can change, rate-limit or vanish.
@@ -146,7 +146,7 @@ What a paper day does (all settings in `.env` / `config/strategies.toml`):
 | Intraday models | `orb` (opening-range breakout), `vwap_revert` (dip below VWAP), `overnight` (close-to-open). Each carries its own stop, target and exit time |
 | Daily models | `momentum`, `mean_reversion` (need 2 to agree) |
 | Review | Claude reviews each candidate once per day with market context (time, SPY/QQQ, earnings, analyst targets); `MIN_CLAUDE_CONFIDENCE`; at most `MAX_CLAUDE_REVIEWS_PER_DAY` |
-| Hard rules | size cap, `MAX_OPEN_POSITIONS`, $ cap, daily-loss halt, drawdown kill switch, day-trade budget, spread/liquidity, never hold through earnings |
+| Hard rules | size cap, `MAX_OPEN_POSITIONS`, $ cap, daily-loss halt, drawdown kill switch, day-trade budget (only with `PDT_RULE`), spread/liquidity, never hold through earnings |
 | Exits | model stop/target/time; winners up `SWING_MIN_PROFIT_PCT` near exit are held to the next close (max `SWING_MAX_DAYS`); a model is paused for the day after `MODEL_MAX_LOSING_STREAK` losses |
 | Results | every fill is tagged with its model; the dashboard's Models panel is the scoreboard |
 
