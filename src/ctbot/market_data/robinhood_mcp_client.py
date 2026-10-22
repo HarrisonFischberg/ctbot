@@ -17,6 +17,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import select
+import socket
 import webbrowser
 from collections.abc import Iterable
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -122,12 +124,22 @@ def _wait_for_callback(timeout_s: float = 300.0) -> tuple[str, str | None, str |
         def log_message(self, *args):  # keep the auth code out of stderr
             pass
 
-    server = HTTPServer(("127.0.0.1", CALLBACK_PORT), Handler)
-    server.timeout = timeout_s
+    # Safari resolves `localhost` to ::1 first and doesn't fall back to 127.0.0.1, so listen on both.
+    class HTTPServer6(HTTPServer):
+        address_family = socket.AF_INET6
+
+    servers = [HTTPServer(("127.0.0.1", CALLBACK_PORT), Handler)]
     try:
-        server.handle_request()
+        servers.append(HTTPServer6(("::1", CALLBACK_PORT), Handler))
+    except OSError:  # no IPv6 loopback on this machine
+        pass
+    try:
+        ready, _, _ = select.select(servers, [], [], timeout_s)
+        if ready:
+            ready[0].handle_request()
     finally:
-        server.server_close()
+        for server in servers:
+            server.server_close()
     if result.get("error") or not result.get("code"):
         raise RobinhoodLoginRequired(f"sign-in failed: {result.get('error') or 'no code received'}")
     return result["code"], result.get("state"), result.get("iss")  # type: ignore[return-value]
