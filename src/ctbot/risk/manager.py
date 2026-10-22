@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+from ctbot import sectors, track_record
 from ctbot.config import RiskLimits
 from ctbot.market_hours import trading_date
 from ctbot.models import Candidate, Decision, Direction, OrderRequest, Position, Quote, Side
@@ -42,6 +43,11 @@ class AccountState:
     # flag. None = cash account: buys spend `cash`. Set by the pipeline; not persisted.
     buying_power: float | None = None
     margin_call: bool = False
+    # Pull back after losses (ctbot.risk_mode): why buys may not borrow right now; empty = full
+    # risk. Set by the pipeline each cycle; persisted only for the dashboard.
+    risk_off: list[str] = field(default_factory=list)
+    # sector -> dollars held (leverage included), for the sector cap. Set by the pipeline.
+    sector_exposure: dict[str, float] = field(default_factory=dict)
 
 
 def save_account_state(state: AccountState, path: Path) -> None:
@@ -54,6 +60,7 @@ def save_account_state(state: AccountState, path: Path) -> None:
         "kill_switch": state.kill_switch,
         "brackets": state.brackets,
         "model_losing_streak": state.model_losing_streak,
+        "risk_off": state.risk_off,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2))
@@ -92,6 +99,8 @@ class RiskManager:
         self.max_loss_pct: float | None = None
         self.trail_giveback: float | None = None
         self.min_confidence: float | None = None  # replaces MIN_CLAUDE_CONFIDENCE while set
+        # model -> size multiplier from its recent closed trades (ctbot.track_record); set each cycle
+        self.size_mult: dict[str, float] = {}
 
     def liquidity_limits(self, candidate: Candidate) -> tuple[float, float]:
         """(min_share_price, min_avg_dollar_volume) for this candidate.
@@ -323,7 +332,8 @@ class RiskManager:
         req = [s.evidence.get("size_pct") for s in candidate.signals
                if s.direction is Direction.LONG and s.evidence.get("size_pct")]
         cap = L.max_core_pct
-        cash = state.cash if state.buying_power is None else state.buying_power
+        # pulled back after losses: buys spend cash on hand only, never the margin loan
+        cash = state.cash if state.buying_power is None or state.risk_off else state.buying_power
         owners = [s.strategy for s in candidate.signals
                   if s.direction is Direction.LONG and s.strategy in state.sleeves]
         if owners:  # launcher: size off the strategy's own capital and never hold more than it
@@ -334,12 +344,24 @@ class RiskManager:
         size = base * (min(max(req), cap) if req else L.max_position_pct)
         if L.size_by == "claude" and not req:  # Claude's suggestion can only shrink the size
             size = min(size, decision.suggested_notional)
+        longs = [s.strategy for s in candidate.signals if s.direction is Direction.LONG]
+        if L.track_record_sizing and not req and not owners:  # systematic and launched sizes are fixed
+            size *= track_record.for_candidate(self.size_mult, longs)
+        sector_room = float("inf")
+        if L.max_sector_pct > 0 and not req:  # reviewed entries only: the trend cores keep their size
+            sec = sectors.sector(candidate.symbol)
+            lev = sectors.LEVERAGE.get(candidate.symbol.upper(), 1.0)
+            sector_room = (L.max_sector_pct * state.equity - state.sector_exposure.get(sec, 0.0)) / lev
+            if sector_room < 1.0:
+                reasons.append(f"sector_cap_{sec.lower().replace(' ', '_')}")
         # Buying power: cash on hand, or with paper margin cash plus the loan still available
         # (PaperBroker.buying_power: $2,000 minimum equity, 25% maintenance).
-        notional = min(size, cash, room)
+        notional = min(size, cash, room, sector_room)
         if room < 1.0:
             reasons.append("trading_capital_cap")
-        elif notional < 1.0:
+        elif state.risk_off and cash < 1.0:
+            reasons.append("pulled_back_no_borrowing")
+        elif notional < 1.0 and sector_room >= 1.0:
             reasons.append("notional_too_small")
 
         if reasons:

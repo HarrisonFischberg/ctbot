@@ -74,7 +74,8 @@ def test_trend_core_buys_without_review_at_requested_size():
                                     for i, c in enumerate(up[-n:])]
     with tempfile.TemporaryDirectory() as d:
         broker = PaperBroker(md, 5000.0, Path(d) / "l.json", slippage_bps=0, clock=lambda: NOW)
-        s = Settings.from_env({"ENTRY_MODE": "auto", "MAX_TRADING_CAPITAL": "5000", "STARTING_CAPITAL": "5000"})
+        s = Settings.from_env({"ENTRY_MODE": "auto", "MAX_TRADING_CAPITAL": "5000", "STARTING_CAPITAL": "5000",
+                               "PAPER_LEDGER_PATH": str(Path(d) / "l.json")})
         c = Components(s, md, [], [WeightedStrategy(TrendCore(), 1.0, standalone=True)], _Engine(),
                        RiskManager(s.risk), broker, ["QQQ"])
         st = AccountState(5000, 5000, 5000, 5000, 0)
@@ -106,7 +107,8 @@ def test_core_tops_up_after_slipping_below_target():
         broker = PaperBroker(md, 5000.0, Path(d) / "l.json", slippage_bps=0, clock=lambda: NOW)
         broker._cash = 2400.0
         broker._positions["QQQ"] = Position("QQQ", 4.0, 650.0)  # $2,600 of a $4,000 target
-        s = Settings.from_env({"ENTRY_MODE": "auto", "MAX_TRADING_CAPITAL": "5000", "MAX_CORE_PCT": "0.8"})
+        s = Settings.from_env({"ENTRY_MODE": "auto", "MAX_TRADING_CAPITAL": "5000", "MAX_CORE_PCT": "0.8",
+                               "PAPER_LEDGER_PATH": str(Path(d) / "l.json")})
         c = Components(s, md, [], [WeightedStrategy(TrendCore(size_pct=0.8), 1.0, standalone=True)], None,
                        RiskManager(s.risk), broker, ["QQQ"])
         st = AccountState(5000, 2400, 5000, 5000, 1, brackets={"QQQ": {"stop": 500, "target": None,

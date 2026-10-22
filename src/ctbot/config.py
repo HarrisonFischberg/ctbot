@@ -65,6 +65,20 @@ class RiskLimits:
     swing_max_days: int = 2               # extra sessions a winner may be held (0 disables)
     model_max_losing_streak: int = 3      # pause a model for the day after this many losses in a row
     max_quote_age_s: float = 120.0        # entries refuse a quote older than this (stale data)
+    # Track-record sizing (ctbot.track_record): a strategy's reviewed entries are scaled by its
+    # recent closed trades, pulled toward "no edge" by this many imaginary flat trades.
+    track_record_sizing: bool = True
+    track_record_prior_trades: int = 10
+    track_record_min_mult: float = 0.25
+    track_record_max_mult: float = 1.25
+    # Pull back after losses (ctbot.risk_mode): while the day is down this much, the account is
+    # this far below its best, or the trend symbol trades under its N-day average, buys may not
+    # borrow (paper margin acts as 1x). 0 turns a trigger off.
+    risk_off_day_loss_pct: float = 0.03
+    risk_off_drawdown_pct: float = 0.05
+    risk_off_trend_symbol: str = "QQQ"
+    risk_off_trend_days: int = 50
+    max_sector_pct: float = 0.40          # reviewed entries stop adding to a sector above this share of equity
 
 
 
@@ -138,6 +152,11 @@ class Settings:
         return self.paper_ledger_path.with_name("journal.jsonl")
 
     @property
+    def trade_log_path(self) -> Path:
+        """Trade post-mortems: why each trade was taken and how it ended (ctbot.trade_log)."""
+        return self.paper_ledger_path.with_name("trade_log.jsonl")
+
+    @property
     def halt_path(self) -> Path:
         """Kill-switch file: while it exists, no new entries are submitted (exits still run)."""
         return self.paper_ledger_path.with_name("HALT")
@@ -208,6 +227,15 @@ class Settings:
             swing_max_days=_int(env, "SWING_MAX_DAYS", 2),
             model_max_losing_streak=_int(env, "MODEL_MAX_LOSING_STREAK", 3),
             max_quote_age_s=_float(env, "MAX_QUOTE_AGE_S", 120.0),
+            track_record_sizing=_bool(env, "TRACK_RECORD_SIZING", True),
+            track_record_prior_trades=_int(env, "TRACK_RECORD_PRIOR_TRADES", 10),
+            track_record_min_mult=_float(env, "TRACK_RECORD_MIN_MULT", 0.25),
+            track_record_max_mult=_float(env, "TRACK_RECORD_MAX_MULT", 1.25),
+            risk_off_day_loss_pct=_float(env, "RISK_OFF_DAY_LOSS_PCT", 0.03),
+            risk_off_drawdown_pct=_float(env, "RISK_OFF_DRAWDOWN_PCT", 0.05),
+            risk_off_trend_symbol=env.get("RISK_OFF_TREND_SYMBOL", "QQQ").strip().upper(),
+            risk_off_trend_days=_int(env, "RISK_OFF_TREND_DAYS", 50),
+            max_sector_pct=_float(env, "MAX_SECTOR_PCT", 0.40),
         )
         ensemble = EnsembleParams(
             min_long_score=_float(env, "MIN_LONG_SCORE", 0.15),
