@@ -174,7 +174,10 @@ def test_entry_fill_sets_bracket_from_decision():
                              clock=lambda: NOW)
         state = _state(broker)
         run_cycle(_components(broker, [strat]), state, NOW)
-    assert state.brackets["KO"] == {"stop": 47.5, "target": None}  # 5% default stop
+    b = dict(state.brackets["KO"])
+    ctx = b.pop("ctx")  # the trade log's entry context rides on the bracket
+    assert b == {"stop": 47.5, "target": None}  # 5% default stop
+    assert ctx["models"] == ["copy_trading"] and ctx["confidence"] == 0.9
 
 
 def test_manual_mode_records_recommendation_without_buying():

@@ -11,11 +11,20 @@ import time
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
-from ctbot import allocations, autopilot, llm_costs, market_hours
+from ctbot import (
+    allocations,
+    autopilot,
+    llm_costs,
+    market_hours,
+    risk_mode,
+    sectors,
+    track_record,
+    trade_log,
+)
 from ctbot.aggregation.ensemble import combine
 from ctbot.config import Settings
 from ctbot.contracts import (
@@ -70,6 +79,7 @@ class Components:
     recent_orders: dict = field(default_factory=dict)
     journal: Any = None  # ctbot.contracts.Journal: snapshot -> results -> order -> outcome
     fills: int = 0       # fills submitted by this process (cycle summaries count the difference)
+    trend: Any = field(default_factory=risk_mode.TrendCache)  # pull-back trend average, once a day
 
 
 DUPLICATE_WINDOW_S = 120.0
@@ -248,11 +258,31 @@ def _submit(c: Components, state: AccountState, order, positions, today, decisio
     _journal(c, ExecutionOutcome(order.client_order_id, order.symbol, "filled", fill.quantity, fill.price,
                                  simulated=fill.simulated))
     if order.side is Side.SELL:
-        _book_sleeve_gain(c, state, order.symbol, positions[order.symbol].avg_cost, fill)
-        c.risk.record_exit_fill(state, positions[order.symbol], today, fill.price)
+        pos = positions[order.symbol]
+        bracket = dict(state.brackets.get(order.symbol) or {})
+        _book_sleeve_gain(c, state, order.symbol, pos.avg_cost, fill)
+        c.risk.record_exit_fill(state, pos, today, fill.price)
+        try:
+            trade_log.append(c.settings.trade_log_path, trade_log.close_record(
+                order.symbol, bracket, pos.avg_cost, fill.quantity, fill.price, pos.opened_at,
+                datetime.now(timezone.utc), tag))
+        except Exception:  # noqa: BLE001 - the post-mortem never blocks trading
+            log.exception("trade log failed for %s", order.symbol)
     else:
         c.risk.set_bracket(state, order.symbol, fill.price, decision, plan)
         bracket = state.brackets.get(order.symbol)
+        sec = sectors.sector(order.symbol)
+        state.sector_exposure[sec] = (state.sector_exposure.get(sec, 0.0)
+                                      + fill.quantity * fill.price * sectors.LEVERAGE.get(order.symbol, 1.0))
+        if bracket is not None:
+            models = [m for m in (tag or "").split(",") if m]
+            try:
+                bracket["ctx"] = trade_log.entry_context(
+                    c.market_data, order.symbol, fill.price, datetime.now(timezone.utc), models, decision,
+                    track_record.for_candidate(c.risk.size_mult, models), sec, state.risk_off,
+                    c.settings.risk.risk_off_trend_symbol, c.trend.avg)
+            except Exception:  # noqa: BLE001
+                log.exception("trade log entry context failed for %s", order.symbol)
         launched = [m for m in (tag or "").split(",") if m in state.sleeves]
         if bracket is not None and not bracket.get("model") and launched:
             bracket["model"] = launched[0]  # launcher: the position counts against that strategy
@@ -303,7 +333,7 @@ def _maybe_top_up(c: Components, state: AccountState, cand: Candidate, pos, quot
         return
     if not buys_ok or state.kill_switch or state.margin_call or state.equity <= state.day_start_equity * (1 - L.max_daily_loss_pct):
         return
-    spendable = state.cash if state.buying_power is None else state.buying_power
+    spendable = state.cash if state.buying_power is None or state.risk_off else state.buying_power
     cash = spendable - sum(v for k, v in state.sleeve_reserve.items() if k != owner)  # others' money stays theirs
     if gap <= band or cash < 1:
         return
@@ -319,6 +349,46 @@ def _maybe_top_up(c: Components, state: AccountState, cand: Candidate, pos, quot
         sync_cash(c.executor, state)
 
 
+def refresh_learning(c: Components, state: AccountState, now: datetime) -> None:
+    """Once a cycle: each strategy's size multiplier from its closed trades, whether the account
+    is pulled back after losses, and what each sector holds now (for the sector cap)."""
+    L = c.settings.risk
+    if L.track_record_sizing:
+        try:
+            fills = json.loads(c.settings.paper_ledger_path.read_text()).get("fills", [])
+        except (OSError, ValueError):
+            fills = []
+        c.risk.size_mult = {m: v["mult"] for m, v in track_record.size_multipliers(
+            fills, now, L.track_record_prior_trades, L.track_record_min_mult, L.track_record_max_mult).items()}
+    else:
+        c.risk.size_mult = {}
+
+    positions = c.executor.positions()
+    syms = sorted({p.symbol for p in positions} | ({L.risk_off_trend_symbol} if L.risk_off_trend_days > 0 else set()))
+    try:
+        quotes = c.market_data.quotes(syms) if syms else {}
+    except Exception:  # noqa: BLE001 - no prices: sector exposure at cost, no trend trigger
+        log.exception("quotes for the pull-back check failed")
+        quotes = {}
+    marks = {}
+    for p in positions:
+        q = quotes.get(p.symbol)
+        marks[p.symbol] = p.quantity * (q.mid if q and q.mid else p.avg_cost)
+    state.sector_exposure = sectors.exposure(marks)
+
+    trend_q = quotes.get(L.risk_off_trend_symbol)
+    trend_avg = c.trend.get(c.market_data, L.risk_off_trend_symbol, L.risk_off_trend_days,
+                            market_hours.trading_date(now)) if L.risk_off_trend_days > 0 else None
+    why = risk_mode.reasons(L, state.equity, state.day_start_equity, state.peak_equity,
+                            trend_q.last if trend_q else None, trend_avg)
+    if why != state.risk_off:
+        if why:
+            log.warning("pulled back (buys spend cash only, no borrowing): %s", "; ".join(why))
+        else:
+            log.info("full risk back on: no pull-back trigger holds")
+    state.risk_off = why
+
+
 def manage_positions(c: Components, state: AccountState, now: datetime) -> None:
     """Stops, targets, exit times and swings for open positions. Runs at the start of every
     cycle and, from the paper loop, every ~30 s in between (tight stops need it). Bypasses
@@ -329,6 +399,8 @@ def manage_positions(c: Components, state: AccountState, now: datetime) -> None:
     positions = {p.symbol: p for p in c.executor.positions()}
     for sym, pos in list(positions.items()):
         quote = c.market_data.quotes([sym]).get(sym)
+        if quote:
+            trade_log.track(state.brackets.get(sym), quote.bid)
         if quote and c.risk.trail(state, sym, quote.bid):
             b = state.brackets[sym]
             log.info("trail %s: new high %.2f, stop raised to %.2f", sym, b["peak"], b["stop"])
@@ -396,6 +468,7 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
     if c.context is not None and hasattr(c.context, "warm"):
         c.context.warm(c.universe)
     manage_positions(c, state, now)
+    refresh_learning(c, state, now)
     positions = {p.symbol: p for p in c.executor.positions()}
     apply_launcher(c, state, positions, now)
     held = frozenset(positions)

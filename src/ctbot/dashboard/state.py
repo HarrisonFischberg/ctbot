@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ctbot import manual_queue, market_hours
+from ctbot import manual_queue, market_hours, track_record, trade_log
 from ctbot.config import Settings, load_universe
 from ctbot.models import Quote
 from ctbot.paper.simulator import buying_power, margin_call
@@ -30,6 +30,7 @@ QuotesFn = Callable[[list[str]], dict[str, Quote]]
 MAX_HISTORY_POINTS = 2000
 MAX_LOG_LINES = 300
 MAX_FILLS = 50
+MAX_TRADE_LOG = 50
 MAX_IDEAS = 100
 HEARTBEAT_GRACE_S = 15
 PERF_PATH = Path("data/lab/performance.json")  # ctbot-perf: 3/6/12-month simulated returns
@@ -369,6 +370,9 @@ def build_state(
     day_trades = [d for d in risk_state.get("day_trade_dates", [])
                   if (today - datetime.fromisoformat(d).date()).days < 7]
     acct = settings.robinhood_account_number
+    mults = {m: v["mult"] for m, v in track_record.size_multipliers(
+        ledger.get("fills", []), now, L.track_record_prior_trades, L.track_record_min_mult,
+        L.track_record_max_mult).items()} if L.track_record_sizing else {}
 
     return {
         "generated_at": now.isoformat(),
@@ -406,7 +410,8 @@ def build_state(
                         if k in ("generated_at", "scored", "pending", "summary")},
         "models": [
             {**m, "losing_streak": risk_state.get("model_losing_streak", {}).get(m["model"], 0),
-             "paused": 0 < L.model_max_losing_streak <= risk_state.get("model_losing_streak", {}).get(m["model"], 0)}
+             "paused": 0 < L.model_max_losing_streak <= risk_state.get("model_losing_streak", {}).get(m["model"], 0),
+             "size_mult": track_record.for_candidate(mults, m["model"].split(","))}
             for m in model_stats(ledger.get("fills", []), {p["symbol"]: p["last"] for p in pos_out if p["last"]})
         ],
         "account_summary": {
@@ -427,6 +432,7 @@ def build_state(
             "buying_power": buying_power(cash, equity, market_value, settings.paper_margin),
             "borrowed": max(0.0, -cash),
             "margin_call": settings.paper_margin > 1.0 and margin_call(equity, market_value),
+            "pulled_back": risk_state.get("risk_off", []),
         },
         "limits": {
             "max_position_pct": L.max_position_pct,
@@ -447,7 +453,16 @@ def build_state(
             "swing_min_profit_pct": L.swing_min_profit_pct,
             "swing_max_days": L.swing_max_days,
             "model_max_losing_streak": L.model_max_losing_streak,
+            "track_record_sizing": L.track_record_sizing,
+            "track_record_min_mult": L.track_record_min_mult,
+            "track_record_max_mult": L.track_record_max_mult,
+            "risk_off_day_loss_pct": L.risk_off_day_loss_pct,
+            "risk_off_drawdown_pct": L.risk_off_drawdown_pct,
+            "risk_off_trend_symbol": L.risk_off_trend_symbol,
+            "risk_off_trend_days": L.risk_off_trend_days,
+            "max_sector_pct": L.max_sector_pct,
         },
+        "trade_log": trade_log.read(settings.trade_log_path, MAX_TRADE_LOG),
         "positions": pos_out,
         "fills": list(reversed(fills_with_pnl(ledger.get("fills", []))))[:MAX_FILLS],
         "equity_history": _read_history(settings.equity_history_path),

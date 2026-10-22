@@ -661,6 +661,12 @@ main:focus { outline: none; }
     </div>
 
     <div data-tab="activity" class="card span-12">
+      <h2>What each trade taught <span class="count" id="postCount"></span></h2>
+      <p class="explain">Every sold trade, with why it was bought and how it ended: the most it was up and down, and whether a stop sold below its price (a gap, or the bot had no prices).</p>
+      <div class="scroll" id="postmortems" style="max-height:420px"></div>
+    </div>
+
+    <div data-tab="activity" class="card span-12">
       <h2>Safety limits</h2>
       <p class="explain">Rules the bot always follows, whatever a strategy or Claude says.</p>
       <dl class="limits" id="limits"></dl>
@@ -1160,6 +1166,7 @@ main:focus { outline: none; }
     if (pf.ok === false) alerts.push(["crit", "!", "Start-up check at " + fmtTime(pf.ts) + " found a problem: " +
       (pf.checks || []).filter((c) => !c.ok).map((c) => c.check + " (" + c.detail + ")." + pfHint(c)).join(" ")]);
     if (a.day_pnl_pct <= -S.limits.max_daily_loss_pct) alerts.push(["warn", "△", `Down ${pct(S.limits.max_daily_loss_pct, 0)} today, the most allowed: the bot won't buy anything else until tomorrow.`]);
+    if ((a.pulled_back || []).length) alerts.push(["warn", "△", `Playing it safe: ${a.pulled_back.join(", ")}. New buys use only cash on hand, no borrowing, until that clears.`]);
     if (a.margin_call) alerts.push(["crit", "!", "Borrowed too much: your account value is under 25% of what you hold, so buying is paused until it recovers."]);
     if (S.limits.pdt_rule && a.day_trades_5d >= S.limits.max_day_trades_5d) alerts.push(["warn", "△", `Day-trade limit reached (${a.day_trades_5d} of ${S.limits.max_day_trades_5d} in 5 days): the bot can't buy and sell the same stock on the same day.`]);
     $("alerts").innerHTML = alerts.map(([k, ic, t]) => `<div class="alert ${k}"><span class="ic">${ic}</span><span>${esc(t)}</span></div>`).join("");
@@ -1466,7 +1473,12 @@ main:focus { outline: none; }
       ["Skips stocks priced under", usd(L.min_share_price)], ["Skips stocks that trade less than", "$" + (L.min_avg_dollar_volume / 1e6).toFixed(0) + "M a day"],
       ["No new buys in the last", L.no_entries_last_minutes + " min before the close"], null,
       ["Keeps winners overnight if up", pct(L.swing_min_profit_pct, 1) + " (up to " + L.swing_max_days + " nights)"],
-      ["Pauses a strategy after", L.model_max_losing_streak ? L.model_max_losing_streak + " losses in a row" : "never"],
+      ["Pauses a strategy after", L.model_max_losing_streak ? L.model_max_losing_streak + " losses in a row" : "never"], null,
+      ["Sizes each strategy by its record", L.track_record_sizing ? `${L.track_record_min_mult}x to ${L.track_record_max_mult}x its usual size` : "off"],
+      ["Stops borrowing if down today", L.risk_off_day_loss_pct ? pct(L.risk_off_day_loss_pct, 0) : "never"],
+      ["Stops borrowing if down from its best", L.risk_off_drawdown_pct ? pct(L.risk_off_drawdown_pct, 0) : "never"],
+      ["Stops borrowing when", L.risk_off_trend_days ? `${L.risk_off_trend_symbol} is under its ${L.risk_off_trend_days}-day average` : "never"],
+      ["Most in any one sector", L.max_sector_pct ? pct(L.max_sector_pct, 0) + " of your money (Claude-picked buys)" : "No limit"],
     ];
     $("limits").innerHTML = rows.map((r) => r ? `<dt>${r[0]}</dt><dd>${esc(r[1])}</dd>` : `<div class="divider"></div>`).join("");
   }
@@ -1637,14 +1649,36 @@ main:focus { outline: none; }
     $("modelCount").textContent = M.length ? `${M.reduce((a, m) => a + m.closed, 0)} closed trades` : "";
     $("models").innerHTML = M.length ? `<table class="tbl"><thead><tr><th>Strategy</th><th class="r">Trades closed</th><th class="r">Won</th>
       <th class="r" title="Average gain or loss per closed trade">Avg per trade</th><th class="r" title="Profit or loss from stocks already sold">Profit (sold)</th>
-      <th class="r">Still holding</th><th class="r" title="Profit or loss so far on stocks still held">Profit (holding)</th><th>Why it sold</th></tr></thead><tbody>${
+      <th class="r">Still holding</th><th class="r" title="Profit or loss so far on stocks still held">Profit (holding)</th>
+      <th class="r" title="Next buy size compared with usual, from this strategy's last 30 days of closed trades">Next size</th><th>Why it sold</th></tr></thead><tbody>${
       M.map((m) => `<tr><td class="sym">${esc(stratNames(m.model))} ${m.paused ? `<span class="tag rej">paused today</span>` : m.losing_streak ? `<span style="color:var(--muted);font-size:11px">${m.losing_streak} loss${m.losing_streak > 1 ? "es" : ""} in a row</span>` : ""}</td><td class="r">${m.closed}</td>
         <td class="r">${m.win_rate == null ? "—" : pct(m.win_rate, 0)}</td>
         <td class="r ${dir(m.avg_ret ?? 0)}">${m.avg_ret == null ? "—" : sgnPct(m.avg_ret, 2)}</td>
         <td class="r ${dir(m.pnl)}">${sgnUsd(m.pnl)}</td><td class="r">${m.open}</td>
         <td class="r ${dir(m.open_pnl)}">${m.open ? sgnUsd(m.open_pnl) : "—"}</td>
+        <td class="r ${m.size_mult < 1 ? "down" : m.size_mult > 1 ? "up" : ""}">${m.size_mult == null ? "—" : (+m.size_mult).toFixed(2) + "x"}</td>
         <td style="color:var(--muted)">${esc(Object.entries(m.exits).map(([k, v]) => `${exitWord(k)} ×${v}`).join(" · "))}</td></tr>`).join("")
       }</tbody></table>` : `<div class="empty" style="height:80px">No trades yet. Each practice trade is labeled with the strategy that picked it.</div>`;
+  }
+
+  function renderPostmortems() {
+    const T = S.trade_log || [];
+    $("postCount").textContent = T.length ? `${T.length} trade${T.length === 1 ? "" : "s"}` : "";
+    const why = (c) => !c ? "Bought before this log started" : [
+      c.confidence != null ? `Claude ${pct(c.confidence, 0)} sure` : null,
+      c.size_mult != null && c.size_mult !== 1 ? `${(+c.size_mult).toFixed(2)}x size` : null,
+      c.stock_day_move != null ? `stock ${sgnPct(c.stock_day_move, 1)} that day` : null,
+      c.market_vs_trend != null ? `market ${c.market_vs_trend < 0 ? "under" : "over"} its trend` : null,
+      (c.pulled_back || []).length ? "bought while playing it safe" : null,
+    ].filter(Boolean).join(" · ");
+    $("postmortems").innerHTML = T.length ? `<table class="tbl"><thead><tr><th>Sold</th><th>Stock</th><th>Strategy</th><th class="r">Result</th>
+      <th class="r" title="Most it was up while held">Best</th><th class="r" title="Most it was down while held">Worst</th><th>How it ended</th><th>Why it was bought</th></tr></thead><tbody>${
+      T.map((t) => `<tr><td>${fmtTime(t.closed_at)}</td><td class="sym">${esc(t.symbol)}</td><td>${esc(stratNames((t.models || []).join(",")))}</td>
+        <td class="r ${dir(t.pnl)}">${sgnUsd(t.pnl)} <span style="color:var(--muted)">${sgnPct(t.ret, 1)}</span></td>
+        <td class="r">${sgnPct(t.max_up, 1)}</td><td class="r">${sgnPct(t.max_down, 1)}</td>
+        <td>${esc(exitWord(t.exit_reason || "?"))}${t.note ? ` <span class="tag rej">${esc(t.note)}</span>` : ""}</td>
+        <td style="color:var(--muted)">${esc(why(t.context))}</td></tr>`).join("")
+      }</tbody></table>` : `<div class="empty" style="height:80px">No sold trades logged yet. From now on each sale is written here with why it was bought.</div>`;
   }
 
   function renderFilterScore() {
@@ -2090,7 +2124,7 @@ main:focus { outline: none; }
   });
   function renderAll() {
     renderChrome(); renderAutopilot(); renderVariants(); renderKpis(); renderIdeas(); renderChart(); renderLimits(); renderPositions();
-    renderWatchlist(); renderFills(); renderStrategies(); renderLog(); renderC2(); renderModels(); renderFilterScore(); renderLab();
+    renderWatchlist(); renderFills(); renderStrategies(); renderLog(); renderC2(); renderModels(); renderPostmortems(); renderFilterScore(); renderLab();
     renderRuns(); renderCatalog(); renderCompare(); renderStressWF(); renderSteps();
     loadPx();
     applySorts();
