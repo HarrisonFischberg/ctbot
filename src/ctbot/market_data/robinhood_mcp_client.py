@@ -147,7 +147,7 @@ class ReadOnlyRobinhoodClient:
         async def redirect_handler(url: str) -> None:
             if not self.interactive:
                 raise RobinhoodLoginRequired(
-                    "Robinhood sign-in needed: run `ctbot-robinhood-login` in a terminal"
+                    "Robinhood sign-in needed: run `.venv/bin/ctbot-robinhood-login` from the claude_robinhood folder in a terminal"
                 )
             print("Opening your browser to sign in to Robinhood. If it does not open, visit:")
             print(url)

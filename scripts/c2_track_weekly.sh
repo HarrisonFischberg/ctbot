@@ -13,10 +13,10 @@ mkdir -p logs
 {
   echo "=== $(date '+%Y-%m-%d %H:%M:%S %Z') ==="
   .venv/bin/ctbot-fetch-bars --interval 5minute --since "$(date -v-14d +%Y-%m-%d)" 2>&1 | tail -1 \
-    || echo "5-minute bar refresh failed (Robinhood sign-in expired? run ctbot-robinhood-login)"
+    || echo "5-minute bar refresh failed (Robinhood sign-in expired? run .venv/bin/ctbot-robinhood-login)"
   .venv/bin/ctbot-fetch-bars --interval day --since "$(date -v-30d +%Y-%m-%d)" \
     SPY QQQ QLD IWM DIA XLK XLF XLV XLY XLI XLP XLU XLE XLB SMH 2>&1 | tail -1 \
-    || echo "daily bar refresh failed (Robinhood sign-in expired? run ctbot-robinhood-login); tracking anyway"
+    || echo "daily bar refresh failed (Robinhood sign-in expired? run .venv/bin/ctbot-robinhood-login); tracking anyway"
   .venv/bin/ctbot-fetch-bars --interval day --since "$(date -v-30d +%Y-%m-%d)" \
     $(.venv/bin/python -c 'from ctbot.research.ranker import default_universe as u; print(" ".join(u()))') \
     2>&1 | tail -1 || echo "stock daily bar refresh failed"
