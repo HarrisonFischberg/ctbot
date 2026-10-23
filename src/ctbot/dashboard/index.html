@@ -361,6 +361,14 @@ code { font: 12px var(--code); background: rgba(var(--tint), .06); padding: 1px 
 /* ---- plain-word helpers ---- */
 .explain { color: var(--ink-2); font-size: 13px; line-height: 1.55; margin: -4px 0 14px; max-width: 80ch; }
 .explain:empty { display: none; }
+/* ---- Bubs Thoughts ---- */
+.thoughts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.thought { display: grid; grid-template-columns: 112px 1fr auto; gap: 6px 12px; align-items: baseline; padding: 11px 14px;
+  border-radius: 14px; background: rgba(var(--tint), .035); font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
+.thought.new { background: var(--neon-soft); color: var(--ink); }
+.thought .tag { justify-self: start; }
+.thought time { color: var(--muted); font-size: 12px; white-space: nowrap; }
+@media (max-width: 640px) { .thought { grid-template-columns: 1fr; } }
 .more { color: var(--neon-ink, var(--neon)); font-size: 12.5px; font-weight: 500; white-space: nowrap; }
 [data-detail][tabindex], tr[data-lab] { cursor: pointer; }
 .disc[data-detail]:hover, .model[data-detail]:hover { box-shadow: 0 0 0 1px var(--line-2); }
@@ -586,6 +594,11 @@ main:focus { outline: none; }
       <h2>What you own <span class="count" id="posCount"></span></h2>
       <div class="own-sum" id="ownSum"></div>
       <div class="scroll" id="positions"></div>
+    </div>
+    <div data-tab="home" class="card span-12">
+      <h2>Bubs Thoughts <span class="count" id="bubCount"></span></h2>
+      <p class="explain">Bub speaks up only when something is worth knowing: the market turning, a limit getting close, or what it saw in a stock just before the bot buys it. Notes only: they never change a trade.</p>
+      <ul class="thoughts" id="thoughts" aria-live="polite"></ul>
     </div>
     <div data-tab="home" class="card span-12">
       <h2>Get started <span class="count" id="stepsMeta"></span></h2>
@@ -1661,6 +1674,21 @@ main:focus { outline: none; }
       }</tbody></table>` : `<div class="empty" style="height:80px">No trades yet. Each practice trade is labeled with the strategy that picked it.</div>`;
   }
 
+  function renderThoughts() {
+    const T = S.thoughts || [];
+    const KIND = { trade: ["buy", "Before a buy"], idea: ["rec", "Waiting for you"], market: ["", "Market"],
+      caution: ["q", "Careful"], choice: ["on", "Choosing"] };
+    const ago = (iso) => { const m = Math.round((Date.now() - new Date(iso)) / 60000);
+      return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : fmtTime(iso); };
+    $("bubCount").textContent = T.length ? `latest ${ago(T[0].ts)}` : "";
+    $("thoughts").innerHTML = T.length ? T.map((t, i) => {
+      const [cls, word] = KIND[t.kind] || ["", "Thought"];
+      const text = String(t.text || "").replace("{models}", stratNames((t.models || []).join(",")));
+      const fresh = i === 0 && Date.now() - new Date(t.ts) < 3600e3;
+      return `<li class="thought${fresh ? " new" : ""}"><span class="tag ${cls}">${esc(word)}</span><span>${esc(text)}</span><time datetime="${esc(t.ts)}" title="${esc(fmtTime(t.ts))}">${esc(ago(t.ts))}</time></li>`;
+    }).join("") : `<li class="empty" style="height:64px">Nothing worth saying yet. Bub speaks up when the market turns, a limit gets close, or right before a buy.</li>`;
+  }
+
   function renderPostmortems() {
     const T = S.trade_log || [];
     $("postCount").textContent = T.length ? `${T.length} trade${T.length === 1 ? "" : "s"}` : "";
@@ -2124,7 +2152,7 @@ main:focus { outline: none; }
   });
   function renderAll() {
     renderChrome(); renderAutopilot(); renderVariants(); renderKpis(); renderIdeas(); renderChart(); renderLimits(); renderPositions();
-    renderWatchlist(); renderFills(); renderStrategies(); renderLog(); renderC2(); renderModels(); renderPostmortems(); renderFilterScore(); renderLab();
+    renderWatchlist(); renderFills(); renderStrategies(); renderLog(); renderC2(); renderModels(); renderPostmortems(); renderThoughts(); renderFilterScore(); renderLab();
     renderRuns(); renderCatalog(); renderCompare(); renderStressWF(); renderSteps();
     loadPx();
     applySorts();
@@ -2360,6 +2388,10 @@ main:focus { outline: none; }
     if (layout.cards) layout.cards = ["posCount", ...layout.cards.filter((k) => k !== "posCount")];
     closed.delete("posCount"); mini.delete("posCount"); writeJSON(CLOSED, [...closed]); writeJSON(MINI, [...mini]);
     layout.ownFirst = true; writeJSON(LAYOUT, layout);
+  }
+  if (!layout.thoughtsNearTop) {  // once: "Bubs Thoughts" goes right under "What you own"
+    if (layout.cards) layout.cards = layout.cards.filter((k) => k !== "bubCount").flatMap((k) => k === "posCount" ? [k, "bubCount"] : [k]);
+    layout.thoughtsNearTop = true; writeJSON(LAYOUT, layout);
   }
   cardsOf($("cards")).forEach((c) => { const inner = c.querySelector("[id]"); c.dataset.card = inner ? inner.id : ""; decorate(c); });
   restoreOrder($("cards"));
