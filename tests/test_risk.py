@@ -217,3 +217,15 @@ def test_entry_sizes_off_margin_buying_power_and_stops_on_margin_call():
     assert v.allowed and v.orders[0].notional == 3_000.0  # 30% of $10k, paid with the loan
     st.margin_call = True
     assert "margin_maintenance" in rm.check_entry(_cand(), _ok_decision(), st, QUOTE, ADV).reasons
+
+
+def test_account_state_save_is_atomic_and_round_trips(tmp_path):
+    from ctbot.risk.manager import AccountState, load_account_state, save_account_state
+
+    path = tmp_path / "risk.json"
+    s = AccountState(equity=1000, cash=1000, peak_equity=1200, day_start_equity=1000, open_positions=0,
+                     kill_switch=True)
+    save_account_state(s, path)
+    assert not path.with_suffix(".tmp").exists()
+    back = load_account_state(AccountState(1000, 1000, 1000, 1000, 0), path)
+    assert back.kill_switch and back.peak_equity == 1200

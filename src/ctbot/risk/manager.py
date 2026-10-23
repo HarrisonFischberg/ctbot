@@ -69,7 +69,9 @@ def save_account_state(state: AccountState, path: Path) -> None:
         "entry_dates": [d.isoformat() for d in state.entry_dates],
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2))
+    tmp = path.with_suffix(".tmp")  # the kill-switch latch lives here: never leave a half file
+    tmp.write_text(json.dumps(data, indent=2))
+    tmp.replace(path)
 
 
 def load_account_state(state: AccountState, path: Path) -> AccountState:

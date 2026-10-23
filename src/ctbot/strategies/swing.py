@@ -16,7 +16,7 @@ market only part of the time), so these are edges, not a path to beating the ind
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 
 from ctbot.market_hours import ET, next_business_day
 from ctbot.models import Direction, EventKind, Signal
