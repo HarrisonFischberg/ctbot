@@ -13,5 +13,8 @@ logs/*
 data/events/*
 !data/events/sample_events.json
 .DS_Store
-.claude/
+.claude/*
+!.claude/skills/
+# the day-trader skills' working folder (trader/config.json, plan.json, state/...)
+trader/
 *.log

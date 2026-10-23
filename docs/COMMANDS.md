@@ -112,6 +112,7 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
 | Trend length sweep (chosen on 2010-19, checked on 2020-26) | `.venv/bin/ctbot-sweep` |
 | Tearsheet for a lab strategy | `.venv/bin/ctbot-tearsheet --lab "lev: trend QQQ 170d -> QLD capped at 30% vol"` |
 | Intraday backtest (5-minute data) | `.venv/bin/ctbot-backtest` |
+| Time machine: replay a day-trade plan 10,000 times on cached 5-minute bars | `.venv/bin/ctbot-timemachine --symbol TSLA --date 2026-10-19 --entry 364.18 --stop 358.32 --target 370.04 --entry-time 10:15` |
 | Lab with next-close execution (stricter) | `.venv/bin/ctbot-lab --lag 1 --cash-apy 0.035` |
 | Stock ranking model: walk-forward vs SPY, equal weight, momentum (dev + validation) | `.venv/bin/ctbot-rank-research` |
 | Score the locked holdout once, after choosing | `.venv/bin/ctbot-rank-research --holdout` |

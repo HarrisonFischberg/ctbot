@@ -4,8 +4,8 @@ At the buy, `entry_context` is stored on the position's bracket (persisted with 
 the strategies, Claude's confidence and stop, the size multiplier, the sector, whether the
 account was pulled back, and the market at that moment (the stock's and QQQ's move today, QQQ
 against its trend average). While the position is open, `track` keeps its lowest and highest
-bid. At the sale, `close_record` writes one JSON line: result, hold time, the most it was up and
-down, and for stop exits how far below the stop it actually sold (a gap or missing prices).
+bid. At the sale, `close_record` writes one JSON line: result, hold time, the result in R (the
+move over the entry's risk a share), the most it was up and down, and for stop exits how far below the stop it actually sold (a gap or missing prices).
 Positions opened before this log existed are logged without the entry context.
 """
 
@@ -84,6 +84,8 @@ def close_record(symbol: str, bracket: dict, avg_cost: float, quantity: float, e
         "exit_reason": reason,
         "max_up": round(bracket["hi"] / avg_cost - 1, 4) if bracket.get("hi") and avg_cost else None,
         "max_down": round(bracket["lo"] / avg_cost - 1, 4) if bracket.get("lo") and avg_cost else None,
+        # result in R: the move over the risk a share at entry (trader-exit's yardstick)
+        "r_multiple": round((exit_price - avg_cost) / ctx["r0"], 2) if ctx.get("r0") else None,
         "context": ctx or None,
     }
     stop = bracket.get("stop")

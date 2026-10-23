@@ -48,8 +48,16 @@ def _news():
     return MarketauxSentiment(os.environ["MARKETAUX_API_TOKEN"])
 
 
+def _sec():
+    """SEC EDGAR (8-K items, reported numbers) when SEC_USER_AGENT names you and an email."""
+    from ctbot.market_data.sec_edgar import SecEdgar, valid_user_agent
+
+    ua = os.environ.get("SEC_USER_AGENT", "")
+    return SecEdgar(ua) if valid_user_agent(ua) else None
+
+
 def _market_context(settings: Settings, call_many, md):
-    """Robinhood context plus the optional public sources (TradingView, Marketaux)."""
+    """Robinhood context plus the optional public sources (TradingView, Marketaux, SEC)."""
     from ctbot.market_data.context import MarketContext
 
     snapshot = None
@@ -57,7 +65,10 @@ def _market_context(settings: Settings, call_many, md):
         from ctbot.market_data.tradingview import TradingViewSnapshot
 
         snapshot = TradingViewSnapshot()
-    return MarketContext(call_many, md, snapshot=snapshot, news=_news())
+    from ctbot.research.timemachine import ReplayOdds
+
+    return MarketContext(call_many, md, snapshot=snapshot, news=_news(), sec=_sec(),
+                         replay=ReplayOdds(md) if settings.review_replay_odds else None)
 
 
 def main() -> None:

@@ -273,6 +273,9 @@ def _submit(c: Components, state: AccountState, order, positions, today, decisio
     else:
         c.risk.set_bracket(state, order.symbol, fill.price, decision, plan)
         bracket = state.brackets.get(order.symbol)
+        state.entry_dates.append(today)
+        if bracket is not None:
+            state.open_risk += fill.quantity * max(0.0, fill.price - bracket["stop"])
         sec = sectors.sector(order.symbol)
         state.sector_exposure[sec] = (state.sector_exposure.get(sec, 0.0)
                                       + fill.quantity * fill.price * sectors.LEVERAGE.get(order.symbol, 1.0))
@@ -283,6 +286,7 @@ def _submit(c: Components, state: AccountState, order, positions, today, decisio
                     c.market_data, order.symbol, fill.price, datetime.now(timezone.utc), models, decision,
                     track_record.for_candidate(c.risk.size_mult, models), sec, state.risk_off,
                     c.settings.risk.risk_off_trend_symbol, c.trend.avg)
+                bracket["ctx"]["r0"] = round(fill.price - bracket["stop"], 4)  # risk a share at entry: 1R
             except Exception:  # noqa: BLE001
                 log.exception("trade log entry context failed for %s", order.symbol)
         launched = [m for m in (tag or "").split(",") if m in state.sleeves]
@@ -373,9 +377,14 @@ def refresh_learning(c: Components, state: AccountState, now: datetime) -> None:
         log.exception("quotes for the pull-back check failed")
         quotes = {}
     marks = {}
+    state.open_risk = 0.0
     for p in positions:
         q = quotes.get(p.symbol)
-        marks[p.symbol] = p.quantity * (q.mid if q and q.mid else p.avg_cost)
+        px = q.mid if q and q.mid else p.avg_cost
+        marks[p.symbol] = p.quantity * px
+        stop = (state.brackets.get(p.symbol) or {}).get("stop")
+        if stop is not None:
+            state.open_risk += p.quantity * max(0.0, px - stop)
     state.sector_exposure = sectors.exposure(marks)
 
     trend_q = quotes.get(L.risk_off_trend_symbol)
@@ -548,6 +557,12 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                 log.info("rejected long %s: earnings_before_exit (%s)", cand.symbol, report.isoformat())
                 c.recorder(_idea(now, cand, quote, None, verdict, "rejected"))
                 continue
+            flags = c.context.red_flags(cand.symbol) if c.context and hasattr(c.context, "red_flags") else []
+            if flags:
+                verdict = RiskVerdict(False, ("sec_8k_red_flag",))
+                log.info("rejected long %s: sec_8k_red_flag (%s)", cand.symbol, "; ".join(flags))
+                c.recorder(_idea(now, cand, quote, None, verdict, "rejected"))
+                continue
             account = {
                 "equity": state.equity,
                 "cash": state.cash,
@@ -606,6 +621,10 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                 c.reviews_today[(today, m)] = c.reviews_today.get((today, m), 0) + 1
             if c.context:
                 account["market_context"] = c.context.for_symbol(cand.symbol)
+                if hasattr(c.context, "plan_odds"):
+                    odds = c.context.plan_odds(cand.symbol, c.risk.exit_plan(cand))
+                    if odds:
+                        account["replay_odds"] = odds
             if c.settings.review_outcome_memory:
                 try:
                     account["outcome_memory"] = outcome_memory(
@@ -693,9 +712,10 @@ def process_manual_order(
         )
         adv = avg_dollar_volume(c.market_data, sym)
         report = c.context.next_earnings(sym) if c.context else None
+        flags = c.context.red_flags(sym) if c.context and hasattr(c.context, "red_flags") else []
         verdict = c.risk.check_entry(Candidate(sym, Direction.LONG, 1.0, sigs), decision, state,
                                      quote, adv, frozenset(positions), today, report, now,
-                                     live_quotes(c.market_data))
+                                     live_quotes(c.market_data), red_flags=flags)
     else:
         return "rejected", [f"unknown side {order['side']!r}"], None
 
