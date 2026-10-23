@@ -4,10 +4,11 @@ Each morning the scanner picks the most unusually active Russell 1000 names. For
 first 5-minute bar closed green, buy when price trades through that bar's high; stop
 0.10 x ATR(14) below the entry (the paper's rule); exit at 15:50 ET. Entries 9:40-11:00 ET.
 
-`confirm = "close"` takes the day-trader pack's trader-entry rule instead: a breakout counts
-only once a completed 5-minute bar CLOSES above the first bar's high (a wick through it is not
-an entry), and `min_volume_x` > 0 also wants that bar's volume at that multiple of the first
-bar's. The default ("touch") is the paper's rule.
+Entries follow the day-trader pack's trader-entry rule (`confirm = "close"`, the default since
+2026-10-23): a breakout counts only once a completed 5-minute bar CLOSES above the first bar's
+high, so a wick through it is not an entry. `min_volume_x` > 0 also wants that bar's volume at
+that multiple of the first bar's. `confirm = "touch"` is the paper's original rule (any trade
+through the high).
 
 Our own 88-large-cap backtest of this rule was negative out-of-sample (the paper's edge came
 from a ~7,000-stock universe); this model tests the market-wide version forward on paper with
@@ -32,7 +33,7 @@ class OrbStocksInPlay:
     event_kinds: frozenset[EventKind] = frozenset()
 
     def __init__(self, stop_atr: float = 0.10, size_pct: float = 0.20, top_k: int = 20,
-                 last_entry: str = "11:00", scanner=None, confirm: str = "touch",
+                 last_entry: str = "11:00", scanner=None, confirm: str = "close",
                  min_volume_x: float = 0.0) -> None:
         if confirm not in ("touch", "close"):
             raise ValueError(f"orb_sip confirm must be 'touch' or 'close', not {confirm!r}")

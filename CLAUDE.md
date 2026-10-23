@@ -8,8 +8,11 @@ CTbot (Creature Trading Bot) is a local, paper-only trading bot with a loopback 
 - Keep `LIVE_TRADING_ENABLED=false`; do not weaken the paper/live isolation (`execution/isolation.py`,
   `live/`, `tests/test_isolation.py`).
 - Never print, log or commit keys from `.env` or `~/.ctbot/`. Tests must never echo a key value.
-- `.claude/skills/trader-*` is the day-trader skill pack (see `.claude/skills/README.md`). Never use
-  `/trader-broker` to connect a broker or place an order here; read-only tickets only.
+- `.claude/skills/trader-*` is the day-trader skill pack (see `.claude/skills/README.md`).
+  `/trader-broker` may place orders on a connected broker's **paper** account (Alpaca paper by
+  default) only through its three gates: trader-risk PASS, the user's typed yes for that one order,
+  and the user's Allow once on the tool card. Never switch it to a live account, never from a
+  background task, and never route it through Robinhood (the rule above still holds).
 
 ## Verify
 ```bash

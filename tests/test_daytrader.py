@@ -290,8 +290,8 @@ def test_orb_sip_can_wait_for_a_close_above_the_range():
     md = SimpleNamespace(today_bars=lambda syms: bars)
     now = t0 + timedelta(minutes=11)
     ctx = StrategyContext(md, ("SPY",), (), now.date(), frozenset(), now)
-    assert len(OrbStocksInPlay(scanner=Scan()).generate(ctx)) == 1  # the paper's rule: a touch
-    assert OrbStocksInPlay(scanner=Scan(), confirm="close").generate(ctx) == []
+    assert len(OrbStocksInPlay(scanner=Scan(), confirm="touch").generate(ctx)) == 1  # the paper's rule
+    assert OrbStocksInPlay(scanner=Scan()).generate(ctx) == []  # the default waits for a close
     bars["XYZ"] = [first, Bar("XYZ", t0 + timedelta(minutes=5), 50.8, 51.3, 50.7, 51.2, 5e4)]
     assert len(OrbStocksInPlay(scanner=Scan(), confirm="close").generate(ctx)) == 1
     assert OrbStocksInPlay(scanner=Scan(), confirm="close", min_volume_x=1.0).generate(ctx) == []  # thin bar
