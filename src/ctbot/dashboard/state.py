@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ctbot import manual_queue, market_hours, track_record, trade_log
+from ctbot import manual_queue, market_hours, thoughts, track_record, trade_log
 from ctbot.config import Settings, load_universe
 from ctbot.models import Quote
 from ctbot.paper.simulator import buying_power, margin_call
@@ -31,6 +31,7 @@ MAX_HISTORY_POINTS = 2000
 MAX_LOG_LINES = 300
 MAX_FILLS = 50
 MAX_TRADE_LOG = 50
+MAX_THOUGHTS = 6
 MAX_IDEAS = 100
 HEARTBEAT_GRACE_S = 15
 PERF_PATH = Path("data/lab/performance.json")  # ctbot-perf: 3/6/12-month simulated returns
@@ -463,6 +464,8 @@ def build_state(
             "max_sector_pct": L.max_sector_pct,
         },
         "trade_log": trade_log.read(settings.trade_log_path, MAX_TRADE_LOG),
+        "thoughts": [{k: t.get(k) for k in ("ts", "kind", "text", "symbol", "models")}
+                     for t in thoughts.read(settings.thoughts_path, MAX_THOUGHTS)],
         "positions": pos_out,
         "fills": list(reversed(fills_with_pnl(ledger.get("fills", []))))[:MAX_FILLS],
         "equity_history": _read_history(settings.equity_history_path),

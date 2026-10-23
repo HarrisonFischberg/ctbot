@@ -157,6 +157,11 @@ class Settings:
         return self.paper_ledger_path.with_name("trade_log.jsonl")
 
     @property
+    def thoughts_path(self) -> Path:
+        """Bub's thoughts: notes on the market and on choices, shown on the Home tab (ctbot.thoughts)."""
+        return self.paper_ledger_path.with_name("bub_thoughts.jsonl")
+
+    @property
     def halt_path(self) -> Path:
         """Kill-switch file: while it exists, no new entries are submitted (exits still run)."""
         return self.paper_ledger_path.with_name("HALT")

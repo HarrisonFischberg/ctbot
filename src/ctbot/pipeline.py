@@ -22,6 +22,7 @@ from ctbot import (
     market_hours,
     risk_mode,
     sectors,
+    thoughts,
     track_record,
     trade_log,
 )
@@ -80,6 +81,7 @@ class Components:
     journal: Any = None  # ctbot.contracts.Journal: snapshot -> results -> order -> outcome
     fills: int = 0       # fills submitted by this process (cycle summaries count the difference)
     trend: Any = field(default_factory=risk_mode.TrendCache)  # pull-back trend average, once a day
+    think: bool = True  # Bub's thoughts (ctbot.thoughts): notes only, never changes a trade
 
 
 DUPLICATE_WINDOW_S = 120.0
@@ -469,6 +471,8 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
         c.context.warm(c.universe)
     manage_positions(c, state, now)
     refresh_learning(c, state, now)
+    if c.think:
+        thoughts.observe(c, state, now)
     positions = {p.symbol: p for p in c.executor.positions()}
     apply_launcher(c, state, positions, now)
     held = frozenset(positions)
@@ -570,6 +574,8 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                     log.info("shadow long %s (%s): systematic, passed risk, not executed", cand.symbol, ",".join(buyers))
                     c.recorder(_idea(now, cand, quote, decision, verdict, "shadow"))
                     continue
+                if c.think:
+                    thoughts.before_buy(c, state, now, cand, quote, decision, verdict)
                 c.recorder(_idea(now, cand, quote, decision, verdict, "auto_submitted"))
                 plan = c.risk.exit_plan(cand)
                 for order in verdict.orders:
@@ -626,8 +632,12 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
             continue
         if cand.direction is Direction.LONG and c.settings.entry_mode == "manual":
             log.info("recommended long %s: awaiting your approval on the dashboard", cand.symbol)
+            if c.think:
+                thoughts.before_buy(c, state, now, cand, quote, decision, verdict, waiting=True)
             c.recorder(_idea(now, cand, quote, decision, verdict, "recommended"))
             continue
+        if c.think and cand.direction is Direction.LONG:
+            thoughts.before_buy(c, state, now, cand, quote, decision, verdict)
         c.recorder(_idea(now, cand, quote, decision, verdict, "auto_submitted"))
         plan = c.risk.exit_plan(cand) if cand.direction is Direction.LONG else None
         tag = ",".join(cand.strategies) if cand.direction is Direction.LONG else "signal_exit"

@@ -65,6 +65,9 @@ src/ctbot/
   llm_costs.py                 measured Claude spend per call; daily $ cap
   dayplan.py                   ctbot-dayplan (premarket plan, explicit no-trade) / ctbot-reconcile (EOD)
   assistant/                   dashboard assistant (Bub): context, allowlisted proposals, audit, Claude chat
+  thoughts.py                  "Bubs Thoughts": deduped, rate-limited notes on the market and on
+                               choices, and what the bot saw just before a buy (data/bub_thoughts.jsonl);
+                               notes only, never changes a trade
   tuning.py                    assistant-tunable knobs (~/.ctbot/tuning.json), bounds and denylist
   risk/manager.py              check_entry / check_exit
   execution/                   OrderExecutor protocol + paper-process import guard
