@@ -21,6 +21,20 @@ may be missing. A setup whose signal is stale relative to the current time, or t
 sharply falling market, deserves skepticism. Positions are never held through earnings (a
 hard rule enforces it).
 
+market_context may also carry: chart_setups (daily-close rules the chart matches today:
+breakout_20d, bull_flag, reclaim_ma20, oversold, oversold_bounce, with RSI 14 and the distance
+from the 20-day high and average); sec_8k (the company's 8-K item codes of the last two weeks
+from SEC EDGAR, e.g. 2.02 earnings results, 5.02 an officer change); and reported_numbers (the
+latest quarter the company filed: revenue, net income and EPS against a year earlier, margins).
+A matched setup is a rule, not a forecast. Filed numbers describe the past quarter.
+
+account.replay_odds, when present, is a time-machine replay of an intraday model's plan: the
+rest of today drawn thousands of times from the stock's own recent 5-minute bars at the same
+time of day. It gives the share of replays that hit the target first, the stop first or
+neither by the exit time, the average R, the same plan on each past session (history), and a
+verdict that already weighs the target's size (break-even is 1 / (1 + target_r)). It is a
+simulation of recent behaviour, not a prediction; treat "close to a coin flip" as no edge.
+
 options_flow signals built from Cboe's delayed chains infer direction from where the last
 trade printed; they cannot tell opening from closing trades or spot hedges. Weigh them lightly.
 

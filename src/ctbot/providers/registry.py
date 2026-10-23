@@ -77,6 +77,14 @@ def _tradingflow_options(env: dict[str, str]) -> AltDataProvider:
         Path(env.get("TRADINGFLOW_FLOW_DIR", "data/options_flow_tradingflow")), exclude)
 
 
+def _house_clerk(env: dict[str, str]) -> AltDataProvider:
+    from pathlib import Path
+
+    from ctbot.providers.house_clerk import HouseClerkProvider
+
+    return HouseClerkProvider(Path(env.get("HOUSE_PTR_DIR", "data/house_ptr")))
+
+
 PROVIDER_FACTORIES: dict[str, Callable[[dict[str, str]], AltDataProvider]] = {
     "json_file": _json_file,
     "quiver": _quiver,
@@ -85,6 +93,7 @@ PROVIDER_FACTORIES: dict[str, Callable[[dict[str, str]], AltDataProvider]] = {
     "collective2": _collective2,
     "cboe_options": _cboe_options,
     "tradingflow_options": _tradingflow_options,
+    "house_clerk": _house_clerk,
 }
 
 

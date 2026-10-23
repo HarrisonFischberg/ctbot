@@ -48,6 +48,11 @@ class AccountState:
     risk_off: list[str] = field(default_factory=list)
     # sector -> dollars held (leverage included), for the sector cap. Set by the pipeline.
     sector_exposure: dict[str, float] = field(default_factory=dict)
+    # Dollars lost if every open position sold at its stop, from today's prices (max_open_risk_pct).
+    # Set by the pipeline each cycle and raised after each buy; not persisted.
+    open_risk: float = 0.0
+    # Trading dates of new positions (max_entries_per_day); persisted.
+    entry_dates: list[date] = field(default_factory=list)
 
 
 def save_account_state(state: AccountState, path: Path) -> None:
@@ -61,6 +66,7 @@ def save_account_state(state: AccountState, path: Path) -> None:
         "brackets": state.brackets,
         "model_losing_streak": state.model_losing_streak,
         "risk_off": state.risk_off,
+        "entry_dates": [d.isoformat() for d in state.entry_dates],
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2))
@@ -80,6 +86,7 @@ def load_account_state(state: AccountState, path: Path) -> AccountState:
     state.kill_switch = state.kill_switch or bool(data.get("kill_switch", False))
     state.brackets = data.get("brackets", {})
     state.model_losing_streak = data.get("model_losing_streak", {})
+    state.entry_dates = [date.fromisoformat(d) for d in data.get("entry_dates", [])]
     return state
 
 
@@ -129,6 +136,7 @@ class RiskManager:
             state.kill_switch = True
         cutoff = today - timedelta(days=7)
         state.day_trade_dates = [d for d in state.day_trade_dates if d > cutoff]
+        state.entry_dates = [d for d in state.entry_dates if d == today]
 
     def record_exit_fill(self, state: AccountState, position: Position, today: date,
                          exit_price: float | None = None) -> None:
@@ -251,6 +259,34 @@ class RiskManager:
                 return {**s.evidence, "model": s.strategy}
         return None
 
+    def stop_distance(self, candidate: Candidate, decision: Decision, plan: dict | None) -> float:
+        """Fraction of the entry lost at the stop the position will get (see set_bracket)."""
+        L = self.limits
+        systematic = bool(plan and plan.get("systematic"))
+        cap = L.max_stop_loss_pct if systematic or not self.max_loss_pct else self.max_loss_pct
+        if plan and plan.get("stop") is not None and plan.get("ref_price"):
+            return min(max(0.0, 1 - float(plan["stop"]) / float(plan["ref_price"])), cap)
+        return min(decision.stop_loss_pct or L.default_stop_loss_pct, cap)
+
+    def plan_reasons(self, plan: dict | None) -> list[str]:
+        """trader-exit's refusals for a model's own plan: a stop on the wrong side or too tight
+        to survive the spread, and a reward:risk under min_reward_risk."""
+        L = self.limits
+        if not plan or plan.get("stop") is None or not plan.get("ref_price"):
+            return []
+        entry, stop = float(plan["ref_price"]), float(plan["stop"])
+        if stop >= entry:
+            return ["stop_not_below_entry"]
+        out = []
+        if L.min_stop_distance_pct > 0 and (entry - stop) / entry < L.min_stop_distance_pct:
+            out.append("stop_too_tight")
+        target = plan.get("target")
+        if L.min_reward_risk > 0 and target is not None:
+            rr = (float(target) - entry) / (entry - stop)
+            if rr < L.min_reward_risk:
+                out.append(f"reward_risk_{rr:.2f}_below_{L.min_reward_risk:g}")
+        return out
+
     def day_trades_last_5d(self, state: AccountState, today: date | None = None) -> int:
         today = today or datetime.now(timezone.utc).date()
         cutoff = today - timedelta(days=7)  # ~5 business days
@@ -272,9 +308,12 @@ class RiskManager:
         next_earnings: datetime | None = None,
         now: datetime | None = None,
         check_quote_age: bool = True,
+        red_flags: list[str] | tuple[str, ...] = (),
     ) -> RiskVerdict:
         L = self.limits
         reasons: list[str] = []
+        if red_flags:  # a bankruptcy, delisting notice or non-reliance 8-K in the last two weeks
+            reasons.append("sec_8k_red_flag")
 
         if candidate.direction is not Direction.LONG:
             reasons.append(f"not_an_entry_{candidate.direction.value}")
@@ -303,6 +342,17 @@ class RiskManager:
             planned_exit = datetime.fromisoformat(plan["exit_at"]) if plan else now + timedelta(days=horizon)
             if now < next_earnings < planned_exit:
                 reasons.append("earnings_before_exit")
+        reasons.extend(self.plan_reasons(plan))
+        if L.max_entries_per_day > 0:
+            day = today or trading_date(now or datetime.now(timezone.utc))
+            if sum(d == day for d in state.entry_dates) >= L.max_entries_per_day:
+                reasons.append("max_entries_per_day")
+        if L.no_entries_before and now is not None:
+            from ctbot.market_hours import ET
+
+            hh, mm = (int(x) for x in L.no_entries_before.split(":"))
+            if now.astimezone(ET).time() < datetime.min.time().replace(hour=hh, minute=mm):
+                reasons.append("before_entry_window")
         if state.open_positions >= L.max_open_positions:
             reasons.append("max_open_positions")
         if state.equity <= state.day_start_equity * (1 - L.max_daily_loss_pct):
@@ -354,14 +404,23 @@ class RiskManager:
             sector_room = (L.max_sector_pct * state.equity - state.sector_exposure.get(sec, 0.0)) / lev
             if sector_room < 1.0:
                 reasons.append(f"sector_cap_{sec.lower().replace(' ', '_')}")
+        # trader-budget: the stop decides the size, so the loss at the stop fits the max loss
+        stop_dist = self.stop_distance(candidate, decision, plan)
+        if L.max_loss_per_trade_pct > 0 and not req and stop_dist > 0:
+            size = min(size, base * L.max_loss_per_trade_pct / stop_dist)
+        risk_room = float("inf")
+        if L.max_open_risk_pct > 0 and stop_dist > 0:  # trader-risk's daily loss budget, at the stops
+            risk_room = max(0.0, L.max_open_risk_pct * state.equity - state.open_risk) / stop_dist
+            if risk_room < 1.0:
+                reasons.append("open_risk_budget_used")
         # Buying power: cash on hand, or with paper margin cash plus the loan still available
         # (PaperBroker.buying_power: $2,000 minimum equity, 25% maintenance).
-        notional = min(size, cash, room, sector_room)
+        notional = min(size, cash, room, sector_room, risk_room)
         if room < 1.0:
             reasons.append("trading_capital_cap")
         elif state.risk_off and cash < 1.0:
             reasons.append("pulled_back_no_borrowing")
-        elif notional < 1.0 and sector_room >= 1.0:
+        elif notional < 1.0 and sector_room >= 1.0 and risk_room >= 1.0:
             reasons.append("notional_too_small")
 
         if reasons:

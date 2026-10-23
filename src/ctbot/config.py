@@ -79,6 +79,14 @@ class RiskLimits:
     risk_off_trend_symbol: str = "QQQ"
     risk_off_trend_days: int = 50
     max_sector_pct: float = 0.40          # reviewed entries stop adding to a sector above this share of equity
+    # Day-trader pack checks (github.com/Jakeschincariol/day-trader-skill: trader-exit, -budget,
+    # -risk). 0 / "" turns a check off; only the too-tight stop is on by default.
+    min_stop_distance_pct: float = 0.0005 # a model's stop this close to its entry is refused (spread noise)
+    min_reward_risk: float = 0.0          # a model's (target - entry) / (entry - stop) must reach this
+    max_loss_per_trade_pct: float = 0.0   # size reviewed entries so the loss at the stop is at most this
+    max_open_risk_pct: float = 0.0        # loss at every open stop plus this entry's, as a share of equity
+    max_entries_per_day: int = 0          # new positions per trading day
+    no_entries_before: str = ""           # "HH:MM" ET: no new entries before this (e.g. "09:45")
 
 
 
@@ -101,6 +109,7 @@ class Settings:
     review_shadow_ideas: bool = False     # pay for Claude reviews of ideas from shadow-only models
     review_outcome_memory: bool = True    # show the reviewer each model's settled paper results (no LLM)
     review_debate: bool = False           # two extra short calls (case for / against) before the verdict
+    review_replay_odds: bool = True       # time-machine odds for intraday plans in reviews (no LLM)
     starting_capital: float = 250.0
     risk: RiskLimits = RiskLimits()
     ensemble: EnsembleParams = EnsembleParams()
@@ -241,6 +250,12 @@ class Settings:
             risk_off_trend_symbol=env.get("RISK_OFF_TREND_SYMBOL", "QQQ").strip().upper(),
             risk_off_trend_days=_int(env, "RISK_OFF_TREND_DAYS", 50),
             max_sector_pct=_float(env, "MAX_SECTOR_PCT", 0.40),
+            min_stop_distance_pct=_float(env, "MIN_STOP_DISTANCE_PCT", 0.0005),
+            min_reward_risk=_float(env, "MIN_REWARD_RISK", 0.0),
+            max_loss_per_trade_pct=_float(env, "MAX_LOSS_PER_TRADE_PCT", 0.0),
+            max_open_risk_pct=_float(env, "MAX_OPEN_RISK_PCT", 0.0),
+            max_entries_per_day=_int(env, "MAX_ENTRIES_PER_DAY", 0),
+            no_entries_before=env.get("NO_ENTRIES_BEFORE", "").strip(),
         )
         ensemble = EnsembleParams(
             min_long_score=_float(env, "MIN_LONG_SCORE", 0.15),
@@ -266,6 +281,7 @@ class Settings:
             review_shadow_ideas=_bool(env, "REVIEW_SHADOW_IDEAS", False),
             review_outcome_memory=_bool(env, "REVIEW_OUTCOME_MEMORY", True),
             review_debate=_bool(env, "REVIEW_DEBATE", False),
+            review_replay_odds=_bool(env, "REVIEW_REPLAY_ODDS", True),
             starting_capital=_float(env, "STARTING_CAPITAL", 250.0),
             risk=risk,
             ensemble=ensemble,

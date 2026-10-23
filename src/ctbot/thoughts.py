@@ -8,7 +8,9 @@ Two sources:
 * `observe` runs once a cycle and looks for something worth saying: QQQ crossing its trend
   average, a big market day, the day's loss nearing the pull-back, a sector nearing its cap, a
   strategy's size shrinking or growing with its record, a strategy sitting out after losses, or
-  one reason turning down most of today's ideas.
+  one reason turning down most of today's ideas. Price alerts for what the bot holds (the
+  day-trader pack's trader-alerts): a position near its stop, or up one times its risk (1R),
+  each said once a day per stock.
 * `before_buy` writes what the bot saw in an idea just before it submits the buy (or, in manual
   entry mode, before it asks for your click).
 
@@ -42,6 +44,7 @@ NEAR_SECTOR_SHARE = 0.8   # a sector is this share of its cap
 SMALL_SIZE = 0.6          # a strategy's next size at or under this (track-record sizing)
 BIG_SIZE = 1.15           # ... or at or over this
 REJECT_PATTERN_MIN = 5    # one reason turned down at least this many ideas today
+NEAR_STOP_R = 0.25        # a held stock within this share of its risk above its stop
 
 # risk reason code (or its prefix) -> what it means for choosing
 REASON_WORDS = {
@@ -237,6 +240,8 @@ def _observe(c, state, now: datetime) -> None:
             note(path, now, "caution", f"paused_{model}", models=[model], text=(
                 f"{{models}} lost {streak} trades in a row today, so it sits out the rest of the day."))
 
+    _price_alerts(c, state, now)
+
     reasons, total = _today_rejections(s.ideas_path, now)
     if reasons:
         fam, n = reasons.most_common(1)[0]
@@ -244,6 +249,28 @@ def _observe(c, state, now: datetime) -> None:
             why, hint = REASON_WORDS[fam]
             note(path, now, "choice", f"rejects_{fam}", text=(
                 f"{n} of today's {total} ideas were turned down because {why}. {hint[0].upper()}{hint[1:]}."))
+
+
+def _price_alerts(c, state, now: datetime) -> None:
+    """Near the stop, or up 1R: a fact about a price, never an order (the brackets do the selling)."""
+    positions = c.executor.positions()
+    quotes = c.market_data.quotes([p.symbol for p in positions]) if positions else {}
+    for p in positions:
+        b, q = state.brackets.get(p.symbol) or {}, quotes.get(p.symbol)
+        stop, entry = b.get("stop"), p.avg_cost
+        if stop is None or not q or not q.bid or not entry:
+            continue
+        r0 = (b.get("ctx") or {}).get("r0") or (entry - stop if entry > stop else None)
+        if not r0:
+            continue
+        if q.bid - stop <= NEAR_STOP_R * r0 and q.bid > stop:
+            note(c.settings.thoughts_path, now, "caution", f"near_stop_{p.symbol}", symbol=p.symbol, text=(
+                f"{p.symbol} is at ${q.bid:,.2f}, ${q.bid - stop:,.2f} above its stop (${stop:,.2f}). If it "
+                f"slips under, the bot sells it; a fast drop can fill below the stop."))
+        elif q.bid >= entry + r0:
+            note(c.settings.thoughts_path, now, "market", f"up_1r_{p.symbol}", symbol=p.symbol, text=(
+                f"{p.symbol} is up {(q.bid - entry) / r0:.1f}x what it risked (bought ${entry:,.2f}, now "
+                f"${q.bid:,.2f}, stop ${stop:,.2f}). The plan decides when to sell, not the excitement."))
 
 
 def before_buy(c, state, now: datetime, cand, quote, decision, verdict, waiting: bool = False) -> None:

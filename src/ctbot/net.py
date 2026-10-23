@@ -58,6 +58,7 @@ class HttpSource:
         client: httpx.Client | None = None,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
+        user_agent: str = USER_AGENT,
     ) -> None:
         self.name = name
         self.failure_threshold = failure_threshold
@@ -65,7 +66,7 @@ class HttpSource:
         self.retries = retries
         self.backoff_s = backoff_s
         self._client = client or httpx.Client(
-            timeout=timeout_s, follow_redirects=True, headers={"User-Agent": USER_AGENT})
+            timeout=timeout_s, follow_redirects=True, headers={"User-Agent": user_agent})
         self._clock = clock
         self._sleep = sleep
         self._failures = 0
@@ -81,7 +82,11 @@ class HttpSource:
     def post_json(self, url: str, body: Any) -> Any:
         return self._request("POST", url, json=body)
 
-    def _request(self, method: str, url: str, **kw: Any) -> Any:
+    def get_bytes(self, url: str, params: dict[str, Any] | None = None) -> bytes:
+        """The raw body (a ZIP, a PDF), with the same retries and circuit breaker."""
+        return self._request("GET", url, raw=True, params=params)
+
+    def _request(self, method: str, url: str, raw: bool = False, **kw: Any) -> Any:
         if not self.available:
             raise SourceUnavailable(f"{self.name}: cooling down after repeated failures")
         reason = "unknown error"
@@ -102,6 +107,9 @@ class HttpSource:
             if r.status_code >= 400:
                 reason = f"HTTP {r.status_code}"
                 break
+            if raw:
+                self._failures = 0
+                return r.content
             try:
                 data = r.json()
             except ValueError:

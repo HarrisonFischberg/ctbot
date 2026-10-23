@@ -4,6 +4,11 @@ Each morning the scanner picks the most unusually active Russell 1000 names. For
 first 5-minute bar closed green, buy when price trades through that bar's high; stop
 0.10 x ATR(14) below the entry (the paper's rule); exit at 15:50 ET. Entries 9:40-11:00 ET.
 
+`confirm = "close"` takes the day-trader pack's trader-entry rule instead: a breakout counts
+only once a completed 5-minute bar CLOSES above the first bar's high (a wick through it is not
+an entry), and `min_volume_x` > 0 also wants that bar's volume at that multiple of the first
+bar's. The default ("touch") is the paper's rule.
+
 Our own 88-large-cap backtest of this rule was negative out-of-sample (the paper's edge came
 from a ~7,000-stock universe); this model tests the market-wide version forward on paper with
 a fixed sleeve (size_pct of equity per trade).
@@ -27,8 +32,12 @@ class OrbStocksInPlay:
     event_kinds: frozenset[EventKind] = frozenset()
 
     def __init__(self, stop_atr: float = 0.10, size_pct: float = 0.20, top_k: int = 20,
-                 last_entry: str = "11:00", scanner=None) -> None:
+                 last_entry: str = "11:00", scanner=None, confirm: str = "touch",
+                 min_volume_x: float = 0.0) -> None:
+        if confirm not in ("touch", "close"):
+            raise ValueError(f"orb_sip confirm must be 'touch' or 'close', not {confirm!r}")
         self.stop_atr, self.size_pct, self.top_k = stop_atr, size_pct, top_k
+        self.confirm, self.min_volume_x = confirm, min_volume_x
         hh, mm = (int(x) for x in last_entry.split(":"))
         self.last_entry = time(hh, mm)
         self.scanner = scanner  # injected by the paper entrypoint (needs the Robinhood client)
@@ -57,7 +66,13 @@ class OrbStocksInPlay:
             if first.ts.astimezone(ET).time() != time(9, 30) or first.close <= first.open:
                 continue
             trig, last = first.high, done[-1]
-            if last.high < trig:
+            if self.confirm == "close":
+                broke = next((b for b in done[1:] if b.close > trig), None)
+                if broke is None:
+                    continue  # no completed bar has closed above the range yet
+                if self.min_volume_x > 0 and broke.volume < self.min_volume_x * first.volume:
+                    continue  # the breakout bar was too thin
+            elif last.high < trig:
                 continue  # not broken out yet
             ref = max(trig, last.close)
             if ref > trig * 1.01:

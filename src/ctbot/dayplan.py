@@ -3,8 +3,10 @@
 `ctbot-dayplan` (before the open) writes data/day_plan/<date>.json: whether today is a session
 (and an early close), the schedule each model runs on, which models can trade vs only watch,
 risk headroom (positions, capital, day trades, kill switch, HALT file), the Claude budget, and
-data freshness (cached bars, the ranking model's age). It ends in a plain verdict: entries
-possible today, or "no trade" with the reasons. It never fetches quotes or calls an LLM.
+data freshness (cached bars, the ranking model's age), and the universe's daily chart setups
+from the cached daily bars (the day-trader pack's pre-market scan: 20-day breakouts, bull
+flags, 20-day-average reclaims, oversold). It ends in a plain verdict: entries possible today,
+or "no trade" with the reasons. It never fetches quotes or calls an LLM.
 
 `ctbot-reconcile` (after the close) writes data/eod/<date>.json and exits 1 on any mismatch:
 * positions rebuilt from the ledger's fills (FIFO) match the ledger's positions;
@@ -47,6 +49,24 @@ def _json(path: Path) -> dict[str, Any]:
         return json.loads(path.read_text())
     except (OSError, ValueError):
         return {}
+
+
+def chart_setups(universe: list[str], day: date, per_tag: int = 8) -> dict[str, list[str]]:
+    """tag -> symbols whose cached daily closes before `day` match it, most traded first.
+    A match is a chart matching a rule, not a buy."""
+    from ctbot.analysis import setups
+    from ctbot.research import bars as cache
+
+    hits: dict[str, list[tuple[float, str]]] = {t: [] for t in setups.TAGS}
+    for sym in universe:
+        done = [b for b in cache.load("day", sym) if market_hours.trading_date(b.ts) < day][-60:]
+        found = setups.find([b.close for b in done])
+        if not found:
+            continue
+        traded = done[-1].close * done[-1].volume
+        for t in found["tags"]:
+            hits[t].append((traded, sym))
+    return {t: [s for _, s in sorted(v, reverse=True)[:per_tag]] for t, v in hits.items() if v}
 
 
 def plan(settings: Settings, day: date, now: datetime | None = None) -> dict[str, Any]:
@@ -100,9 +120,19 @@ def plan(settings: Settings, day: date, now: datetime | None = None) -> dict[str
         "claude_budget": {"spent_today_usd": round(spent, 4), "cap_usd": settings.max_claude_usd_per_day,
                           "review_shadow_ideas": settings.review_shadow_ideas, "model": settings.claude_model},
         "data_freshness": freshness,
+        "chart_setups": _universe_setups(settings, day),
         "verdict": "entries possible" if not reasons else "no trade",
         "reasons": reasons,
     }
+
+
+def _universe_setups(settings: Settings, day: date) -> dict[str, list[str]]:
+    from ctbot.config import load_universe
+
+    try:
+        return chart_setups(load_universe(settings.universe_file), day)
+    except OSError:
+        return {}
 
 
 def _fifo_positions(fills: list[dict[str, Any]]) -> dict[str, float]:
@@ -177,6 +207,8 @@ def plan_main() -> None:
     print(f"{day}: {p['verdict']}" + (f" ({'; '.join(p['reasons'])})" if p["reasons"] else ""))
     print(f"trading models: {', '.join(p['trading_models']) or 'none'}; held: {', '.join(p['held']) or 'none'}")
     print(f"Claude spend today ${p['claude_budget']['spent_today_usd']:.2f} of ${p['claude_budget']['cap_usd']:.2f}")
+    for tag, syms in p["chart_setups"].items():
+        print(f"  {tag}: {', '.join(syms)}")
     print(f"written: {path}")
 
 

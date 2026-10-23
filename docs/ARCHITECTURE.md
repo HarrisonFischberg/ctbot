@@ -37,6 +37,8 @@ src/ctbot/
     context.py                 review context + earnings guard (Robinhood, then public extras)
     tradingview.py             public TradingView scanner: earnings dates, technical rating
     news.py                    Marketaux news sentiment (optional key; numbers only)
+    sec_edgar.py               SEC EDGAR (SEC_USER_AGENT): 8-K item codes + last reported quarter for
+                               reviews; bankruptcy / delisting / non-reliance 8-Ks block entries
   providers/                   alt data, normalized to AltDataEvent
     base.py                    AltDataProvider protocol
     registry.py                build by name; one failing provider never blocks others
@@ -46,6 +48,7 @@ src/ctbot/
     robinhood_mcp.py           Robinhood MCP stub (get_politician_trades, ...)
     cboe_options.py            free Cboe delayed chains -> unusual-volume OPTIONS_FLOW events
     tradingflow_options.py     TradingFlow trade-level flow (ask/bid side) -> OPTIONS_FLOW events
+    house_clerk.py             free House PTRs (pdftotext) -> CONGRESS_TRADE events
   strategies/
     base.py                    Strategy protocol + StrategyContext
     registry.py                load strategies.toml, build enabled strategies
@@ -58,6 +61,7 @@ src/ctbot/
   aggregation/ensemble.py      weighted agreement score; min agreeing strategies; caps Claude calls
   analysis/stats.py            z-score, returns, SMA, vol, half-life
   analysis/regime.py           SPY trend/volatility regime label for reviews
+  analysis/setups.py           daily-close chart setups (20d breakout, bull flag, MA20 reclaim, oversold)
   decision/                    Claude review -> JSON Decision; fails closed; memory.py (settled paper
                                results per model, as-of); optional bounded for/against debate
   contracts.py                 MarketSnapshot / StrategyResult / ProposedOrder / ExecutionOutcome /
@@ -73,10 +77,13 @@ src/ctbot/
   execution/                   OrderExecutor protocol + paper-process import guard
   paper/                       PaperBroker + `ctbot-paper` entrypoint
   live/                        RobinhoodLiveExecutor (guarded, not implemented) + `ctbot-live`
+  research/timemachine.py      seeded replays of the rest of a session from 5-min bars (ctbot-timemachine;
+                               intraday reviews get the odds)
   research/                    backtest (5-min), lab (daily portfolios, --lag), factors (Alpha158 subset),
                                ranker (purged walk-forward + TopkDropout), registry (trial log, holdout
                                lock), validation (PBO, FDR); see docs/RESEARCH_AND_OPERATIONS.md
 tests/                         isolation, config, risk, strategies/ensemble/providers
+.claude/skills/                the day-trader skill pack (11 trader-* skills; README maps each to the bot)
 ```
 
 ## Extending
