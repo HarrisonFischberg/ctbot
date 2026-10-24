@@ -129,6 +129,13 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
 `scripts/autostart.sh status` shows its state, `scripts/autostart.sh uninstall` removes it.
 Run `install` again after moving the project folder.
 
+## Run on a cloud server (optional)
+
+`docs/CLOUD_HOSTING.md`: host comparison, `deploy/setup-server.sh` (Ubuntu, systemd units, paper
+only), the Robinhood sign-in over an SSH tunnel, and `ctbot-watchdog`, which pings `HEARTBEAT_URL`
+every minute so you're alerted when the bot stops. `.venv/bin/ctbot-watchdog` also prints a
+one-line health verdict on the Mac.
+
 ## Scheduled job (optional)
 
 On macOS, a launchd job can run the price-cache refresh, Collective2 tracking, idea scoring,
