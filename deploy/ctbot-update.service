@@ -1,0 +1,10 @@
+# Deploys the latest main (deploy/update.sh). Started by ctbot-update.timer; skips while the
+# market is open.
+[Unit]
+Description=CTbot update from GitHub
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /home/ctbot/ctbot/deploy/update.sh
