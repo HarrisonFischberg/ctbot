@@ -1,0 +1,20 @@
+# CTbot dashboard on a Linux server (systemd). It listens on 127.0.0.1:8787 only; reach it
+# through an SSH tunnel (docs/CLOUD_HOSTING.md), never by opening a port.
+[Unit]
+Description=CTbot dashboard (loopback only, paper clicks)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=ctbot
+WorkingDirectory=/home/ctbot/ctbot
+Environment=CTBOT_MODE=paper LIVE_TRADING_ENABLED=false PYTHONUNBUFFERED=1
+ExecStart=/home/ctbot/ctbot/.venv/bin/ctbot-dashboard
+Restart=always
+RestartSec=15
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

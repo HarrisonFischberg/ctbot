@@ -1,0 +1,20 @@
+# CTbot paper bot on a Linux server (systemd). Installed by deploy/setup-server.sh.
+# Paper only: LIVE_TRADING_ENABLED and CTBOT_MODE are pinned here and win over .env.
+[Unit]
+Description=CTbot paper bot (5-minute cycles, paper only)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=ctbot
+WorkingDirectory=/home/ctbot/ctbot
+Environment=CTBOT_MODE=paper LIVE_TRADING_ENABLED=false PYTHONUNBUFFERED=1
+ExecStart=/home/ctbot/ctbot/.venv/bin/ctbot-paper --loop --interval 300
+Restart=always
+RestartSec=15
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
