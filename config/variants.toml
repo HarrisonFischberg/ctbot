@@ -44,7 +44,7 @@ env = { MAX_CANDIDATES_PER_CYCLE = "16" }
 [sonnet]
 title = "Sonnet 5.5 reviews instead of Haiku"
 autopilot = { max_loss_pct = 0.08, giveback_pct = 0.08, min_confidence = 0.30 }
-env = { CLAUDE_MODEL = "claude-sonnet-5-5", MAX_CLAUDE_USD_PER_DAY = "2.00" }
+env = { CLAUDE_MODEL = "claude-sonnet-5-5", MAX_CLAUDE_USD_PER_DAY = "3.00" }
 
 [skill_rules]
 title = "Trading-skill rules: half off at 1R, VWAP gate, no buys in a bear regime"
