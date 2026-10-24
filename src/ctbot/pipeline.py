@@ -40,7 +40,7 @@ from ctbot.decision.engine import ClaudeDecisionEngine
 from ctbot.decision.memory import outcome_memory
 from ctbot.execution.base import OrderExecutor
 from ctbot.market_data.base import MarketDataProvider
-from ctbot.models import Candidate, Decision, Direction, Quote, Side, Signal
+from ctbot.models import Candidate, Decision, Direction, OrderRequest, Quote, Side, Signal
 from ctbot.providers.base import AltDataProvider
 from ctbot.providers.registry import fetch_all
 from ctbot.risk.manager import AccountState, RiskManager, RiskVerdict
@@ -229,6 +229,23 @@ def live_quotes(md: MarketDataProvider) -> bool:
     return getattr(md, "quotes_are_live", True)
 
 
+def _entry_gates(c: Components, cand: Candidate) -> dict[str, Any]:
+    """Today's session VWAP and SPY's regime label, fetched only when their gate is on."""
+    L, out = c.settings.risk, {}
+    if L.vwap_entry_gate and hasattr(c.market_data, "today_bars"):
+        from ctbot.research.backtest import vwap_series
+
+        try:
+            bars = c.market_data.today_bars([cand.symbol]).get(cand.symbol) or []
+            if bars:
+                out["vwap"] = vwap_series(bars)[-1]
+        except Exception:  # noqa: BLE001 - no bars means no gate, never a blocked cycle
+            log.exception("vwap unavailable for %s", cand.symbol)
+    if L.regime_gate and c.context and hasattr(c.context, "market_regime"):
+        out["market_regime"] = (c.context.market_regime() or {}).get("label")
+    return out
+
+
 def avg_dollar_volume(md: MarketDataProvider, symbol: str, days: int = 20) -> float:
     bars = md.daily_bars(symbol, days)
     return sum(b.close * b.volume for b in bars) / len(bars) if bars else 0.0
@@ -263,7 +280,10 @@ def _submit(c: Components, state: AccountState, order, positions, today, decisio
         pos = positions[order.symbol]
         bracket = dict(state.brackets.get(order.symbol) or {})
         _book_sleeve_gain(c, state, order.symbol, pos.avg_cost, fill)
-        c.risk.record_exit_fill(state, pos, today, fill.price)
+        if tag == "partial_profit" and any(p.symbol == order.symbol for p in c.executor.positions()):
+            c.risk.partial_taken(state, order.symbol, pos.avg_cost)  # the rest keeps its bracket
+        else:
+            c.risk.record_exit_fill(state, pos, today, fill.price)
         try:
             trade_log.append(c.settings.trade_log_path, trade_log.close_record(
                 order.symbol, bracket, pos.avg_cost, fill.quantity, fill.price, pos.opened_at,
@@ -420,6 +440,15 @@ def manage_positions(c: Components, state: AccountState, now: datetime) -> None:
             b = state.brackets[sym]
             log.info("swing %s: up %.2f%%, holding to %s with stop raised to %.2f (swing %d)", sym,
                      (quote.bid / pos.avg_cost - 1) * 100, b["exit_at"], b["stop"], b["swings"])
+        half = c.risk.partial_due(state, pos, quote) if quote else 0.0
+        if half and not (market_hours.trading_date(pos.opened_at) == today and c.risk.pdt_limit_hit(state, today)):
+            log.info("partial_profit %s: selling half at %.2f, stop to break-even", sym, quote.bid)
+            order = OrderRequest(sym, Side.SELL, round(half * quote.bid, 2), quote.bid)
+            if _submit(c, state, order, positions, today, tag="partial_profit"):
+                positions = {p.symbol: p for p in c.executor.positions()}
+                pos = positions.get(sym)
+                if pos is None:
+                    continue
         reason = c.risk.bracket_hit(state, pos, quote, now) if quote else None
         if reason is None:
             continue
@@ -580,7 +609,7 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                 decision = Decision(True, 1.0, "systematic rule (no review)", 0.0)
                 adv = avg_dollar_volume(c.market_data, cand.symbol)
                 verdict = c.risk.check_entry(cand, decision, state, quote, adv, held, today, report, now,
-                                         live_quotes(c.market_data))
+                                         live_quotes(c.market_data), **_entry_gates(c, cand))
                 if not verdict.allowed:
                     log.info("rejected long %s: %s", cand.symbol, ", ".join(verdict.reasons))
                     c.recorder(_idea(now, cand, quote, decision, verdict, "rejected"))
@@ -636,7 +665,7 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                         else c.engine.evaluate(cand, account))
             adv = avg_dollar_volume(c.market_data, cand.symbol)
             verdict = c.risk.check_entry(cand, decision, state, quote, adv, held, today, report, now,
-                                         live_quotes(c.market_data))
+                                         live_quotes(c.market_data), **_entry_gates(c, cand))
 
         if not verdict.allowed:
             log.info("rejected %s %s: %s", cand.direction.value, cand.symbol, ", ".join(verdict.reasons))

@@ -64,3 +64,15 @@ Notes:
 - stock-liquidity runs a local `python3 -c "import yfinance..."` check when it loads and, if
   yfinance is missing, tells the agent to `pip install yfinance pandas numpy`. Use a separate
   venv rather than the bot's `.venv` if you want to keep the bot's dependencies untouched.
+
+### Built into the bot (off by default)
+
+Three of these skills' rules are also bot settings. All are off for the main book; the `skill_rules`
+book in `config/variants.toml` runs with all three so the Autopilot page's "Settings test" card
+can compare it with `base`.
+
+| setting | from | what it does |
+| --- | --- | --- |
+| `PARTIAL_PROFIT_R=1.0` | partial-profit-taking | sells half a position once the bid is 1R above the entry, then moves the stop to break-even; the rest keeps trailing |
+| `VWAP_ENTRY_GATE=true` | vwap-trading | a same-day plan (orb_sip and other intraday models) buys only above today's session VWAP (`below_vwap`) |
+| `REGIME_GATE=true` | market-regime-detection | no Claude-reviewed entries while SPY's daily regime is "bear" (`bear_regime`); the trend cores keep their own rules |
