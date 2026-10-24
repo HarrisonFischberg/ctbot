@@ -7,7 +7,6 @@ undoes. Every line is passed through safety.redact first.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any

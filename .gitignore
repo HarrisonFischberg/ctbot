@@ -20,3 +20,6 @@ trader/
 # reports from backtest-expert, trade-performance-coach and market-breadth-analyzer
 reports/
 *.log
+.env.*
+!.env.example
+config/*.bak-*
