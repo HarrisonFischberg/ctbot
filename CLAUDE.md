@@ -14,6 +14,10 @@ CTbot (Creature Trading Bot) is a local, paper-only trading bot with a loopback 
   and the user's Allow once on the tool card. Never switch it to a live account, never from a
   background task, and never route it through Robinhood (the rule above still holds).
 
+## Coding style
+Ponytail is installed (see `.claude/skills/README.md`); its rules load from here:
+@.claude/ponytail-rules.md
+
 ## Verify
 ```bash
 .venv/bin/pytest -q
