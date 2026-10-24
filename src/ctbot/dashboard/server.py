@@ -404,8 +404,12 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
                 return self._send(404, b"not found", "text/plain")
             if "application/json" not in (self.headers.get("Content-Type") or ""):
                 return self._send(415, b"json only", "text/plain")
-            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = 0
             if not 0 < length <= (8192 if path == "/api/assistant/chat" else 4096):  # chat: room for UTF-8
+                self.rfile.read(min(max(length, 0), 1 << 20))  # unread bytes would reset the connection
                 return self._send(413, b"bad length", "text/plain")
             try:
                 body = json.loads(self.rfile.read(length))

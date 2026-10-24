@@ -11,6 +11,7 @@ install_paper_guard()
 import argparse  # noqa: E402
 import json  # noqa: E402
 import logging  # noqa: E402
+from logging.handlers import RotatingFileHandler  # noqa: E402
 import os  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
@@ -84,7 +85,7 @@ def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
-        handlers=[logging.StreamHandler(), logging.FileHandler(settings.paper_log_path)],
+        handlers=[logging.StreamHandler(), RotatingFileHandler(settings.paper_log_path, maxBytes=10_000_000, backupCount=3)],
     )
     for noisy in ("httpx", "httpx2"):  # one line per API call is noise
         logging.getLogger(noisy).setLevel(logging.WARNING)
@@ -220,7 +221,6 @@ def main() -> None:
 
     def handle_clicks() -> None:
         reload_keys()
-        _heartbeat(settings, args.interval, asleep_until)
         for order in manual_queue.pending(settings.manual_orders_path, settings.manual_results_path):
             if market_open():  # a closed market rejects the click before prices matter
                 refresh_state()
