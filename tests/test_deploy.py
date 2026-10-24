@@ -1,6 +1,7 @@
 """Server deployment files (deploy/): paper only, live pinned off, dashboard never exposed."""
 
 import configparser
+import re
 import subprocess
 from pathlib import Path
 
@@ -28,7 +29,7 @@ def test_no_deploy_file_starts_live_or_exposes_the_dashboard():
     for path in DEPLOY.iterdir():
         text = path.read_text()
         assert "ctbot-live" not in text and "LIVE_TRADING_ENABLED=true" not in text
-        assert "0.0.0.0" not in text and "--host" not in text
+        assert "0.0.0.0" not in text and not re.search(r"--host\b", text) and "tailscale funnel " not in text
     assert "ufw allow 8787" not in (DEPLOY / "setup-server.sh").read_text()
 
 
