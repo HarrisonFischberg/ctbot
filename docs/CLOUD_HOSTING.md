@@ -86,7 +86,8 @@ cycle 31 min ago"), never a key, a balance or a position.
 
 ### Dashboard over Tailscale (no Terminal)
 
-On the server, after step 3: `tailscale serve --bg 8787` (HTTPS on the tailnet, proxied to the
+`deploy/tailscale.sh` (as root) does all of this: install, sign in, serve, set the name in `.env`;
+then, over Tailscale, `tailscale.sh --close-public-ssh` closes public SSH. By hand: on the server, after step 3: `tailscale serve --bg 8787` (HTTPS on the tailnet, proxied to the
 loopback dashboard), then add the server's MagicDNS name to `.env` as
 `CTBOT_DASHBOARD_HOSTS=ctbot.<tailnet>.ts.net` and `systemctl restart ctbot-dashboard`.
 Open `https://ctbot.<tailnet>.ts.net` on any device signed in to your tailnet (Mac, phone).
