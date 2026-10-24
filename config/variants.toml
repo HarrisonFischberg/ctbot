@@ -50,3 +50,8 @@ env = { CLAUDE_MODEL = "claude-sonnet-5-5", MAX_CLAUDE_USD_PER_DAY = "2.00" }
 title = "Trading-skill rules: half off at 1R, VWAP gate, no buys in a bear regime"
 autopilot = { max_loss_pct = 0.08, giveback_pct = 0.08, min_confidence = 0.30 }
 env = { PARTIAL_PROFIT_R = "1.0", VWAP_ENTRY_GATE = "true", REGIME_GATE = "true" }
+
+[opus]
+title = "Opus 5.5 reviews instead of Haiku"
+autopilot = { max_loss_pct = 0.08, giveback_pct = 0.08, min_confidence = 0.30 }
+env = { CLAUDE_MODEL = "claude-opus-5-5", CLAUDE_EFFORT = "medium", MAX_CLAUDE_USD_PER_DAY = "4.00" }
