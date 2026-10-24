@@ -36,3 +36,43 @@ tool to "Needs approval", never "Always allow"). Broker keys go in the Claude De
 never in the chat or this repo. It is a separate path from the bot: CTbot's own executor is
 still the paper simulator, the live adapter stays disabled, and Robinhood order tools stay
 forbidden. Wiring real orders into the bot is its own future change.
+
+## More trading skills (added 2026-10-24)
+
+Found with `find-skills` (Vercel's [skills](https://github.com/vercel-labs/skills) CLI guide,
+installed here with `npx skills add https://github.com/vercel-labs/skills --skill find-skills`;
+`skills-lock.json` records it). Every folder below was read before it was added and is copied
+unchanged from the commit shown. None of them places orders, needs an API key or reads `.env`,
+and nothing in `src/ctbot` imports them. They fill gaps the `trader-*` pack leaves; skills that
+repeat a `trader-*` job (position sizing, stops, entry timing, news, earnings) were left out.
+
+| skill | source (license) | what it adds |
+| --- | --- | --- |
+| backtest-expert | [tradermonty/claude-trading-skills](https://github.com/tradermonty/claude-trading-skills) `52c9323` (MIT, `LICENSE-claude-trading-skills`) | backtest method (robustness, slippage, look-ahead bias) and a stdlib script that grades a result Deploy / Refine / Abandon |
+| trade-performance-coach | same | post-trade review of process and rule-following from local trade records (needs PyYAML) |
+| market-breadth-analyzer | same | 0-100 market breadth score; downloads the author's public CSVs from `tradermonty.github.io` (needs `requests`) |
+| vwap-trading, gap-trading, momentum-trading, market-regime-detection | [SKE-Labs/agent-trading-skills](https://github.com/SKE-Labs/agent-trading-skills) `b14565f` (Apache-2.0, `LICENSE-agent-trading-skills`) | intraday setup rules: VWAP, opening gaps, momentum, regime filter |
+| trailing-stop, partial-profit-taking, drawdown-management, correlation-risk | same | trade management and account-level risk |
+| stock-liquidity | [himself65/finance-skills](https://github.com/himself65/finance-skills) `73d554d` (MIT, `LICENSE-finance-skills`) | spread, dollar volume and slippage grade from Yahoo data via `yfinance` |
+
+Notes:
+- The SKE-Labs skills were written for DeepAlpha and name its tools (`get_candles_around_date`,
+  `get_indicators`, `draw_chart_analysis`). Those tools don't exist here; use the bot's own bars
+  or the `trader-*` Yahoo fetchers instead. The rules themselves are plain Markdown.
+- The tradermonty scripts show paths like `skills/<name>/scripts/...`; here they are under
+  `.claude/skills/<name>/scripts/`. Their reports go to `reports/` (git-ignored).
+- stock-liquidity runs a local `python3 -c "import yfinance..."` check when it loads and, if
+  yfinance is missing, tells the agent to `pip install yfinance pandas numpy`. Use a separate
+  venv rather than the bot's `.venv` if you want to keep the bot's dependencies untouched.
+
+### Built into the bot (off by default)
+
+Three of these skills' rules are also bot settings. All are off for the main book; the `skill_rules`
+book in `config/variants.toml` runs with all three so the Autopilot page's "Settings test" card
+can compare it with `base`.
+
+| setting | from | what it does |
+| --- | --- | --- |
+| `PARTIAL_PROFIT_R=1.0` | partial-profit-taking | sells half a position once the bid is 1R above the entry, then moves the stop to break-even; the rest keeps trailing |
+| `VWAP_ENTRY_GATE=true` | vwap-trading | a same-day plan (orb_sip and other intraday models) buys only above today's session VWAP (`below_vwap`) |
+| `REGIME_GATE=true` | market-regime-detection | no Claude-reviewed entries while SPY's daily regime is "bear" (`bear_regime`); the trend cores keep their own rules |

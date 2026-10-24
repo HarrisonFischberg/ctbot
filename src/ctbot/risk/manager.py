@@ -190,6 +190,8 @@ class RiskManager:
             trail = self.trail_giveback if plan and plan.get("stop") is not None else min(dist, self.trail_giveback)
             b.update(target=None, entry=round(fill_price, 4), peak=round(fill_price, 4), trail=round(trail, 4),
                      stop=round(max(b["stop"], fill_price * (1 - trail)), 4))
+        if L.partial_profit_r > 0:  # risk a share at entry (1R), before any trail raises the stop
+            b["r0"] = round(max(0.0, fill_price - b["stop"]), 4)
         state.brackets[symbol] = b
 
     @staticmethod
@@ -205,6 +207,26 @@ class RiskManager:
             return False
         b["stop"] = new
         return True
+
+    def partial_due(self, state: AccountState, position: Position, quote: Quote) -> float:
+        """Shares to sell for partial-profit-taking: half the position, once, when the bid is
+        partial_profit_r R above the entry. 0.0 when off, already taken or not there yet."""
+        R = self.limits.partial_profit_r
+        b = state.brackets.get(position.symbol)
+        if R <= 0 or not b or b.get("partial_done") or not position.avg_cost or quote.bid <= 0:
+            return 0.0
+        r0 = b.get("r0") or (b.get("ctx") or {}).get("r0")
+        if not r0 or quote.bid < position.avg_cost + R * r0:
+            return 0.0
+        return position.quantity / 2
+
+    @staticmethod
+    def partial_taken(state: AccountState, symbol: str, entry: float) -> None:
+        """After the partial sale the rest can't turn into a loss: the stop goes to break-even."""
+        b = state.brackets.get(symbol)
+        if b is not None:
+            b["partial_done"] = True
+            b["stop"] = round(max(b["stop"], entry), 4)
 
     def bracket_hit(self, state: AccountState, position: Position, quote: Quote,
                     now: datetime | None = None) -> str | None:
@@ -309,6 +331,8 @@ class RiskManager:
         now: datetime | None = None,
         check_quote_age: bool = True,
         red_flags: list[str] | tuple[str, ...] = (),
+        vwap: float | None = None,
+        market_regime: str | None = None,
     ) -> RiskVerdict:
         L = self.limits
         reasons: list[str] = []
@@ -343,6 +367,14 @@ class RiskManager:
             if now < next_earnings < planned_exit:
                 reasons.append("earnings_before_exit")
         reasons.extend(self.plan_reasons(plan))
+        longs = [s for s in candidate.signals if s.direction is Direction.LONG]
+        systematic = bool(longs) and all(s.evidence.get("systematic") for s in longs)
+        if L.regime_gate and market_regime == "bear" and not systematic:  # trend cores keep their rules
+            reasons.append("bear_regime")
+        if L.vwap_entry_gate and plan and vwap and quote is not None and quote.last <= vwap:
+            exit_day = trading_date(datetime.fromisoformat(plan["exit_at"]))
+            if exit_day == (today or trading_date(now or datetime.now(timezone.utc))):
+                reasons.append("below_vwap")
         if L.max_entries_per_day > 0:
             day = today or trading_date(now or datetime.now(timezone.utc))
             if sum(d == day for d in state.entry_dates) >= L.max_entries_per_day:
