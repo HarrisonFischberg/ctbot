@@ -13,6 +13,7 @@ run them. Keys and the Robinhood sign-in are never copied by a script: you put t
 | `deploy/ctbot-paper.service` | `ctbot-paper --loop --interval 300`, restarted if it stops; `LIVE_TRADING_ENABLED=false` and `CTBOT_MODE=paper` pinned (they win over `.env`) |
 | `deploy/ctbot-dashboard.service` | the dashboard, still on `127.0.0.1:8787` only |
 | `deploy/ctbot-watchdog.{service,timer}` | `ctbot-watchdog` every minute: pings `HEARTBEAT_URL` |
+| `deploy/update.sh`, `deploy/ctbot-update.{service,timer}` | weekdays 08:45 and 16:20 ET: if main changed, pull and rerun the setup (restarts the bot); never while the market is open |
 | `src/ctbot/watchdog.py` | the health check (works on the Mac too: `.venv/bin/ctbot-watchdog`) |
 
 ## Which host
@@ -83,13 +84,26 @@ cycle 31 min ago"), never a key, a balance or a position.
 7. **Start**: run `setup-server.sh` once more. It starts the bot and dashboard, enables the
    watchdog timer, and prints the first watchdog verdict.
 
+### Dashboard over Tailscale (no Terminal)
+
+On the server, after step 3: `tailscale serve --bg 8787` (HTTPS on the tailnet, proxied to the
+loopback dashboard), then add the server's MagicDNS name to `.env` as
+`CTBOT_DASHBOARD_HOSTS=ctbot.<tailnet>.ts.net` and `systemctl restart ctbot-dashboard`.
+Open `https://ctbot.<tailnet>.ts.net` on any device signed in to your tailnet (Mac, phone).
+Only `*.ts.net` names are accepted, the server still listens on 127.0.0.1 only, and every click
+still needs the page's token and a same-origin request. Never use `tailscale funnel`: it
+publishes to the internet.
+
 ### Daily use
 
-- **Dashboard**: `ssh -L 8787:127.0.0.1:8787 ctbot@<tailscale-name>`, then open
-  http://127.0.0.1:8787 on the Mac. Nothing listens publicly; the dashboard is unchanged.
+- **Dashboard**: the Tailscale address above, or `ssh -N -L 8787:127.0.0.1:8787 ctbot@<server>`
+  and http://127.0.0.1:8787. Nothing listens publicly.
 - **Logs**: `journalctl -u ctbot-paper -f` (also `logs/ctbot-paper.log`).
-- **Update to the latest main**: `sudo bash ~ctbot/ctbot/deploy/setup-server.sh` (pulls, reinstalls,
-  restarts). The ledger is on disk, so a restart keeps positions; prefer doing it outside market hours.
+- **Updates**: automatic. Merge to main and `ctbot-update.timer` deploys it at the next 08:45 or
+  16:20 ET weekday run (`journalctl -u ctbot-update` shows what it did). To deploy now:
+  `sudo bash ~ctbot/ctbot/deploy/update.sh` (it refuses while the market is open; the setup script
+  itself doesn't, so use it during market hours only on purpose). Don't edit tracked files on the
+  server: the pull is fast-forward only and stops on local changes.
 - **Pause new entries**: `touch ~ctbot/ctbot/data/HALT` (exits still run), as on the Mac.
 
 ## Security notes

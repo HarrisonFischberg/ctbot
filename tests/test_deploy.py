@@ -39,3 +39,14 @@ def test_watchdog_timer_runs_the_watchdog_every_minute():
 
 def test_setup_script_parses():
     subprocess.run(["bash", "-n", str(DEPLOY / "setup-server.sh")], check=True)
+
+
+def test_update_timer_runs_on_weekdays_outside_market_hours_and_update_skips_an_open_market():
+    text = (DEPLOY / "ctbot-update.timer").read_text()
+    assert "OnCalendar=Mon..Fri 08:45 America/New_York" in text
+    assert "OnCalendar=Mon..Fri 16:20 America/New_York" in text
+    script = (DEPLOY / "update.sh").read_text()
+    assert "market_hours.session_open" in script and "--ff-only" in script
+    subprocess.run(["bash", "-n", str(DEPLOY / "update.sh")], check=True)
+    setup = (DEPLOY / "setup-server.sh").read_text()
+    assert "ctbot-update.timer" in setup

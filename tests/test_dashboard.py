@@ -175,3 +175,42 @@ def test_fills_with_pnl_prices_each_sell_against_its_buys():
     assert round(out[2]["pnl"], 6) == 25.0  # 1 @100 + 0.5 @110 sold at 120
     assert round(out[2]["pnl_pct"], 6) == round(120 / (155 / 1.5) - 1, 6)
     assert "pnl" not in out[3]
+
+
+def test_tailnet_hosts_accepts_only_tailscale_names():
+    import pytest
+
+    from ctbot.dashboard.server import tailnet_hosts
+
+    assert tailnet_hosts({}) == []
+    assert tailnet_hosts({"CTBOT_DASHBOARD_HOSTS": " CTbot.tail1a2b.ts.net "}) == ["ctbot.tail1a2b.ts.net"]
+    for bad in ("example.com", "ctbot.ts.net.evil.com", "0.0.0.0", "ctbot.tail1a2b.ts.net:8787"):
+        with pytest.raises(SystemExit):
+            tailnet_hosts({"CTBOT_DASHBOARD_HOSTS": bad})
+
+
+def test_server_accepts_its_tailnet_name_and_still_rejects_others(monkeypatch):
+    import urllib.error
+    import urllib.request
+
+    monkeypatch.setenv("CTBOT_DASHBOARD_HOSTS", "ctbot.tail1a2b.ts.net")
+    with tempfile.TemporaryDirectory() as t:
+        d = Path(t)
+        _write_fixture(d)
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(_settings(d, MARKET_DATA="csv"), 0))
+        port = httpd.server_address[1]
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        try:
+            base = f"http://127.0.0.1:{port}"
+
+            def status(path, **hdr):
+                try:
+                    return urllib.request.urlopen(urllib.request.Request(base + path, headers=hdr)).status
+                except urllib.error.HTTPError as e:
+                    return e.code
+
+            assert status("/api/state", Host="ctbot.tail1a2b.ts.net") == 200
+            assert status("/api/state", Host="other.tail1a2b.ts.net") == 403
+            assert status("/api/state", Host="evil.test") == 403
+        finally:
+            httpd.shutdown()
