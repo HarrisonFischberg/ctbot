@@ -13,6 +13,7 @@ run them. Keys and the Robinhood sign-in are never copied by a script: you put t
 | `deploy/ctbot-paper.service` | `ctbot-paper --loop --interval 300`, restarted if it stops; `LIVE_TRADING_ENABLED=false` and `CTBOT_MODE=paper` pinned (they win over `.env`) |
 | `deploy/ctbot-dashboard.service` | the dashboard, still on `127.0.0.1:8787` only |
 | `deploy/ctbot-watchdog.{service,timer}` | `ctbot-watchdog` every minute: pings `HEARTBEAT_URL` |
+| `deploy/ctbot-research.{service,timer}` | weekdays 08:15 and 16:30 ET: `scripts/c2_track_weekly.sh` (bar caches, idea scoring, preflight, premarket plan, end-of-day reconciliation), the server's copy of the Mac's launchd job |
 | `deploy/update.sh`, `deploy/ctbot-update.{service,timer}` | weekdays 08:45 and 16:20 ET: if main changed, pull and rerun the setup (restarts the bot); never while the market is open |
 | `src/ctbot/watchdog.py` | the health check (works on the Mac too: `.venv/bin/ctbot-watchdog`) |
 
@@ -53,6 +54,14 @@ It is a plain VM, so the same systemd setup works on Hetzner if you'd rather sav
 
 The ping carries only the one-line reason (for example "cycles not finishing: last completed
 cycle 31 min ago"), never a key, a balance or a position.
+
+## Phone messages (optional)
+
+Set `NOTIFY_URL=https://ntfy.sh/<long-random-topic>` in the server's `.env` and subscribe to the
+same topic in the free ntfy app. The watchdog then sends "Market open: CTbot is trading" after the
+first cycle of each session (with the premarket plan's verdict), a summary 15 minutes after the
+close (paper equity change, fills), and a message when the bot turns unhealthy or recovers.
+Healthchecks still covers the server itself going down.
 
 ## Setting it up (each step needs your go-ahead; nothing here has been done yet)
 

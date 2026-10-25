@@ -16,6 +16,9 @@ Checks, all from files the bot already writes (nothing is fetched, no keys are r
    not failing every time (an expired Robinhood sign-in, a data outage).
 3. The paper log's recent lines don't ask for a Robinhood sign-in.
 
+With NOTIFY_URL set it also sends phone messages at the open, after the close and when the bot
+turns unhealthy or recovers (ctbot.notify).
+
 Without HEARTBEAT_URL it only prints the verdict, so it also works as a quick status check.
 """
 
@@ -117,6 +120,13 @@ def main(argv: list[str] | None = None) -> int:
     settings = Settings.from_env()
     healthy, reason = check(settings.heartbeat_path, settings.equity_history_path, settings.paper_log_path)
     print(reason)
+    notify_url = os.environ.get("NOTIFY_URL", "").strip()
+    if notify_url:  # phone messages: market open / day summary / problem (ctbot.notify)
+        from ctbot import notify
+
+        for title in notify.run(notify_url, settings.paper_ledger_path.with_name("notify_state.json"), None,
+                                healthy, reason, settings.equity_history_path, settings.paper_ledger_path):
+            print(f"notified: {title}")
     url = os.environ.get("HEARTBEAT_URL", "").strip()
     if url:
         try:

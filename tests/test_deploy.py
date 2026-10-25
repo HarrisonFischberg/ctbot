@@ -51,3 +51,14 @@ def test_update_timer_runs_on_weekdays_outside_market_hours_and_update_skips_an_
     subprocess.run(["bash", "-n", str(DEPLOY / "update.sh")], check=True)
     setup = (DEPLOY / "setup-server.sh").read_text()
     assert "ctbot-update.timer" in setup
+
+
+def test_research_refresh_runs_before_the_open_and_after_the_close_as_ctbot():
+    svc = _unit("ctbot-research.service")["Service"]
+    assert svc["User"] == "ctbot" and "LIVE_TRADING_ENABLED=false" in svc["Environment"].split()
+    assert "scripts/c2_track_weekly.sh" in svc["ExecStart"]
+    timer = (DEPLOY / "ctbot-research.timer").read_text()
+    assert "OnCalendar=Mon..Fri 08:15 America/New_York" in timer and "OnCalendar=Mon..Fri 16:30 America/New_York" in timer
+    script = (ROOT / "scripts/c2_track_weekly.sh").read_text()
+    assert script.startswith("#!/bin/bash") and "date -v" not in script  # runs on Linux too
+    subprocess.run(["bash", "-n", str(ROOT / "scripts/c2_track_weekly.sh")], check=True)
