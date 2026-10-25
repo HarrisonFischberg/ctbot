@@ -11,7 +11,7 @@ BRANCH=${CTBOT_BRANCH:-main}
 USER_NAME=ctbot
 HOME_DIR=/home/$USER_NAME
 APP=$HOME_DIR/ctbot
-UNITS="ctbot-paper.service ctbot-dashboard.service ctbot-watchdog.service ctbot-watchdog.timer ctbot-update.service ctbot-update.timer"
+UNITS="ctbot-paper.service ctbot-dashboard.service ctbot-watchdog.service ctbot-watchdog.timer ctbot-update.service ctbot-update.timer ctbot-research.service ctbot-research.timer"
 as_ctbot() { sudo -u "$USER_NAME" -H "$@"; }
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -63,7 +63,7 @@ as_ctbot "$APP/.venv/bin/pip" install -q -e "$APP"
 
 for u in $UNITS; do install -m 644 "$APP/deploy/$u" /etc/systemd/system/; done
 systemctl daemon-reload
-systemctl enable ctbot-paper.service ctbot-dashboard.service ctbot-watchdog.timer ctbot-update.timer >/dev/null
+systemctl enable ctbot-paper.service ctbot-dashboard.service ctbot-watchdog.timer ctbot-update.timer ctbot-research.timer >/dev/null
 
 missing=""
 [ -f "$APP/.env" ] || missing="$missing\n  - $APP/.env (copy .env.example, fill it in, chmod 600, chown $USER_NAME)"
@@ -77,7 +77,7 @@ if grep -Eiq '^[[:space:]]*LIVE_TRADING_ENABLED[[:space:]]*=[[:space:]]*"?true' 
   echo "Note: .env turns live trading on; the units pin it off and run paper only." >&2
 fi
 systemctl restart ctbot-paper.service ctbot-dashboard.service
-systemctl start ctbot-watchdog.timer ctbot-update.timer
+systemctl start ctbot-watchdog.timer ctbot-update.timer ctbot-research.timer
 sleep 10
 systemctl --no-pager --lines=0 status ctbot-paper.service ctbot-dashboard.service || true
 as_ctbot sh -c "cd '$APP' && .venv/bin/ctbot-watchdog" || true
