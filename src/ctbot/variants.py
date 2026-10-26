@@ -350,7 +350,50 @@ def summary(main_settings: Any, path: Path | None = None) -> list[dict[str, Any]
         rows.append({"name": v.name, "title": v.title, "max_loss_pct": v.autopilot.max_loss_pct,
                      "giveback_pct": v.autopilot.giveback_pct, "min_confidence": v.autopilot.min_confidence,
                      "env": v.env, **_book_summary(s.paper_ledger_path, start)})
+    _vs_main(rows, main_settings.paper_ledger_path.parent)
     return sorted(rows, key=lambda r: -r["return"])
+
+
+MIN_DAYS_TO_JUDGE = 10  # fewer daily returns than this and the t-stat's normal approximation is meaningless
+
+
+def _daily_returns(history: Path) -> dict[str, float]:
+    """date -> that day's return, from the last equity point of each day."""
+    last: dict[str, float] = {}
+    try:
+        for ln in history.read_text().splitlines():
+            try:
+                h = json.loads(ln)
+                last[h["ts"][:10]] = float(h["equity"])
+            except (ValueError, KeyError):
+                continue
+    except OSError:
+        return {}
+    days = sorted(last)
+    return {d: last[d] / last[p] - 1 for p, d in zip(days, days[1:]) if last[p]}
+
+
+def _vs_main(rows: list[dict[str, Any]], data_dir: Path) -> None:
+    """Adds row["vs_main"] = {"days", "edge" (mean daily return over main), "verdict"} to each book.
+    Most published strategies don't beat zero on their own data (awesome-systematic-trading's
+    replication record), so a book only counts as better or worse than main when its daily edge
+    survives a t-test with Benjamini-Hochberg correction across all books; otherwise "too early"."""
+    from ctbot.research.validation import benjamini_hochberg, sharpe_pvalue
+
+    import numpy as np
+
+    main = _daily_returns(data_dir / "equity_history.jsonl")
+    diffs = {}
+    for r in rows[1:]:
+        mine = _daily_returns(data_dir / ROOT_NAME / r["name"] / "equity_history.jsonl")
+        diffs[r["name"]] = np.array([mine[d] - main[d] for d in sorted(mine.keys() & main.keys())])
+    pvals = {n: 2 * min(sharpe_pvalue(d), sharpe_pvalue(-d)) for n, d in diffs.items() if len(d) >= MIN_DAYS_TO_JUDGE}
+    keep = benjamini_hochberg(pvals) if pvals else {}
+    for r in rows[1:]:
+        d = diffs[r["name"]]
+        edge = float(d.mean()) if len(d) else None
+        verdict = ("better" if edge > 0 else "worse") if keep.get(r["name"]) else "too early"
+        r["vs_main"] = {"days": len(d), "edge": edge, "verdict": verdict}
 
 
 def main() -> None:
@@ -358,10 +401,12 @@ def main() -> None:
     from ctbot.config import Settings
 
     rows = summary(Settings.from_env())
-    print(f"{'book':<16}{'return':>8}{'worst':>8}{'trades':>8}{'won':>6}  {'settings'}")
+    print(f"{'book':<16}{'return':>8}{'worst':>8}{'trades':>8}{'won':>6}{'vs main':>16}  {'settings'}")
     for r in rows:
         won = "-" if r["win_rate"] is None else f"{r['win_rate']:.0%}"
         extra = " ".join(f"{k}={v}" for k, v in r["env"].items())
-        print(f"{r['name']:<16}{r['return']:>+8.1%}{r['max_dd']:>8.1%}{r['trades']:>8}{won:>6}  "
+        vs = r.get("vs_main")
+        vs = f"{vs['verdict']} ({vs['days']}d)" if vs else "-"
+        print(f"{r['name']:<16}{r['return']:>+8.1%}{r['max_dd']:>8.1%}{r['trades']:>8}{won:>6}{vs:>16}  "
               f"loss {r['max_loss_pct']:.0%} give {r['giveback_pct']:.0%} floor {r['min_confidence']:.0%} {extra}")
 

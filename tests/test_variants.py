@@ -162,3 +162,29 @@ def test_review_cap_goes_to_ideas_that_can_still_trade():
     assert [c.symbol for c in cands] == ["A", "B"]
     cands = combine(sigs, {"copy_trading": 1.0}, params, frozenset({"copy_trading"}), lambda c: c.symbol == "A")
     assert [c.symbol for c in cands] == ["B", "C"]
+
+
+def test_book_is_only_called_better_once_the_edge_is_steady(tmp_path):
+    import json
+    from datetime import date, timedelta
+
+    def history(path, daily):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        eq, lines = 10_000.0, []
+        for i, r in enumerate(daily):
+            eq *= 1 + r
+            lines.append(json.dumps({"ts": f"{date(2026, 10, 1) + timedelta(days=i)}T16:00:00-04:00", "equity": eq}))
+        path.write_text("\n".join(lines))
+
+    noise = [0.01, -0.01, 0.004, -0.006, 0.008, -0.002, 0.003, -0.009, 0.005, -0.001] * 3
+    history(tmp_path / "equity_history.jsonl", noise)
+    history(tmp_path / "variants" / "steady" / "equity_history.jsonl", [r + 0.002 for r in noise])
+    history(tmp_path / "variants" / "lucky" / "equity_history.jsonl", [r + (0.01 if i % 2 else -0.009)
+                                                                      for i, r in enumerate(noise)])
+    history(tmp_path / "variants" / "new" / "equity_history.jsonl", [r + 0.002 for r in noise[:5]])
+    rows = [{"name": "main"}, {"name": "steady"}, {"name": "lucky"}, {"name": "new"}]
+    variants._vs_main(rows, tmp_path)
+    v = {r["name"]: r["vs_main"] for r in rows[1:]}
+    assert v["steady"]["verdict"] == "better" and v["steady"]["days"] == 29
+    assert v["lucky"]["verdict"] == "too early"
+    assert v["new"] == {"days": 4, "edge": v["new"]["edge"], "verdict": "too early"}

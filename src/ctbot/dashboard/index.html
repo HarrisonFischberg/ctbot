@@ -653,7 +653,7 @@ main:focus { outline: none; }
     <div data-tab="trading" class="card span-12" id="varCard" hidden>
       <h2>Settings test <span class="count" id="varMeta"></span></h2>
       <p class="explain">Practice $10,000 accounts that trade next to yours, on the same prices and with the same yes/no answers from Claude.
-        Each one changes a single setting. After a week or two, the settings that work best will stand out.
+        Each one changes a single setting. A week or two of results is mostly luck, so "Vs yours" says better or worse only once a difference is steady enough to trust.
         You can change the list in <code>config/variants.toml</code>.</p>
       <div id="variants" class="xscroll"></div>
     </div>
@@ -2133,10 +2133,12 @@ main:focus { outline: none; }
       .map(([k, x]) => ENV_WORDS[k] ? ENV_WORDS[k](x) : `${k.toLowerCase().replaceAll("_", " ")} ${x}`).join(" · ");
     $("variants").innerHTML = `<table class="tbl lib"><thead><tr><th>Account</th><th class="r">Value</th><th class="r">Return</th>
       <th class="r" title="Biggest fall from a high point">Worst drop</th><th class="r" title="Trades closed">Trades</th><th class="r">Won</th><th class="r" title="Stocks held now">Holding</th>
+      <th class="r" title="Daily returns compared with your main account. It says better or worse only when the difference is too steady to be luck, across all the accounts at once. Expect weeks, not days.">Vs yours</th>
       <th title="Max loss before selling · how far the trailing stop sits below the high · how sure Claude must be to buy">Settings: stop-loss · trail · how sure Claude must be</th></tr></thead><tbody>${
       V.map((v) => `<tr><td class="sym">${esc(v.title)}</td><td class="r">${usd(v.equity, 0)}</td>
         <td class="r ${dir(v.return)}">${sgnPct(v.return, 1)}</td><td class="r">${pct(v.max_dd, 1)}</td><td class="r">${v.trades}</td>
         <td class="r">${v.win_rate == null ? "–" : pct(v.win_rate, 0)}</td><td class="r">${v.open}</td>
+        <td class="r ${v.vs_main?.verdict === "better" ? "up" : v.vs_main?.verdict === "worse" ? "down" : ""}">${v.vs_main ? `${esc(v.vs_main.verdict)} <span style="color:var(--muted)">${v.vs_main.days}d</span>` : "–"}</td>
         <td class="why">${pct(v.max_loss_pct, 0)} · ${pct(v.giveback_pct, 0)} · ${pct(v.min_confidence, 0)}${extra(v) ? " · " + esc(extra(v)) : ""}</td></tr>`).join("")
     }</tbody></table>`;
   }

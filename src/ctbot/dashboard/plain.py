@@ -43,6 +43,7 @@ PARAMS: dict[str, tuple[str, Any] | None] = {
     "reward_risk": ("Profit target", lambda v: f"{v:g}× the amount at risk"),
     "stop_pct": ("Stop-loss", _pct),
     "max_per_day": ("Most buys per day", str),
+    "min_move": ("Morning rise needed", lambda v: f"up more than {_pct(v)} from yesterday's close at 10 AM ET"),
     "min_dip": ("Dip needed", lambda v: f"{_pct(v)} below the day's average price"),
     "lookback_days": ("Looks back", lambda v: f"{v} trading days"),
     "top_n": ("Holds the top", lambda v: f"{v} stocks"),
@@ -108,6 +109,14 @@ STRATEGIES: dict[str, dict[str, Any]] = {
                 "Sells at 9:35 AM ET the next day.",
                 "AI reviews each idea. Not a day trade, but gaps overnight can't be stopped out."],
         "risk": "Medium", "holds": "Overnight",
+    },
+    "intraday_momentum": {
+        "title": "Last Half-Hour Momentum",
+        "tagline": "When the S&P 500 is up in the first half hour, buys it for the last half hour of the day.",
+        "how": ["Checks at 10:00 AM ET whether the S&P 500 fund is above yesterday's close.",
+                "If it is, buys at about 3:30 PM ET and sells at 3:55 PM ET.",
+                "A fixed rule from a published study, so no AI review. 1% stop-loss."],
+        "risk": "Medium", "holds": "Minutes (same day)",
     },
     "vwap_revert": {
         "title": "Dip to Average Price",

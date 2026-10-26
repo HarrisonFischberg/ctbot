@@ -15,7 +15,7 @@ from ctbot.strategies.event_cluster import (
     CopyTradingStrategy,
     InstitutionalStrategy,
 )
-from ctbot.strategies.intraday import OpeningRangeBreakout, OvernightHold, VwapReversion
+from ctbot.strategies.intraday import IntradayMomentum, OpeningRangeBreakout, OvernightHold, VwapReversion
 from ctbot.strategies.mean_reversion import MeanReversionStrategy
 from ctbot.strategies.orb_sip import OrbStocksInPlay
 from ctbot.strategies.ranker_signal import RankerSignal
@@ -37,6 +37,7 @@ STRATEGY_CLASSES: dict[str, type] = {
     "orb": OpeningRangeBreakout,
     "vwap_revert": VwapReversion,
     "overnight": OvernightHold,
+    "intraday_momentum": IntradayMomentum,
     "rsi2_etf": Rsi2Etf,
     "turn_of_month": TurnOfMonth,
     "trend_core": TrendCore,
