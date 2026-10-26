@@ -81,6 +81,12 @@ first cycle of each session (with the premarket plan's verdict), a summary 15 mi
 close (paper equity change, fills), and a message when the bot turns unhealthy or recovers.
 Healthchecks still covers the server itself going down.
 
+At the same time it sends a per-book readout (every paper book's day P&L, trades, Claude spend,
+halts, masked log warnings; `ctbot.readout`) as an attached file to the side topic
+`<NOTIFY_URL>-readout`, which the phone doesn't subscribe to. A cloud Claude session reads it from
+ntfy's cache (`https://ntfy.sh/<topic>-readout/json?poll=1&since=12h`; the file expires after 3 h),
+once `ntfy.sh` is in that environment's allowed domains. `python -m ctbot.readout` prints it locally.
+
 ## Setting it up (each step needs your go-ahead)
 
 1. **Create the droplet**: Ubuntu 24.04, 2 GB, NYC, your SSH key (no password login), backups on.

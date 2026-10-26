@@ -127,6 +127,14 @@ def main(argv: list[str] | None = None) -> int:
         for title in notify.run(notify_url, settings.paper_ledger_path.with_name("notify_state.json"), None,
                                 healthy, reason, settings.equity_history_path, settings.paper_ledger_path):
             print(f"notified: {title}")
+        from ctbot import readout
+
+        try:  # every book's day, to a side topic the phone doesn't subscribe to (ctbot.readout)
+            if readout.run(notify_url.rstrip("/") + "-readout", settings,
+                           settings.paper_ledger_path.with_name("readout_state.json")):
+                print("readout sent")
+        except Exception as e:  # noqa: BLE001 - retried on the next run; never blocks the heartbeat
+            print(f"readout failed: {type(e).__name__}", file=sys.stderr)
     url = os.environ.get("HEARTBEAT_URL", "").strip()
     if url:
         try:
