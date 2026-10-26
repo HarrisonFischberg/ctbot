@@ -237,6 +237,23 @@ def main() -> None:
             if fill:
                 _record_equity(settings, broker)
 
+    def apply_topup() -> None:
+        """Dashboard "Top up": add paper cash so equity reaches MAX_TRADING_CAPITAL. Peak and
+        day-start equity rise with it, so the deposit is never counted as a gain."""
+        req = settings.paper_ledger_path.with_name("paper_topup.json")
+        if not req.exists():
+            return
+        req.unlink()
+        amount = round(settings.risk.max_trading_capital - broker.equity(), 2)
+        if amount >= 1:
+            broker.deposit(amount)
+            state.peak_equity += amount
+            state.day_start_equity += amount
+            refresh_state()
+            save_account_state(state, settings.paper_risk_state_path)
+            _record_equity(settings, broker)
+            log.info("top up: added $%.2f of paper cash (deposits now $%.2f)", amount, broker.deposits)
+
     def guarded(fn, what: str) -> None:
         """One failed cycle (data outage, expired sign-in, API error) must not end the loop."""
         try:
@@ -264,12 +281,14 @@ def main() -> None:
         log.info("market closed: sleeping until %s (no quotes; the Mac may sleep)",
                  asleep_until.strftime("%a %b %d %H:%M ET"))
         while datetime.now(timezone.utc) < asleep_until:
+            guarded(apply_topup, "top up")
             guarded(handle_clicks, "dashboard clicks")
             time.sleep(2)
         asleep_until = None
         log.info("market open: resuming")
 
     while True:
+        guarded(apply_topup, "top up")
         guarded(handle_clicks, "dashboard clicks")
         guarded(cycle, "cycle")  # after the close this one only records the closing equity
         if not args.loop:
@@ -281,6 +300,7 @@ def main() -> None:
         deadline = time.monotonic() + args.interval
         next_check = time.monotonic() + 30
         while time.monotonic() < deadline and market_open():  # dashboard clicks run within ~2s
+            guarded(apply_topup, "top up")
             guarded(handle_clicks, "dashboard clicks")
             if time.monotonic() >= next_check:
                 if broker.positions():
@@ -332,6 +352,7 @@ def _record_equity(settings: Settings, broker: PaperBroker) -> None:
         "cash": round(broker.cash(), 4),
         "unsettled": round(broker.unsettled_cash(), 4),
         "positions": len(broker.positions()),
+        "deposits": round(broker.deposits, 2),
     }
     settings.equity_history_path.parent.mkdir(parents=True, exist_ok=True)
     with settings.equity_history_path.open("a") as fh:

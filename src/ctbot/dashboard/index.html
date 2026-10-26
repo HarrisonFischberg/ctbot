@@ -649,12 +649,14 @@ main:focus { outline: none; }
       <h3 class="ap-h3">Invest for me</h3>
       <form class="ap-form" id="autoForm">
         <label>Up to <span class="ap-in">$<input type="number" id="autoAmt" min="10" step="1" required></span>
-          <span class="lm" id="autoNote">the bot picks the best strategies in the library and splits this between them</span></label>
+          <span class="lm" id="autoNote">the bot picks the best strategies in the library, splits this between them, keeps them funded and re-picks every week</span></label>
         <label>Max loss <select id="autoLoss"><option value="0.1">10%</option><option value="0.15" selected>15%</option>
           <option value="0.2">20%</option><option value="0.25">25%</option></select>
           <span class="lm">if a strategy is down this much in total, the bot sells it and stops it</span></label>
         <button class="btn solid" type="submit" id="autoGo">Invest for me</button>
       </form>
+      <div class="empty-row" id="topup" hidden><p id="topupText"></p><button class="btn" type="button" id="topupGo">Add paper cash</button></div>
+      <div class="empty-row" id="autoOn" hidden><p id="autoOnText"></p><button class="btn" type="button" id="autoOff">Turn off</button></div>
       <h3 class="ap-h3">Latest decisions</h3>
       <div id="apDecisions" class="xscroll"></div>
     </div>
@@ -1866,6 +1868,15 @@ main:focus { outline: none; }
   function renderRuns() {
     const L = S.launcher || { runs: [], allocated: 0, max_total: 0 }, runs = L.runs.filter((r) => r.status !== "stopped");
     if (!$("autoAmt").value) $("autoAmt").value = Math.round(L.max_total);  // default: use the whole limit
+    const short = L.max_total - S.account_summary.equity;
+    $("topup").hidden = !(short >= 1);
+    $("topupText").textContent = `Your practice account is worth ${usd(S.account_summary.equity, 0)}, ${usd(short, 0)} short of your ${usd(L.max_total, 0)} limit. ` +
+      `Add that as paper cash so all of it can work. Your history and what the bot owns stay as they are.`;
+    $("topupGo").textContent = `Add ${usd(short, 0)} paper cash`;
+    const P = L.auto && L.auto.picks ? Object.entries(L.auto.picks) : [];
+    $("autoOn").hidden = !L.auto;
+    $("autoOnText").textContent = L.auto ? `Invest for me is on: ${usd(L.auto.amount, 0)}` + (P.length ? ` in ${P.map(([n, c]) => `${plainOf(n).title} ${usd(c, 0)}`).join(", ")}` : "") +
+      `. The bot tops these up as cash frees and re-picks weekly${L.auto.picked_at ? ` (last ${new Date(L.auto.picked_at).toLocaleDateString()})` : ""}.` : "";
     $("runMeta").textContent = `${usd(L.allocated, 0)} of ${usd(L.max_total, 0)} paper money assigned` +
       (money().held > 1 ? ` · ${usd(money().held, 0)} of it waiting as cash` : "");
     const idle = (r) => r.status !== "running" || !(r.waiting >= 1) ? ""  // why a strategy's money is still cash
@@ -2026,10 +2037,23 @@ main:focus { outline: none; }
     const [ok, j] = await api("/api/launch/auto", { amount, max_loss_pct: Number($("autoLoss").value) });
     $("autoGo").disabled = false;
     if (!ok) return toast("Not invested: " + (j.error || "error"), true);
-    const names = Object.entries(j.started).map(([n, c]) => `${plainOf(n).title} ${usd(c, 0)}`);
-    toast(names.length ? `Invested in ${names.join(", ")}. ${S.bot.running ? "It acts at its next check." : "Start ./run_ctbot.sh so it can trade."}`
-      : "No cash free yet: stocks from strategies it dropped sell at the next check. Press again after that.", !names.length);
+    const names = Object.entries(j.picks).map(([n, c]) => `${plainOf(n).title} ${usd(c, 0)}`);
+    toast(`Picked ${names.join(", ")}. ${S.bot.running ? "The bot funds them as cash frees." : "Start ./run_ctbot.sh so it can trade."}`);
     load();
+  });
+  $("autoOff").addEventListener("click", async () => {
+    const [ok, j] = await api("/api/launch/auto/off");
+    if (!ok) return toast("Not turned off: " + (j.error || "error"), true);
+    toast("Invest for me is off. The strategies it picked keep running; stop them on Home.");
+    load();
+  });
+  $("topupGo").addEventListener("click", async () => {
+    $("topupGo").disabled = true;
+    const [ok, j] = await api("/api/paper/topup");
+    $("topupGo").disabled = false;
+    if (!ok) return toast("Not added: " + (j.error || "error"), true);
+    toast(S.bot.running ? "The bot adds the paper cash within a few seconds." : "Added when the bot next starts (./run_ctbot.sh).");
+    setTimeout(load, 4000);
   });
   $("invForm").addEventListener("submit", async (e) => {
     e.preventDefault();

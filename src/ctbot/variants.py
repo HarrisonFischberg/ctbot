@@ -303,7 +303,7 @@ def _book_summary(ledger: Path, start: float) -> dict[str, Any]:
         hist = [json.loads(ln) for ln in ledger.with_name("equity_history.jsonl").read_text().splitlines() if ln.strip()]
     except (OSError, ValueError):
         pass
-    eq = [h["equity"] for h in hist] or [start]
+    eq = [h["equity"] - h.get("deposits", 0.0) for h in hist] or [start]  # top-ups are not gains
     peak, dd = start, 0.0
     for e in eq:
         peak = max(peak, e)
@@ -359,18 +359,19 @@ MIN_DAYS_TO_JUDGE = 10  # fewer daily returns than this and the t-stat's normal 
 
 def _daily_returns(history: Path) -> dict[str, float]:
     """date -> that day's return, from the last equity point of each day."""
-    last: dict[str, float] = {}
+    last: dict[str, tuple[float, float]] = {}
     try:
         for ln in history.read_text().splitlines():
             try:
                 h = json.loads(ln)
-                last[h["ts"][:10]] = float(h["equity"])
+                last[h["ts"][:10]] = (float(h["equity"]), float(h.get("deposits", 0.0)))
             except (ValueError, KeyError):
                 continue
     except OSError:
         return {}
     days = sorted(last)
-    return {d: last[d] / last[p] - 1 for p, d in zip(days, days[1:]) if last[p]}
+    # a top-up (paper deposit) that day is not a return
+    return {d: (last[d][0] - (last[d][1] - last[p][1])) / last[p][0] - 1 for p, d in zip(days, days[1:]) if last[p][0]}
 
 
 def _vs_main(rows: list[dict[str, Any]], data_dir: Path) -> None:

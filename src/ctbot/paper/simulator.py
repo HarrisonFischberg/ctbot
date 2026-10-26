@@ -59,6 +59,7 @@ class PaperBroker:
         self._unsettled: list[tuple[date, float]] = []  # (settle date, proceeds)
         self._positions: dict[str, Position] = {}
         self._fills: list[Fill] = []
+        self.deposits = 0.0  # paper cash added after the start (Top up): not a gain
         self._load()
 
     # ---- OrderExecutor -----------------------------------------------------
@@ -104,6 +105,11 @@ class PaperBroker:
         self._fills.append(fill)
         self._save()
         return fill
+
+    def deposit(self, amount: float) -> None:
+        self._cash += amount
+        self.deposits += amount
+        self._save()
 
     def cancel(self, client_order_id: str) -> bool:
         return False  # simulated orders fill or reject immediately
@@ -156,6 +162,7 @@ class PaperBroker:
         self.ledger_path.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "cash": self._cash,
+            "deposits": self.deposits,
             "unsettled": [{"settles": d.isoformat(), "amount": a} for d, a in self._unsettled],
             "positions": [
                 {
@@ -179,6 +186,7 @@ class PaperBroker:
             return
         data = json.loads(self.ledger_path.read_text())
         self._cash = data["cash"]
+        self.deposits = float(data.get("deposits", 0.0))
         self._unsettled = [
             (date.fromisoformat(u["settles"]), u["amount"]) for u in data.get("unsettled", [])
         ]

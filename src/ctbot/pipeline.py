@@ -17,6 +17,7 @@ from uuid import uuid4
 
 from ctbot import (
     allocations,
+    auto_invest,
     autopilot,
     llm_costs,
     market_hours,
@@ -104,15 +105,14 @@ def apply_launcher(c: Components, state: AccountState, positions: dict, now: dat
     an empty data/allocations.json hands control back to strategies.toml."""
     if c.configured is None:
         c.configured = list(c.strategies)
-    ap = autopilot.load(c.settings.autopilot_path)
-    if ap.enabled and not c.executor.is_live:  # paper only: replaces the launcher
+    if not c.executor.is_live:
         try:
-            fills = json.loads(c.settings.paper_ledger_path.read_text()).get("fills", [])
-        except (OSError, ValueError):
-            fills = []
-        autopilot.apply(c, state, ap, fills, now)
-        return
-    c.risk.max_loss_pct = c.risk.trail_giveback = c.risk.min_confidence = None
+            auto_invest.run(c.settings, now)  # Invest for me: weekly re-pick, top-ups as cash frees
+        except Exception:  # noqa: BLE001 - a bad plan file must not stop the cycle
+            log.exception("auto-invest failed")
+    ap = autopilot.load(c.settings.autopilot_path)
+    if not (ap_on := ap.enabled and not c.executor.is_live):  # paper only
+        c.risk.max_loss_pct = c.risk.trail_giveback = c.risk.min_confidence = None
     path = c.settings.allocations_path
     used: dict[str, float] = {}
     open_gain: dict[str, float] = {}
@@ -137,7 +137,13 @@ def apply_launcher(c: Components, state: AccountState, positions: dict, now: dat
 
     in_use = bool(allocations.load(path))
     runs = allocations.running(path)
-    if (in_use, runs) != c.launched:
+    if ap_on:  # autopilot trades every unbenched model; invested ones keep their own money too
+        try:
+            fills = json.loads(c.settings.paper_ledger_path.read_text()).get("fills", [])
+        except (OSError, ValueError):
+            fills = []
+        autopilot.apply(c, state, ap, fills, now, frozenset(runs))
+    elif (in_use, runs) != c.launched:
         c.strategies = [
             replace(ws, mode="trade", standalone=True) if ws.strategy.name in runs else replace(ws, mode="shadow")
             for ws in c.configured

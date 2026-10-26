@@ -320,7 +320,8 @@ def _launcher(settings: Settings, positions: list[dict[str, Any]]) -> dict[str, 
     allocated = sum(float(r["capital"]) for r in runs if r.get("status") == allocations.RUNNING)
     # cash held for running strategies: not free for a new investment
     reserved = sum(r["waiting"] for r in runs)
-    return {"runs": runs, "allocated": allocated, "reserved": reserved, "max_total": settings.risk.max_trading_capital}
+    return {"runs": runs, "allocated": allocated, "reserved": reserved, "max_total": settings.risk.max_trading_capital,
+            "auto": _read_json(settings.allocations_path.with_name("auto_invest.json")) or None}
 
 
 def build_state(
@@ -416,12 +417,12 @@ def build_state(
             for m in model_stats(ledger.get("fills", []), {p["symbol"]: p["last"] for p in pos_out if p["last"]})
         ],
         "account_summary": {
-            "starting_capital": settings.starting_capital,
+            "starting_capital": settings.starting_capital + float(ledger.get("deposits", 0.0)),
             "equity": equity,
             "cash": cash,
             "unsettled": unsettled,
             "market_value": market_value,
-            "total_pnl": equity - settings.starting_capital,
+            "total_pnl": equity - settings.starting_capital - float(ledger.get("deposits", 0.0)),
             "peak_equity": peak,
             "drawdown_pct": (equity / peak - 1) if peak else 0.0,
             "day_start_equity": day_start,
