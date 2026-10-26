@@ -91,3 +91,16 @@ def mark_stopped(path: Path, name: str) -> None:
     if name in runs:
         runs[name].update(status=STOPPED, stopped_at=datetime.now(timezone.utc).isoformat())
         _write(path, runs)
+
+
+def pick(perf: dict[str, Any], names: list[str], budget: float, top: int = 5) -> dict[str, float]:
+    """Auto-invest: split budget evenly over the `top` names with the best simulated year
+    (return per unit of worst drop), skipping any that lost money or have no record."""
+    def score(name: str) -> float | None:
+        w = (perf.get(name) or {}).get("windows") or {}
+        w = w.get("1Y") or w.get("6M")
+        return w["return"] / max(abs(w["worst_drop"]), 0.05) if w and w["return"] > 0 else None
+
+    best = sorted((n for n in names if score(n) is not None), key=score, reverse=True)[:top]
+    best = best[:max(1, int(budget // 10))]  # every slice must be at least $10
+    return {n: int(budget / len(best) * 100) / 100 for n in best}  # floor: slices never sum past budget if best and budget >= 10 else {}

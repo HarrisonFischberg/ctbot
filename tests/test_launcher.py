@@ -72,7 +72,7 @@ def test_launched_core_trades_alone_with_its_own_capital_and_stop_sells():
         assert {ws.strategy.name: ws.mode for ws in c.strategies} == {"trend_core": "shadow", "spy_core": "shadow"}
 
 
-def test_launch_endpoints_validate_and_need_the_token(tmp_path):
+def test_launch_endpoints_validate_and_need_the_token(tmp_path, monkeypatch):
     import json
     import threading
     import urllib.error
@@ -122,6 +122,16 @@ def test_launch_endpoints_validate_and_need_the_token(tmp_path):
         assert post("/api/autopilot", {"enabled": True, "max_loss_pct": 0.05, "giveback_pct": 0.06}) == 200
         assert autopilot.load(s.autopilot_path) == autopilot.AutopilotConfig(True, 0.05, 0.06, 0.45)
         assert post("/api/autopilot", {"enabled": True, "max_loss_pct": 0.9, "giveback_pct": 0.06}) == 400
+        import ctbot.dashboard.server as srv  # auto-invest: picks winners, stops runs it didn't pick
+
+        monkeypatch.setattr(srv, "PERF_PATH", tmp_path / "perf.json")
+        assert post("/api/launch/auto", {"amount": 4000}) == 400  # no simulated record yet
+        win = {"windows": {"1Y": {"return": 0.2, "worst_drop": -0.1}}}
+        srv.PERF_PATH.write_text(json.dumps({"strategies": {"orb_sip": win, "rsi2_etf": win}}))
+        allocations.start(s.allocations_path, "trend_core", 1000, 5000)
+        assert post("/api/launch/auto", {"amount": 9000, "max_loss_pct": 0.15}) == 200  # capped at $5,000
+        assert allocations.running(s.allocations_path) == {"orb_sip": 2500.0, "rsi2_etf": 2500.0}
+        assert "trend_core" in allocations.stopping(s.allocations_path)
     finally:
         httpd.shutdown()
         httpd.server_close()
@@ -198,3 +208,12 @@ def test_dashboard_shows_each_runs_idle_cash(tmp_path):
     assert runs["trend_core"]["waiting"] == 0.0  # spent a little over its amount: never negative
     assert runs["rsi2_etf"]["waiting"] == 0.0  # selling: its money is not held back
     assert L["reserved"] == 1400.0 and L["allocated"] == 3000.0
+
+
+def test_auto_invest_picks_best_winners_and_splits_the_amount():
+    w = lambda r, d: {"windows": {"1Y": {"return": r, "worst_drop": d}}}  # noqa: E731
+    perf = {"a": w(0.30, -0.10), "b": w(0.20, -0.40), "c": w(-0.05, -0.10), "d": w(0.10, -0.02), "e": {}}
+    assert allocations.pick(perf, ["a", "b", "c", "d", "e"], 20000, top=2) == {"a": 10000.0, "d": 10000.0}
+    assert allocations.pick(perf, list(perf), 20000) == {"a": 6666.66, "d": 6666.66, "b": 6666.66}  # losers, no record out
+    assert allocations.pick(perf, ["a", "b", "d"], 15) == {"a": 15.0}  # never a slice under $10
+    assert allocations.pick(perf, ["c", "e"], 20000) == {}

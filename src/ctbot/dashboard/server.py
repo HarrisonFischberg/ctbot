@@ -46,7 +46,8 @@ from urllib.parse import parse_qs
 from ctbot import allocations, manual_queue, secret_store, tuning
 from ctbot.config import Settings
 from ctbot.dashboard.last_quotes import SessionQuotes
-from ctbot.dashboard.state import _read_history, build_state
+from ctbot.dashboard.state import PERF_PATH, _read_history, _read_json, build_state
+from ctbot.paper.simulator import buying_power
 
 INDEX = Path(__file__).with_name("index.html")
 log = logging.getLogger(__name__)
@@ -237,6 +238,22 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
         cfg = load_strategy_config(settings.strategies_file)
         return {name for name, t in cfg.items() if t.get("enabled")}
 
+    def free_for(name: str) -> float:  # buying power not promised to other running strategies
+        try:
+            ledger = json.loads(settings.paper_ledger_path.read_text())
+            brackets = json.loads(settings.paper_risk_state_path.read_text()).get("brackets", {})
+        except (FileNotFoundError, json.JSONDecodeError):
+            return settings.risk.max_trading_capital
+        held: dict[str, float] = {}
+        for p in ledger.get("positions", []):
+            m = (brackets.get(p["symbol"]) or {}).get("model")
+            held[m] = held.get(m, 0.0) + p["quantity"] * p["avg_cost"]
+        others = sum(max(0.0, float(r["capital"]) - held.get(k, 0.0))
+                     for k, r in allocations.load(settings.allocations_path).items()
+                     if k != name and r.get("status") == allocations.RUNNING)
+        cash, cost = float(ledger.get("cash", 0.0)), sum(held.values())  # margin (PAPER_MARGIN > 1) counts too
+        return buying_power(cash, cash + cost, cost, settings.paper_margin) - others + held.get(name, 0.0)
+
     def launch(body: dict) -> tuple[int, dict]:
         name = body.get("strategy")
         if name not in launchable():
@@ -244,21 +261,6 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
         def pct(key):  # optional percentage, sent as a fraction (0.1 = 10%)
             v = body.get(key)
             return None if v in (None, "", 0) else float(v)
-
-        def free_for(name: str) -> float:  # buying power not promised to other running strategies
-            try:
-                ledger = json.loads(settings.paper_ledger_path.read_text())
-                brackets = json.loads(settings.paper_risk_state_path.read_text()).get("brackets", {})
-            except (FileNotFoundError, json.JSONDecodeError):
-                return settings.risk.max_trading_capital
-            held: dict[str, float] = {}
-            for p in ledger.get("positions", []):
-                m = (brackets.get(p["symbol"]) or {}).get("model")
-                held[m] = held.get(m, 0.0) + p["quantity"] * p["avg_cost"]
-            others = sum(max(0.0, float(r["capital"]) - held.get(k, 0.0))
-                         for k, r in allocations.load(settings.allocations_path).items()
-                         if k != name and r.get("status") == allocations.RUNNING)
-            return float(ledger.get("cash", 0.0)) - others + held.get(name, 0.0)
 
         try:
             capital = float(body.get("capital"))
@@ -273,6 +275,34 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
             return 400, {"error": msg if isinstance(e, ValueError) and ("$" in msg or "%" in msg) else "amounts must be numbers"}
         log.info("launcher: start %s with $%.2f (paper)", name, run["capital"])
         return 200, {"run": run}
+
+    def launch_auto(body: dict) -> tuple[int, dict]:
+        """Invest up to `amount` for the user: the best unbenched strategies by simulated year,
+        evenly split. Runs it didn't pick are stopped (their stocks sold at the next open cycle)."""
+        from ctbot import autopilot
+
+        try:
+            amount = min(float(body.get("amount")), settings.risk.max_trading_capital)
+        except (TypeError, ValueError):
+            return 400, {"error": "amount must be a number"}
+        perf = _read_json(PERF_PATH).get("strategies", {})
+        fills = _read_json(settings.paper_ledger_path).get("fills", [])
+        names = sorted(launchable())
+        verdicts = autopilot.decide(names, fills, datetime.now(timezone.utc))
+        picks = allocations.pick(perf, [n for n in names if verdicts[n]["status"] == "trading"], amount)
+        if not picks:
+            return 400, {"error": "no strategy has a winning simulated year to invest in yet (run ctbot-perf)"}
+        for name in allocations.running(settings.allocations_path).keys() - picks.keys():
+            allocations.stop(settings.allocations_path, name, "auto-invest picked others")
+        started = {}
+        for name, share in picks.items():  # shortcut: cash still in stocks being sold is used on the next press
+            capital = int(min(share, free_for(name)) * 100) / 100
+            if capital >= 10:
+                code, j = launch({"strategy": name, "capital": capital, "max_loss_pct": body.get("max_loss_pct")})
+                if code == 200:
+                    started[name] = capital
+        log.info("launcher: auto-invest $%.2f -> %s (paper)", amount, started)
+        return 200, {"started": started, "amount": amount}
 
     def launch_stop(body: dict) -> tuple[int, dict]:
         try:
@@ -359,6 +389,7 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
         "/api/robinhood/disconnect": disconnect_robinhood,
         "/api/launch": launch,
         "/api/launch/stop": launch_stop,
+        "/api/launch/auto": launch_auto,
         "/api/paper/order": queue_order,
         "/api/settings": save_setting,
         "/api/settings/test": test_connections,
