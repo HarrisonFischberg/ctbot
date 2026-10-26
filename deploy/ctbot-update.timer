@@ -1,0 +1,9 @@
+[Unit]
+Description=CTbot update before the open and after the close (weekdays)
+
+[Timer]
+OnCalendar=Mon..Fri 08:45 America/New_York
+OnCalendar=Mon..Fri 16:20 America/New_York
+
+[Install]
+WantedBy=timers.target

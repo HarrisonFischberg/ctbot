@@ -87,6 +87,11 @@ class RiskLimits:
     max_open_risk_pct: float = 0.0        # loss at every open stop plus this entry's, as a share of equity
     max_entries_per_day: int = 0          # new positions per trading day
     no_entries_before: str = ""           # "HH:MM" ET: no new entries before this (e.g. "09:45")
+    # Trading-skill rules (SKE-Labs/agent-trading-skills: partial-profit-taking, vwap-trading,
+    # market-regime-detection). Off by default.
+    partial_profit_r: float = 0.0         # sell half once the bid is this many R above the entry (0 = off)
+    vwap_entry_gate: bool = False         # same-day plans buy only above today's session VWAP
+    regime_gate: bool = False             # no Claude-reviewed entries while SPY's regime is "bear"
 
 
 
@@ -256,6 +261,9 @@ class Settings:
             max_open_risk_pct=_float(env, "MAX_OPEN_RISK_PCT", 0.0),
             max_entries_per_day=_int(env, "MAX_ENTRIES_PER_DAY", 0),
             no_entries_before=env.get("NO_ENTRIES_BEFORE", "").strip(),
+            partial_profit_r=_float(env, "PARTIAL_PROFIT_R", 0.0),
+            vwap_entry_gate=_bool(env, "VWAP_ENTRY_GATE", False),
+            regime_gate=_bool(env, "REGIME_GATE", False),
         )
         ensemble = EnsembleParams(
             min_long_score=_float(env, "MIN_LONG_SCORE", 0.15),

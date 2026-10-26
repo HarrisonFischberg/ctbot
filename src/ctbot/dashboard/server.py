@@ -1,7 +1,7 @@
 """`ctbot-dashboard`: local dashboard at http://127.0.0.1:8787. Paper trading only.
 
 Binds to loopback and rejects requests whose Host header is not loopback (blocks DNS
-rebinding). Endpoints:
+rebinding), or one of the Tailscale names in CTBOT_DASHBOARD_HOSTS (docs/CLOUD_HOSTING.md). Endpoints:
   GET  /            the page (with a per-run random token embedded)
   GET  /api/state   JSON snapshot of the bot's files
   POST /api/paper/order   queue a PAPER buy/sell click for the paper loop to execute
@@ -63,6 +63,23 @@ def _robinhood_md(settings: Settings):
     )
 
 
+TAILNET_NAME = re.compile(r"[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})*\.ts\.net")
+
+
+def tailnet_hosts(env: dict[str, str] | None = None) -> list[str]:
+    """Extra Host names from CTBOT_DASHBOARD_HOSTS, for reaching the dashboard over Tailscale.
+
+    Only Tailscale MagicDNS names (*.ts.net) are accepted: they resolve only inside your tailnet,
+    so the dashboard still never answers a public name. The server keeps listening on loopback.
+    """
+    raw = (os.environ if env is None else env).get("CTBOT_DASHBOARD_HOSTS", "")
+    names = [n.strip().lower() for n in raw.split(",") if n.strip()]
+    bad = [n for n in names if not TAILNET_NAME.fullmatch(n)]
+    if bad:
+        raise SystemExit(f"CTBOT_DASHBOARD_HOSTS accepts only Tailscale *.ts.net names, not {', '.join(bad)}")
+    return names
+
+
 def make_handler(settings: Settings, port: int, assistant_client=None):
     from ctbot.dashboard.candles import CandleSource
     from ctbot.market_data.webull_client import WebullClient
@@ -73,6 +90,9 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
     candles = CandleSource(md, webull)
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
     allowed_origins = {f"http://{h}" for h in allowed_hosts}
+    for name in tailnet_hosts():  # `tailscale serve` proxies https://<name> to this loopback port
+        allowed_hosts.add(name)
+        allowed_origins.add(f"https://{name}")
     token = secrets.token_urlsafe(24)
 
     def current_settings() -> Settings:
@@ -404,8 +424,12 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
                 return self._send(404, b"not found", "text/plain")
             if "application/json" not in (self.headers.get("Content-Type") or ""):
                 return self._send(415, b"json only", "text/plain")
-            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = 0
             if not 0 < length <= (8192 if path == "/api/assistant/chat" else 4096):  # chat: room for UTF-8
+                self.rfile.read(min(max(length, 0), 1 << 20))  # unread bytes would reset the connection
                 return self._send(413, b"bad length", "text/plain")
             try:
                 body = json.loads(self.rfile.read(length))

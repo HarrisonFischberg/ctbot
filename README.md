@@ -11,7 +11,8 @@ first.
 > advice. All risk is yours.
 
 Free and open source ([MIT](LICENSE)) by [Rare Creatures](https://rarecreatures.app). No accounts,
-no servers, no tracking: your keys and data stay on your machine.
+no servers of ours, no tracking: your keys and data stay on your machine (or on a server you rent
+yourself, see [Run it on a server](#run-it-on-a-server-recommended-for-all-day-trading)).
 
 <p align="center">
   <img src="docs/images/home.png" alt="CTbot Home screen in dark mode: account value, today's return, cash and other summary tiles, and What you own: QQQ, QLD and IWM with the strategy that bought each, gain or loss and a stop-loss bar" width="790">
@@ -34,7 +35,10 @@ no servers, no tracking: your keys and data stay on your machine.
     history and a live log.
   - **Autopilot**: switch it on and set two numbers (max loss per trade, and how much of a run-up
     to give back before selling). CTbot then picks trades from every strategy by itself, with
-    trailing stops and no fixed profit cap, and shows what it trades and why. Below it: every
+    trailing stops and no fixed profit cap, and shows what it trades and why. It learns from its
+    own paper record: each closed trade gets a post-mortem (`data/trade_log.jsonl`), a strategy's
+    size grows or shrinks with its last 30 days of results, a strategy losing over 10+ trades is
+    benched, and the account stops borrowing after a bad day, a drawdown or a QQQ downtrend. Below it: every
     strategy in plain English with simulated returns (Invest still starts one by hand), each
     strategy's paper record, growth of $5,000 since 2010, a crash test back to 1999, a no-hindsight
     (walk-forward) test and the backtest leaderboard.
@@ -43,8 +47,10 @@ no servers, no tracking: your keys and data stay on your machine.
   dip on index funds, turn of the month, and same-day breakout models. Each is described, with its
   risk level, on the Autopilot tab.
 - **Hard limits** no model can override: per-position size, total money, daily loss pause,
-  drawdown stop, day-trade count, bid/ask spread and liquidity checks, no holding through earnings,
-  and your own max loss and take-profit per strategy.
+  drawdown stop, bid/ask spread and liquidity checks, no holding through earnings, SEC 8-K red
+  flags, and your own max loss and take-profit per strategy. Optional rules from the trading skill
+  packs (`.claude/skills/`): risk-per-trade sizing, total open risk, entries per day, minimum
+  reward/risk, half off at 1R, a VWAP entry gate and a bear-market gate (see `.env.example`).
 
 ## Quick start
 
@@ -65,9 +71,44 @@ Open `http://127.0.0.1:8787`, go to **Settings**, add your keys and press **Conn
 Then turn on **Autopilot** (or invest in one strategy below it). The bot trades during US market hours while
 `./run_ctbot.sh` is running.
 
+### Run it on a server (recommended for all-day trading)
+
+A laptop sleeps, travels and loses Wi-Fi. For a bot that trades every session, run it on a small
+Linux server instead (a ~$7/month Hetzner or ~$12 DigitalOcean VM works). Everything is in
+[docs/CLOUD_HOSTING.md](docs/CLOUD_HOSTING.md); in short:
+
+- `deploy/setup-server.sh` (Ubuntu 24.04, as root) installs CTbot as systemd services, paper only.
+- `deploy/tailscale.sh` puts the dashboard on your private Tailscale network
+  (`https://ctbot.<tailnet>.ts.net` on your Mac and phone) and can close public SSH.
+- **Updates deploy themselves**: merge to `main` and `ctbot-update.timer` pulls it and restarts
+  the bot at 08:45 or 16:20 ET on the next weekday, never while the market is open.
+- **Alerts**: `ctbot-watchdog` pings a Healthchecks.io URL every minute (`HEARTBEAT_URL`) and,
+  with `NOTIFY_URL` set to an ntfy topic, sends phone messages at the open, after the close and
+  when something breaks.
+
+Run only one bot per paper account: once the server trades, turn Mac autostart off
+(`scripts/autostart.sh uninstall`).
+
+### What runs, and when
+
+| What | When | Where it lives |
+|---|---|---|
+| Paper bot, main book | every 5 minutes in market hours; stops checked every 30 s | `ctbot-paper`, `data/` |
+| Comparison books (one setting changed each) | right after each main cycle, same data and Claude verdicts | `config/variants.toml`, `data/variants/<name>/` |
+| Dashboard | always | `ctbot-dashboard`, `127.0.0.1:8787` |
+| Watchdog: heartbeat ping, phone messages | every minute | `ctbot-watchdog` |
+| Research refresh: bar caches, idea scoring, preflight, day plan, reconciliation | weekdays 08:15 and 16:30 ET | `scripts/c2_track_weekly.sh` |
+| Auto-update from `main` (server only) | weekdays 08:45 and 16:20 ET | `deploy/update.sh` |
+
+The comparison books are how new rules get tried: each starts with $10,000 of paper money and
+differs from `base` in one thing (trail, starting stop, Claude's confidence floor, position count,
+ideas per cycle, the reviewing model, or the trading-skill rules). Compare them on the Autopilot
+page's *Settings test* card or with `.venv/bin/ctbot-variants`. Nothing promotes a book's settings
+to the main book by itself.
+
 ### Start at login (macOS, optional)
 
-To have the dashboard and paper bot start when you log in and come back if they stop:
+Not needed if the bot runs on a server (and don't run both). To have the dashboard and paper bot start when you log in and come back if they stop:
 
 ```bash
 scripts/autostart.sh install      # start now, at every login, and after a crash
