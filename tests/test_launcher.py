@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ctbot import allocations
+from ctbot import allocations, auto_invest
 from ctbot.config import Settings
 from ctbot.models import Bar, Quote
 from ctbot.paper.simulator import PaperBroker
@@ -72,7 +72,7 @@ def test_launched_core_trades_alone_with_its_own_capital_and_stop_sells():
         assert {ws.strategy.name: ws.mode for ws in c.strategies} == {"trend_core": "shadow", "spy_core": "shadow"}
 
 
-def test_launch_endpoints_validate_and_need_the_token(tmp_path):
+def test_launch_endpoints_validate_and_need_the_token(tmp_path, monkeypatch):
     import json
     import threading
     import urllib.error
@@ -122,6 +122,19 @@ def test_launch_endpoints_validate_and_need_the_token(tmp_path):
         assert post("/api/autopilot", {"enabled": True, "max_loss_pct": 0.05, "giveback_pct": 0.06}) == 200
         assert autopilot.load(s.autopilot_path) == autopilot.AutopilotConfig(True, 0.05, 0.06, 0.45)
         assert post("/api/autopilot", {"enabled": True, "max_loss_pct": 0.9, "giveback_pct": 0.06}) == 400
+        import ctbot.dashboard.state as st  # auto-invest: picks winners, stops runs it didn't pick
+
+        monkeypatch.setattr(st, "PERF_PATH", tmp_path / "perf.json")
+        assert post("/api/launch/auto", {"amount": 4000}) == 400  # no simulated record yet
+        win = {"windows": {"1Y": {"return": 0.2, "worst_drop": -0.1}}}
+        st.PERF_PATH.write_text(json.dumps({"strategies": {"orb_sip": win, "rsi2_etf": win}}))
+        allocations.start(s.allocations_path, "trend_core", 1000, 5000)
+        assert post("/api/launch/auto", {"amount": 9000, "max_loss_pct": 0.15}) == 200  # capped at $5,000
+        assert allocations.running(s.allocations_path) == {"orb_sip": 2500.0, "rsi2_etf": 2500.0}
+        assert "trend_core" in allocations.stopping(s.allocations_path)
+        assert post("/api/launch/auto/off", {}) == 200 and not auto_invest.path(s).exists()
+        assert post("/api/paper/topup", {}) == 202  # the paper bot applies it
+        assert json.loads(s.paper_ledger_path.with_name("paper_topup.json").read_text()) == {"to": 5000.0}
     finally:
         httpd.shutdown()
         httpd.server_close()
@@ -198,3 +211,76 @@ def test_dashboard_shows_each_runs_idle_cash(tmp_path):
     assert runs["trend_core"]["waiting"] == 0.0  # spent a little over its amount: never negative
     assert runs["rsi2_etf"]["waiting"] == 0.0  # selling: its money is not held back
     assert L["reserved"] == 1400.0 and L["allocated"] == 3000.0
+
+
+def test_auto_invest_picks_best_winners_one_per_family_and_splits_the_amount():
+    w = lambda r, d, curve=(): {"windows": {"1Y": {"return": r, "worst_drop": d}}, "curve": list(curve)}
+    perf = {"a": w(0.30, -0.10), "b": w(0.20, -0.40), "c": w(-0.05, -0.10), "d": w(0.10, -0.02), "e": {}}
+    pick = auto_invest.pick
+    assert pick(perf, ["a", "b", "c", "d", "e"], 20000, top=2) == {"d": 10000.0, "a": 10000.0}
+    assert pick(perf, list(perf), 20000) == {"d": 6666.66, "a": 6666.66, "b": 6666.66}  # losers, no record out
+    assert pick(perf, ["a", "b", "d"], 15) == {"a": 15.0}  # never a slice under $10
+    assert pick(perf, ["c", "e"], 20000) == {}
+    perf["f"] = w(0.33, -0.10)
+    assert pick(perf, ["a", "f"], 1000, top=1) == {"f": 1000.0}
+    assert pick(perf, ["a", "f"], 1000, keep=("a",), top=1) == {"a": 1000.0}  # a kept pick needs a 20% better rival
+    ups = [[f"2026-01-0{i}", v] for i, v in enumerate([100, 103, 101, 106, 104, 110], 1)]
+    twin = [[d, v * 2] for d, v in ups]
+    perf.update(lib_x_etfs=w(0.3, -0.1, ups), lib_x_stocks=w(0.3, -0.1), g=w(0.3, -0.1, twin), h=w(0.29, -0.1))
+    assert set(pick(perf, ["lib_x_etfs", "lib_x_stocks", "g", "h"], 1000)) == {"lib_x_etfs", "h"}  # same rule / look-alike out
+
+
+def test_auto_invest_tops_up_and_repicks_weekly(tmp_path, monkeypatch):
+    import json
+
+    import ctbot.dashboard.state as st
+
+    monkeypatch.setattr(st, "PERF_PATH", tmp_path / "perf.json")
+    win = {"windows": {"1Y": {"return": 0.2, "worst_drop": -0.1}}}
+    st.PERF_PATH.write_text(json.dumps({"strategies": {"orb_sip": win, "rsi2_etf": win}}))
+    now = datetime.now(timezone.utc)  # run stops are stamped with the real clock
+    s = Settings.from_env({"PAPER_LEDGER_PATH": str(tmp_path / "ledger.json"), "MAX_TRADING_CAPITAL": "4000"})
+    assert auto_invest.run(s, now) == {}  # no plan: nothing happens
+    auto_invest.save(s, 4000, 0.15)
+    assert auto_invest.run(s, now) == {"orb_sip": 2000.0, "rsi2_etf": 2000.0}
+    assert auto_invest.run(s, now + timedelta(hours=1)) == {}  # funded: nothing to do
+    allocations.stop(s.allocations_path, "orb_sip", "max loss reached")
+    assert auto_invest.run(s, now + timedelta(days=1)) == {}  # hit its max loss: not restarted this week
+    assert auto_invest.run(s, now + timedelta(days=7)) == {"orb_sip": 2000.0}  # the weekly re-pick funds it again
+
+
+def test_top_up_is_cash_not_a_gain(tmp_path):
+    import json
+
+    from ctbot import variants
+
+    b = PaperBroker(None, 250.0, tmp_path / "ledger.json")
+    b.deposit(19750.0)
+    again = PaperBroker(None, 250.0, tmp_path / "ledger.json")
+    assert again.cash() == 20000.0 and again.deposits == 19750.0
+    h = tmp_path / "equity_history.jsonl"
+    h.write_text("\n".join(json.dumps(r) for r in [{"ts": "2026-10-26T20:00", "equity": 250.0},
+                                                       {"ts": "2026-10-27T20:00", "equity": 20010.0, "deposits": 19750.0}]))
+    assert variants._daily_returns(h) == {"2026-10-27": pytest.approx(0.04)}  # $10 on $250, not +7,900%
+
+
+def test_invested_strategies_trade_alongside_autopilot_on_their_own_money():
+    from ctbot import autopilot
+
+    md = _MD([400 + i for i in range(200)], 650.0)
+    with tempfile.TemporaryDirectory() as d:
+        broker = PaperBroker(md, 5000.0, Path(d) / "l.json", slippage_bps=0, clock=lambda: NOW)
+        broker._cash = 1500.0
+        s = Settings.from_env({"PAPER_LEDGER_PATH": str(broker.ledger_path), "ENTRY_MODE": "auto", "MAX_TRADING_CAPITAL": "5000", "STARTING_CAPITAL": "5000"})
+        autopilot.save(s.autopilot_path, autopilot.AutopilotConfig(enabled=True))
+        spy_core = TrendCore(symbol="SPY", size_pct=0.4)
+        spy_core.name = "spy_core"
+        c = Components(s, md, [], [WeightedStrategy(spy_core, 1.0, standalone=True),  # autopilot's model goes first
+                                   WeightedStrategy(TrendCore(size_pct=0.4), 1.0, standalone=True)],
+                       None, RiskManager(s.risk), broker, ["QQQ", "SPY"])
+        st = AccountState(5000, 1500, 5000, 5000, 0)
+        allocations.start(s.allocations_path, "trend_core", 1000, 5000)
+        run_cycle(c, st, NOW)
+        assert {ws.strategy.name: ws.mode for ws in c.strategies} == {"trend_core": "trade", "spy_core": "trade"}
+        # the invested one gets its whole $1,000; autopilot's other model only the $500 not kept for it
+        assert sorted((f.symbol, round(f.quantity * f.price)) for f in broker._fills) == [("QQQ", 1000), ("SPY", 500)]

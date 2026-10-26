@@ -425,6 +425,9 @@ class RiskManager:
             room = min(room, base - state.sleeve_used.get(owners[0], 0.0))
             # other strategies' unspent money is kept for them
             cash -= sum(v for k, v in state.sleeve_reserve.items() if k != owners[0])
+        else:  # autopilot's other models: invested strategies' unspent money is kept for them
+            cash -= sum(state.sleeve_reserve.values())
+            room -= sum(state.sleeve_reserve.values())
         size = base * (min(max(req), cap) if req else L.max_position_pct)
         if L.size_by == "claude" and not req:  # Claude's suggestion can only shrink the size
             size = min(size, decision.suggested_notional)

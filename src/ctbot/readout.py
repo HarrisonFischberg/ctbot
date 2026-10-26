@@ -42,7 +42,7 @@ def _equity(path: Path, day: date) -> tuple[float | None, float | None, int]:
     """(equity before the open, equity at the close, positions at the close)."""
     opened, closed = _session(day)
     start = end = None
-    positions = 0
+    positions, dep0, dep1 = 0, 0.0, 0.0  # top-ups (paper deposits) are not P&L
     try:
         lines = path.read_text().splitlines()[-20000:]
     except FileNotFoundError:
@@ -54,10 +54,13 @@ def _equity(path: Path, day: date) -> tuple[float | None, float | None, int]:
         except (ValueError, KeyError, TypeError):
             continue
         if ts < opened:
-            start = r.get("equity")
+            start, dep0 = r.get("equity"), r.get("deposits", 0.0)
         elif ts <= closed + timedelta(minutes=15):
-            start = r.get("equity") if start is None else start
-            end, positions = r.get("equity"), r.get("positions", 0)
+            if start is None:
+                start, dep0 = r.get("equity"), r.get("deposits", 0.0)
+            end, positions, dep1 = r.get("equity"), r.get("positions", 0), r.get("deposits", 0.0)
+    if start is not None and end is not None:
+        start += dep1 - dep0
     return start, end, positions
 
 

@@ -43,7 +43,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs
 
-from ctbot import allocations, manual_queue, secret_store, tuning
+from ctbot import allocations, auto_invest, manual_queue, secret_store, tuning
 from ctbot.config import Settings
 from ctbot.dashboard.last_quotes import SessionQuotes
 from ctbot.dashboard.state import _read_history, build_state
@@ -245,24 +245,9 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
             v = body.get(key)
             return None if v in (None, "", 0) else float(v)
 
-        def free_for(name: str) -> float:  # buying power not promised to other running strategies
-            try:
-                ledger = json.loads(settings.paper_ledger_path.read_text())
-                brackets = json.loads(settings.paper_risk_state_path.read_text()).get("brackets", {})
-            except (FileNotFoundError, json.JSONDecodeError):
-                return settings.risk.max_trading_capital
-            held: dict[str, float] = {}
-            for p in ledger.get("positions", []):
-                m = (brackets.get(p["symbol"]) or {}).get("model")
-                held[m] = held.get(m, 0.0) + p["quantity"] * p["avg_cost"]
-            others = sum(max(0.0, float(r["capital"]) - held.get(k, 0.0))
-                         for k, r in allocations.load(settings.allocations_path).items()
-                         if k != name and r.get("status") == allocations.RUNNING)
-            return float(ledger.get("cash", 0.0)) - others + held.get(name, 0.0)
-
         try:
             capital = float(body.get("capital"))
-            free = free_for(name)
+            free = auto_invest.free_for(settings, name)
             if capital > free + 0.01:
                 raise ValueError(f"only ${max(0.0, free):,.0f} of buying power is free; the rest is kept for "
                                  "strategies you already invested in")
@@ -273,6 +258,34 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
             return 400, {"error": msg if isinstance(e, ValueError) and ("$" in msg or "%" in msg) else "amounts must be numbers"}
         log.info("launcher: start %s with $%.2f (paper)", name, run["capital"])
         return 200, {"run": run}
+
+    def launch_auto(body: dict) -> tuple[int, dict]:
+        """Invest for me: save the amount and max loss; the bot keeps picking and funding from it."""
+        try:
+            amount = min(float(body.get("amount")), settings.risk.max_trading_capital)
+            loss = float(body["max_loss_pct"]) if body.get("max_loss_pct") else None
+        except (TypeError, ValueError):
+            return 400, {"error": "amount must be a number"}
+        if amount < 10 or (loss is not None and not 0.01 <= loss <= 0.9):
+            return 400, {"error": "amount must be at least $10 and max loss 1%-90%"}
+        auto_invest.save(settings, amount, loss)
+        started = auto_invest.run(settings, datetime.now(timezone.utc), force=True)
+        picks = json.loads(auto_invest.path(settings).read_text())["picks"]
+        if not picks:
+            return 400, {"error": "no strategy has a winning simulated year to invest in yet (run ctbot-perf)"}
+        return 200, {"picks": picks, "started": started, "amount": amount}
+
+    def launch_auto_off(_body: dict) -> tuple[int, dict]:  # strategies keep running; no more re-picks
+        auto_invest.path(settings).unlink(missing_ok=True)
+        return 200, {"auto": None}
+
+    def paper_topup(_body: dict) -> tuple[int, dict]:
+        """Ask the paper bot to add cash up to MAX_TRADING_CAPITAL (it owns the ledger)."""
+        req = settings.paper_ledger_path.with_name("paper_topup.json")
+        req.parent.mkdir(parents=True, exist_ok=True)
+        req.write_text(json.dumps({"to": settings.risk.max_trading_capital}))
+        log.info("top up requested: paper equity to $%.0f", settings.risk.max_trading_capital)
+        return 202, {"to": settings.risk.max_trading_capital}
 
     def launch_stop(body: dict) -> tuple[int, dict]:
         try:
@@ -359,6 +372,9 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
         "/api/robinhood/disconnect": disconnect_robinhood,
         "/api/launch": launch,
         "/api/launch/stop": launch_stop,
+        "/api/launch/auto": launch_auto,
+        "/api/launch/auto/off": launch_auto_off,
+        "/api/paper/topup": paper_topup,
         "/api/paper/order": queue_order,
         "/api/settings": save_setting,
         "/api/settings/test": test_connections,

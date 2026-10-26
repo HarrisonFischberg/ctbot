@@ -91,3 +91,4 @@ def mark_stopped(path: Path, name: str) -> None:
     if name in runs:
         runs[name].update(status=STOPPED, stopped_at=datetime.now(timezone.utc).isoformat())
         _write(path, runs)
+

@@ -110,13 +110,15 @@ def decide(models: list[str], fills: list[dict[str, Any]], now: datetime,
     return out
 
 
-def apply(c, state, cfg: AutopilotConfig, fills: list[dict[str, Any]], now: datetime) -> None:
+def apply(c, state, cfg: AutopilotConfig, fills: list[dict[str, Any]], now: datetime,
+          invested: frozenset[str] = frozenset()) -> None:
     """Called by the pipeline each cycle while autopilot is on: every model that isn't benched
-    trades on its own; the launcher's runs are ignored; the risk manager trails stops."""
+    trades on its own, and so does every launcher run (sized off its own capital by the
+    pipeline's sleeves); the risk manager trails stops."""
     if c.configured is None:
         c.configured = list(c.strategies)
     verdicts = decide([ws.strategy.name for ws in c.configured], fills, now)
-    trading = frozenset(m for m, v in verdicts.items() if v["status"] == "trading")
+    trading = frozenset(m for m, v in verdicts.items() if v["status"] == "trading") | invested
     key = ("autopilot", trading)
     if c.launched != key:
         c.strategies = [replace(ws, mode="trade", standalone=True) if ws.strategy.name in trading
@@ -124,7 +126,6 @@ def apply(c, state, cfg: AutopilotConfig, fills: list[dict[str, Any]], now: date
         c.launched = key
         log.info("autopilot: trading %s; benched %s", ", ".join(sorted(trading)) or "none",
                  ", ".join(f"{m} ({v['reason']})" for m, v in verdicts.items() if v["status"] == "benched") or "none")
-    state.sleeves, state.sleeve_used, state.sleeve_reserve = {}, {}, {}
     c.risk.max_loss_pct = cfg.max_loss_pct
     c.risk.trail_giveback = cfg.giveback_pct
     c.risk.min_confidence = cfg.min_confidence
