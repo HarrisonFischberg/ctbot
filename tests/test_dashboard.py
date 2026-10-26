@@ -214,3 +214,8 @@ def test_server_accepts_its_tailnet_name_and_still_rejects_others(monkeypatch):
             assert status("/api/state", Host="evil.test") == 403
         finally:
             httpd.shutdown()
+
+
+def test_what_you_own_shows_on_home_and_autopilot():
+    html = (ROOT / "src" / "ctbot" / "dashboard" / "index.html").read_text()
+    assert '<div data-tab="home trading" class="card span-12 own">' in html

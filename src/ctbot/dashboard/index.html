@@ -590,7 +590,7 @@ main:focus { outline: none; }
   <section class="grid" aria-label="Account summary" id="kpis"></section>
 
   <section class="grid" id="cards" style="margin-top:16px">
-    <div data-tab="home" class="card span-12 own">
+    <div data-tab="home trading" class="card span-12 own">
       <h2>What you own <span class="count" id="posCount"></span></h2>
       <div class="own-sum" id="ownSum"></div>
       <div class="scroll" id="positions"></div>
@@ -981,11 +981,12 @@ main:focus { outline: none; }
   let theme0 = "auto"; try { theme0 = localStorage.getItem("ctbot.theme") || "auto"; } catch (e) {}
   applyTheme(theme0);
   document.querySelectorAll("#theme button").forEach((b) => b.addEventListener("click", () => applyTheme(b.dataset.theme)));
+  const tabsOf = (el) => (el.dataset.tab || "").split(" ").filter(Boolean);  // a card can sit on several tabs
   function applyTab() {
     if (!document.querySelector(`.tabs [data-tab="${tab}"]`)) tab = "home";
     document.querySelectorAll("[data-tab]").forEach((el) => {
       if (el.tagName === "BUTTON") el.classList.toggle("on", el.dataset.tab === tab);
-      else el.classList.toggle("tab-off", el.dataset.tab !== tab);
+      else el.classList.toggle("tab-off", !tabsOf(el).includes(tab));
     });
     const onTab = document.querySelector(".tabs .on"), bar = onTab.parentElement;  // phone: keep the open tab in view
     if (bar.scrollWidth > bar.clientWidth) bar.scrollLeft = onTab.offsetLeft - bar.offsetLeft - (bar.clientWidth - onTab.offsetWidth) / 2;
@@ -2327,7 +2328,7 @@ main:focus { outline: none; }
     $("drawerBtn").classList.toggle("has", list.length > 0);
     $("drawerAll").hidden = list.length < 2;
     $("drawerList").innerHTML = list.length ? list.map((c) => {
-      const where = c.parentElement.id === "kpis" ? "Summary tile, every tab" : (TAB_NAME[c.dataset.tab] || "");
+      const where = c.parentElement.id === "kpis" ? "Summary tile, every tab" : tabsOf(c).map((t) => TAB_NAME[t]).filter(Boolean).join(" and ");
       return `<li><span><b>${esc(cardTitle(c))}</b><small>${esc(where)}</small></span><button class="btn" type="button" data-reopen="${esc(c.dataset.card)}">Reopen</button></li>`;
     }).join("") : `<li class="drawer-empty">Nothing here. Press × on a card to put it away; it waits here until you reopen it.</li>`;
   }
@@ -2362,7 +2363,7 @@ main:focus { outline: none; }
       const c = allCards().find((x) => x.dataset.card === re.dataset.reopen);
       if (!c) return;
       setClosed(c, false);
-      if (c.dataset.tab && c.dataset.tab !== tab) { tab = c.dataset.tab; try { localStorage.setItem("ctbot.tab", tab); } catch (err) {} applyTab(); }
+      if (tabsOf(c).length && !tabsOf(c).includes(tab)) { tab = tabsOf(c)[0]; try { localStorage.setItem("ctbot.tab", tab); } catch (err) {} applyTab(); }
       openDrawer(false); redrawCharts();
       c.scrollIntoView({ block: "center", behavior: "smooth" });
       const f = c.querySelector(".card-ctl button"); if (f) f.focus({ preventScroll: true });
