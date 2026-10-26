@@ -1,12 +1,13 @@
 #!/bin/bash
 # Set up (or update) CTbot on a fresh Ubuntu 24.04 server. Run as root:
-#   bash setup-server.sh            first run: packages, ctbot user, deploy key, clone, venv, units
-#   bash setup-server.sh            again after adding the deploy key, and any time to update
+#   bash setup-server.sh            first run: packages, ctbot user, clone, venv, units
+#   bash setup-server.sh            again any time to update
+# CTBOT_REPO=git@github.com:<you>/<fork>.git uses a read-only deploy key instead (private forks).
 # It never copies keys or the Robinhood sign-in: you put .env in place and sign in yourself
 # (docs/CLOUD_HOSTING.md). It starts the bot only once both exist. Paper only.
 set -euo pipefail
 {  # read to the closing brace before running: the git pull below may rewrite this file
-REPO=${CTBOT_REPO:-git@github.com:HarrisonFischberg/ctbot.git}
+REPO=${CTBOT_REPO:-https://github.com/HarrisonFischberg/ctbot.git}  # public: no key needed
 BRANCH=${CTBOT_BRANCH:-main}
 USER_NAME=ctbot
 HOME_DIR=/home/$USER_NAME
@@ -34,7 +35,7 @@ if ! ufw status | grep -q "Status: active"; then
   ufw --force enable >/dev/null
 fi
 
-if [ ! -d "$APP/.git" ]; then
+if [ ! -d "$APP/.git" ] && [[ "$REPO" == git@* ]]; then
   KEY=$HOME_DIR/.ssh/ctbot_deploy
   if [ ! -f "$KEY" ]; then
     as_ctbot ssh-keygen -q -t ed25519 -N "" -C "ctbot-server-deploy" -f "$KEY"
@@ -51,6 +52,8 @@ if [ ! -d "$APP/.git" ]; then
     echo "Then run this script again."
     exit 0
   fi
+fi
+if [ ! -d "$APP/.git" ]; then
   as_ctbot git clone --branch "$BRANCH" "$REPO" "$APP"
 else
   as_ctbot git -C "$APP" pull --ff-only origin "$BRANCH"

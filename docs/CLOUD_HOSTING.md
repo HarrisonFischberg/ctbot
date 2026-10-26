@@ -13,7 +13,7 @@ script: you put them in place. After that first setup, merges to `main` deploy t
 
 | File | What it does |
 |---|---|
-| `deploy/setup-server.sh` | Ubuntu 24.04, run as root: packages, a `ctbot` user, firewall (SSH only), read-only deploy key, clone, venv, systemd units. Run it again to update. Starts the bot only once `.env` and the Robinhood sign-in exist |
+| `deploy/setup-server.sh` | Ubuntu 24.04, run as root: packages, a `ctbot` user, firewall (SSH only), clone (a read-only deploy key only for a private fork), venv, systemd units. Run it again to update. Starts the bot only once `.env` and the Robinhood sign-in exist |
 | `deploy/ctbot-paper.service` | `ctbot-paper --loop --interval 300`, restarted if it stops; `LIVE_TRADING_ENABLED=false` and `CTBOT_MODE=paper` pinned (they win over `.env`) |
 | `deploy/ctbot-dashboard.service` | the dashboard, still on `127.0.0.1:8787` only |
 | `deploy/ctbot-watchdog.{service,timer}` | `ctbot-watchdog` every minute: pings `HEARTBEAT_URL`, sends `NOTIFY_URL` phone messages |
@@ -91,8 +91,9 @@ once `ntfy.sh` is in that environment's allowed domains. `python -m ctbot.readou
 
 1. **Create the droplet**: Ubuntu 24.04, 2 GB, NYC, your SSH key (no password login), backups on.
 2. **Run the setup**: `scp deploy/setup-server.sh root@<ip>:` then `ssh root@<ip> bash setup-server.sh`.
-   It prints a deploy key: add it under the repo's *Settings > Deploy keys* (read-only),
-   then run the script again. It clones, installs and stops, saying what is still needed.
+   It clones the public repo over HTTPS (no key needed), installs and stops, saying what is still
+   needed. For a private fork, run it as `CTBOT_REPO=git@github.com:<you>/<fork>.git bash setup-server.sh`:
+   it prints a deploy key to add under the fork's *Settings > Deploy keys* (read-only), then run it again.
 3. **Private access (Tailscale)**: on the server `curl -fsSL https://tailscale.com/install.sh | sh && tailscale up --ssh`,
    and install Tailscale on the Mac and phone. Then close public SSH:
    `ufw allow in on tailscale0 && ufw delete allow OpenSSH`. From here on use `ssh ctbot@<tailscale-name>`.
@@ -152,7 +153,8 @@ publishes to the internet.
   The client still refuses every tool outside its read-only allowlist, but a stolen token is
   the main risk of hosting: SSH keys only, no public ports after step 3, the bot runs as an
   unprivileged `ctbot` user, and the token and `.env` are mode 0600.
-- The deploy key is read-only, so a compromised server can't push to the repo.
+- The server holds no GitHub credentials (or only a read-only deploy key for a private fork), so a
+  compromised server can't push to the repo.
 - Unattended security upgrades are installed by the setup script.
 
 ## Live trading

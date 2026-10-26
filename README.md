@@ -65,22 +65,47 @@ yourself, see [Run it on a server](#run-it-on-a-server-recommended-for-all-day-t
 
 ## Quick start
 
-You need macOS (tested) or Linux (not tested yet), Python 3.11 or newer, a Robinhood account with agent (MCP) access, and
-optionally an [Anthropic API key](https://console.anthropic.com/) for Claude reviews.
+**You need:** macOS or Linux (macOS and Ubuntu 24.04 tested), Python 3.11 or newer, git, a
+Robinhood account with agent (MCP) access for live prices, and optionally an
+[Anthropic API key](https://console.anthropic.com/) for Claude's trade reviews. Everything below
+is paper trading: no real order is ever sent.
+
+**1. Get the code and install it** (about 2 minutes):
 
 ```bash
 git clone https://github.com/HarrisonFischberg/ctbot.git
 cd ctbot
 python3 -m venv .venv
 .venv/bin/pip install -e '.[dev]'
-cp .env.example .env              # optional: you can also add keys in the dashboard
-.venv/bin/pytest -q               # every test should pass
+.venv/bin/pytest -q               # optional: every test should pass
+```
+
+**2. Tell it to use Robinhood prices.** Make your settings file and switch the price source:
+
+```bash
+cp .env.example .env
+sed -i.bak 's/^MARKET_DATA=csv/MARKET_DATA=robinhood/' .env && rm .env.bak
+```
+
+Leave the rest of `.env` as it is for now. It is ignored by git, so your keys never leave your
+machine.
+
+**3. Start it:**
+
+```bash
 ./run_ctbot.sh                    # dashboard + paper bot; Ctrl+C stops both
 ```
 
-Open `http://127.0.0.1:8787`, go to **Settings**, add your keys and press **Connect Robinhood**.
-Then turn on **Autopilot** and press **Invest for me** (or invest in one strategy by hand). The bot trades during US market hours while
-`./run_ctbot.sh` is running.
+Your browser opens `http://127.0.0.1:8787` (open it yourself if not).
+
+**4. Connect your accounts** on the **Settings** tab: paste your Anthropic key, press **Connect
+Robinhood** and sign in, then press **Run check**. Restart `./run_ctbot.sh` after connecting.
+
+**5. Let it trade.** On the **Autopilot** tab, turn Autopilot on and press **Invest for me** (or
+invest in one strategy by hand). The bot trades during US market hours while `./run_ctbot.sh` is
+running; outside them it waits for the next open.
+
+To keep it running all day without your computer, put it on a small server (next section).
 
 ### Run it on a server (recommended for all-day trading)
 
