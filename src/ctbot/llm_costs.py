@@ -3,7 +3,8 @@
 The decision engine (and the optional debate step) log `response.usage` here; the pipeline
 refuses further paid reviews once today's estimated spend reaches MAX_CLAUDE_USD_PER_DAY.
 Prices are Anthropic list prices per million tokens (2026-10); unknown models are priced as
-Opus so the estimate errs high. Cache reads are billed at a tenth of the input price.
+Opus so the estimate errs high. Cache writes are billed at 1.25x the input price (2x for the
+1-hour TTL), cache reads at a tenth.
 """
 
 from __future__ import annotations
@@ -27,7 +28,10 @@ DEFAULT = (5.0, 25.0)
 def cost_usd(model: str, usage: Any) -> float:
     pin, pout = PRICES_PER_M.get(model, DEFAULT)
     get = (lambda k: usage.get(k) or 0) if isinstance(usage, dict) else (lambda k: getattr(usage, k, 0) or 0)
-    fresh = get("input_tokens") + 1.25 * get("cache_creation_input_tokens")
+    cc = get("cache_creation") or {}  # writes split by TTL; the 1-hour ones bill at 2x, not 1.25x
+    hour = (cc.get("ephemeral_1h_input_tokens") if isinstance(cc, dict)
+            else getattr(cc, "ephemeral_1h_input_tokens", 0)) or 0
+    fresh = get("input_tokens") + 1.25 * get("cache_creation_input_tokens") + 0.75 * hour
     cached = get("cache_read_input_tokens")
     return (fresh * pin + cached * pin * 0.1 + get("output_tokens") * pout) / 1e6
 
