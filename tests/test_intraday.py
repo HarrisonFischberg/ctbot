@@ -335,3 +335,54 @@ def test_bar_load_gives_up_after_bounded_attempts(monkeypatch):
     md = _FlakyMD(fails=99)
     assert VwapReversion().generate(StrategyContext(md, ("KO",), (), DAY, frozenset(), at)) == []
     assert md.calls == len(intraday.BAR_RETRY_WAITS_S) + 1  # skips this cycle, next cycle tries again
+
+
+class _SpyMD(_MD):
+    """SPY closed at 100 yesterday and is at `at_10` at 10:00 ET, flat after."""
+
+    def __init__(self, at_10):
+        super().__init__(at_10)
+        self.at_10 = at_10
+
+    def today_bars(self, symbols):
+        return {"SPY": [Bar("SPY", OPEN + timedelta(minutes=5 * i), self.at_10, self.at_10, self.at_10, self.at_10, 1e6)
+                        for i in range(78)]}
+
+    def daily_bars(self, symbol, n):
+        return [Bar(symbol, datetime(2026, 10, 12, 20, tzinfo=timezone.utc), 100, 100, 100, 100.0, 1e9)]
+
+
+def test_intraday_momentum_buys_spy_late_only_after_an_up_morning():
+    from ctbot.strategies.intraday import IntradayMomentum
+
+    at = datetime(2026, 10, 13, 19, 35, tzinfo=timezone.utc)  # 15:35 ET
+    ctx = lambda md, now=at, held=frozenset(): StrategyContext(md, ("SPY",), (), DAY, held, now)  # noqa: E731
+    (sig,) = IntradayMomentum().generate(ctx(_SpyMD(100.5)))
+    ev = sig.evidence
+    assert sig.symbol == "SPY" and ev["systematic"] and ev["size_pct"] == 0.25 and ev["first_half_hour"] == 0.005
+    assert ev["exit_at"].startswith("2026-10-13T15:55") and ev["stop"] == 99.495
+    assert IntradayMomentum().generate(ctx(_SpyMD(99.5))) == []  # down morning
+    assert IntradayMomentum().generate(ctx(_SpyMD(100.5), now=at - timedelta(minutes=10))) == []  # before 15:30
+    assert IntradayMomentum().generate(ctx(_SpyMD(100.5), held=frozenset({"SPY"}))) == []
+
+
+def test_intraday_momentum_trades_without_review_and_exits_by_time():
+    from ctbot.strategies.intraday import IntradayMomentum
+
+    at = datetime(2026, 10, 13, 19, 35, tzinfo=timezone.utc)
+    md, engine = _SpyMD(100.5), _Engine()
+    with tempfile.TemporaryDirectory() as d:
+        broker = PaperBroker(md, 10_000.0, Path(d) / "l.json", slippage_bps=0, clock=lambda: at)
+        settings = Settings.from_env({"PAPER_LEDGER_PATH": str(broker.ledger_path), "ENTRY_MODE": "auto",
+                                      "MAX_TRADING_CAPITAL": "10000"})
+        rm = RiskManager(settings.risk)
+        rm.trail_giveback = 0.08  # autopilot on: a systematic entry still keeps its own exit
+        c = Components(settings, md, [], [WeightedStrategy(IntradayMomentum(), 1.0, standalone=True)],
+                       engine, rm, broker, ["SPY"])
+        state = AccountState(10_000, 10_000, 10_000, 10_000, 0)
+        run_cycle(c, state, at)
+        assert engine.calls == 0 and [f.tag for f in broker._fills] == ["intraday_momentum"]
+        assert 2_000 < broker.positions()[0].quantity * 100.5 <= 2_500.01  # its own 25% size
+        assert "trail" not in state.brackets["SPY"] and state.brackets["SPY"]["exit_at"].startswith("2026-10-13T15:55")
+        run_cycle(c, state, datetime(2026, 10, 13, 19, 56, tzinfo=timezone.utc))  # 15:56 ET
+        assert broker.positions() == [] and broker._fills[-1].tag == "time_exit"

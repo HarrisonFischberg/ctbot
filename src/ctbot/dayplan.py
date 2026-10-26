@@ -32,6 +32,7 @@ from ctbot.config import Settings
 SCHEDULE = {  # when each model looks for setups (ET); cadence follows the 5-minute bar loop
     "orb": "09:35-11:00 after the 30-min range, 5-min bars", "orb_sip": "09:36-11:00, 5-min bars",
     "vwap_revert": "intraday, 5-min bars", "overnight": "15:30-15:50 entry, next open exit",
+    "intraday_momentum": "15:30-15:44 entry if SPY was up at 10:00, out 15:55",
     "rsi2_etf": "15:30-15:44 on the live price", "turn_of_month": "15:30-15:44 on the live price",
     "trend_core": "15:30-15:44 on the live price", "ranker": "09:35-10:00 on yesterday's close, weekly",
 }

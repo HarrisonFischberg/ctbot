@@ -174,3 +174,36 @@ class OvernightHold(_IntradayBase):
         return [self._signal(sym, 0.5 + max(0.0, r) * 10, 1.0, ctx.now, ref_price=px, stop=px * (1 - self.stop_pct),
                              target=None, exit_at=nxt, day_return=r)
                 for r, sym, px in picks[: self.max_per_day]]
+
+
+class IntradayMomentum(_IntradayBase):
+    """Market intraday momentum (Gao, Han, Li & Zhou, JFE 2018; listed in awesome-systematic-trading):
+    SPY's first half-hour return, prior close to 10:00 ET, predicts its last half-hour return. Long
+    only: if that return is above min_move, buy 15:30-15:44 ET and sell at 15:55. Stop -1%.
+    A fixed rule (systematic): no Claude review, no trailing stop, its own size."""
+
+    name = "intraday_momentum"
+
+    def __init__(self, symbol: str = "SPY", min_move: float = 0.0, stop_pct: float = 0.01,
+                 size_pct: float = 0.25) -> None:
+        self.symbol, self.min_move, self.stop_pct, self.size_pct = symbol.upper(), min_move, stop_pct, size_pct
+
+    def generate(self, ctx: StrategyContext) -> list[Signal]:
+        md = ctx.market_data
+        if (ctx.now is None or not hasattr(md, "today_bars") or not market_hours.session_open(ctx.now)
+                or not (_at(ctx.today, 15, 30) <= ctx.now <= _at(ctx.today, 15, 44))
+                or self.symbol in ctx.held_symbols):
+            return []
+        today = load_today_bars(md, [self.symbol], self.name) or {}
+        bars = _completed(today.get(self.symbol, []), ctx.now)
+        first = [b for b in bars if b.ts.astimezone(ET).time() < time(10, 0)]
+        prior = [b for b in md.daily_bars(self.symbol, 5) if b.ts.astimezone(ET).date() < ctx.today]
+        if not first or not prior or len(bars) <= len(first):
+            return []
+        r1 = first[-1].close / prior[-1].close - 1
+        if r1 <= self.min_move:
+            return []
+        px = bars[-1].close
+        return [self._signal(self.symbol, 0.5 + r1 * 50, 0.02, ctx.now, ref_price=px, stop=px * (1 - self.stop_pct),
+                             target=None, exit_at=_at(ctx.today, 15, 55).isoformat(), first_half_hour=r1,
+                             size_pct=self.size_pct, systematic=True)]

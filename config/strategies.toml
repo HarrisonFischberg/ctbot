@@ -109,6 +109,20 @@ standalone = true
 stop_pct = 0.03
 max_per_day = 2
 
+# Market intraday momentum (Gao, Han, Li & Zhou 2018, from awesome-systematic-trading): when SPY is
+# up from yesterday's close at 10:00 ET, buy it 15:30-15:44 and sell 15:55. A fixed rule: no Claude
+# review. Forward test only: not backtested here yet. Autopilot benches it if it loses.
+[intraday_momentum]
+enabled = true
+mode = "trade"
+weight = 1.0
+standalone = true
+[intraday_momentum.params]
+symbol = "SPY"
+min_move = 0.0          # first half-hour return must be above this
+stop_pct = 0.01
+size_pct = 0.25         # of trading capital, like the trend cores' fixed sizes
+
 # ---- Multi-day ETF models (2010-2026 backtest positive in BOTH periods after costs) ----
 # Decide 15:30-15:44 ET with the live price as today's close; not day trades.
 
