@@ -4,18 +4,35 @@ Goal: the paper bot keeps trading during market hours when the Mac is off (a fli
 battery), and you get a phone alert within a few minutes if it stops. Paper only: nothing here
 enables live trading (see the last section).
 
-**Nothing in this repo deploys itself.** The files below only help once you rent a server and
-run them. Keys and the Robinhood sign-in are never copied by a script: you put them in place.
+**Status (2026-10-26): this is how CTbot runs.** The paper bot lives on a Hetzner CX23 (Ubuntu
+24.04) set up with the files below, reached over Tailscale only, with Healthchecks.io and ntfy
+alerts. The Mac no longer runs the bot (its autostart is uninstalled), so don't reinstall it.
+
+Renting the server is up to you, and keys and the Robinhood sign-in are never copied by a
+script: you put them in place. After that first setup, merges to `main` deploy themselves.
 
 | File | What it does |
 |---|---|
 | `deploy/setup-server.sh` | Ubuntu 24.04, run as root: packages, a `ctbot` user, firewall (SSH only), read-only deploy key, clone, venv, systemd units. Run it again to update. Starts the bot only once `.env` and the Robinhood sign-in exist |
 | `deploy/ctbot-paper.service` | `ctbot-paper --loop --interval 300`, restarted if it stops; `LIVE_TRADING_ENABLED=false` and `CTBOT_MODE=paper` pinned (they win over `.env`) |
 | `deploy/ctbot-dashboard.service` | the dashboard, still on `127.0.0.1:8787` only |
-| `deploy/ctbot-watchdog.{service,timer}` | `ctbot-watchdog` every minute: pings `HEARTBEAT_URL` |
+| `deploy/ctbot-watchdog.{service,timer}` | `ctbot-watchdog` every minute: pings `HEARTBEAT_URL`, sends `NOTIFY_URL` phone messages |
 | `deploy/ctbot-research.{service,timer}` | weekdays 08:15 and 16:30 ET: `scripts/c2_track_weekly.sh` (bar caches, idea scoring, preflight, premarket plan, end-of-day reconciliation), the server's copy of the Mac's launchd job |
 | `deploy/update.sh`, `deploy/ctbot-update.{service,timer}` | weekdays 08:45 and 16:20 ET: if main changed, pull and rerun the setup (restarts the bot); never while the market is open |
-| `src/ctbot/watchdog.py` | the health check (works on the Mac too: `.venv/bin/ctbot-watchdog`) |
+| `deploy/tailscale.sh` | as root: install Tailscale, sign in, `tailscale serve` the dashboard, set `CTBOT_DASHBOARD_HOSTS`; `--close-public-ssh` afterwards |
+| `src/ctbot/watchdog.py`, `src/ctbot/notify.py` | the health check and phone messages (the check works on the Mac too: `.venv/bin/ctbot-watchdog`) |
+
+## What runs, and when (server times are America/New_York)
+
+| Unit | Schedule | Does |
+|---|---|---|
+| `ctbot-paper` | always on; 5-minute cycles in market hours, stops every 30 s | the main book, then every book in `config/variants.toml` in the same process (shared data and Claude verdicts) |
+| `ctbot-dashboard` | always on | dashboard on 127.0.0.1:8787, served on the tailnet by `tailscale serve` |
+| `ctbot-watchdog.timer` | every minute | heartbeat ping; open/close/health phone messages |
+| `ctbot-research.timer` | Mon-Fri 08:15, 16:30 | `scripts/c2_track_weekly.sh`: bar caches, idea scoring, performance figures, preflight, premarket plan, reconciliation |
+| `ctbot-update.timer` | Mon-Fri 08:45, 16:20 | `deploy/update.sh`: pull `main` if it changed and rerun the setup; skipped while the market is open |
+
+`systemctl list-timers 'ctbot-*'` shows the next runs; `journalctl -u <unit>` shows what each did.
 
 ## Which host
 
@@ -37,6 +54,7 @@ the variant books and the daily Cboe download. Prices are approximate (late 2026
 **Recommendation: a 2 GB DigitalOcean droplet in NYC with weekly backups (~$15/month),
 Tailscale for private access, and Healthchecks.io (free tier) for the heartbeat alert.**
 It is a plain VM, so the same systemd setup works on Hetzner if you'd rather save ~$6/month.
+CTbot's own server is a Hetzner CX23 (~$7/month); it has run this setup since 2026-10-24.
 
 ## Alerts: how the heartbeat works
 
@@ -63,7 +81,7 @@ first cycle of each session (with the premarket plan's verdict), a summary 15 mi
 close (paper equity change, fills), and a message when the bot turns unhealthy or recovers.
 Healthchecks still covers the server itself going down.
 
-## Setting it up (each step needs your go-ahead; nothing here has been done yet)
+## Setting it up (each step needs your go-ahead)
 
 1. **Create the droplet**: Ubuntu 24.04, 2 GB, NYC, your SSH key (no password login), backups on.
 2. **Run the setup**: `scp deploy/setup-server.sh root@<ip>:` then `ssh root@<ip> bash setup-server.sh`.
@@ -91,7 +109,9 @@ Healthchecks still covers the server itself going down.
    (`scripts/autostart.sh uninstall`) and copy `data/` and `config/strategies.toml` to the server
    before starting. Don't run both bots afterwards: they'd keep two diverging ledgers.
 7. **Start**: run `setup-server.sh` once more. It starts the bot and dashboard, enables the
-   watchdog timer, and prints the first watchdog verdict.
+   watchdog, research and update timers, and prints the first watchdog verdict.
+8. **Phone messages (optional)**: add `NOTIFY_URL` to `.env` (see *Phone messages* above); the
+   watchdog picks it up at its next run, no restart.
 
 ### Dashboard over Tailscale (no Terminal)
 
@@ -108,7 +128,11 @@ publishes to the internet.
 
 - **Dashboard**: the Tailscale address above, or `ssh -N -L 8787:127.0.0.1:8787 ctbot@<server>`
   and http://127.0.0.1:8787. Nothing listens publicly.
-- **Logs**: `journalctl -u ctbot-paper -f` (also `logs/ctbot-paper.log`).
+- **SSH**: once public SSH is closed, only over Tailscale (`ssh root@ctbot.<tailnet>.ts.net`, with
+  Tailscale on). If Tailscale is down, use the host's web console.
+- **Logs**: `journalctl -u ctbot-paper -f` (also `logs/ctbot-paper.log`); research refresh in
+  `logs/c2-track.log`.
+- **Health now**: `journalctl -u ctbot-watchdog -n 5` (the last few verdicts).
 - **Updates**: automatic. Merge to main and `ctbot-update.timer` deploys it at the next 08:45 or
   16:20 ET weekday run (`journalctl -u ctbot-update` shows what it did). To deploy now:
   `sudo bash ~ctbot/ctbot/deploy/update.sh` (it refuses while the market is open; the setup script
