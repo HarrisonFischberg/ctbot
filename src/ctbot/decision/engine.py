@@ -135,7 +135,8 @@ class ClaudeDecisionEngine:
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=16000,
-                system=SYSTEM_PROMPT,
+                # 1-hour TTL: reviews come in scan bursts 5-60 minutes apart, past the 5-minute default
+                system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
                 messages=[{"role": "user", "content": message}],
                 output_config={
                     "effort": self.effort,

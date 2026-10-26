@@ -211,7 +211,9 @@ class Assistant:
         except Exception as e:  # noqa: BLE001 - a broken file must not 500 the chat
             log.exception("assistant context failed")
             data = json.dumps({"error": f"could not read the bot's files: {type(e).__name__}"})
-        system = f"{SYSTEM_PROMPT}\n\n<bot_data>\n{data}\n</bot_data>"
+        # Fixed part first and cached (tools + SYSTEM_PROMPT); live bot_data after the marker so it can't break the cache.
+        system = [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}},
+                  {"type": "text", "text": f"<bot_data>\n{data}\n</bot_data>"}]
         safe_message = redact(message)
 
         with self._lock:
@@ -252,7 +254,7 @@ class Assistant:
                 self._conversations.popitem(last=False)
         return {**base, "reply": reply, "proposals": redact(cards), "refused": redact(refused), "usage": self.usage()}
 
-    def _create(self, settings: Settings, system: str, messages: list[dict[str, Any]]):
+    def _create(self, settings: Settings, system: list[dict[str, Any]], messages: list[dict[str, Any]]):
         return self.client.messages.create(
             model=settings.claude_model, max_tokens=4000, system=system, messages=messages, tools=TOOLS,
             output_config={"effort": settings.claude_effort},
