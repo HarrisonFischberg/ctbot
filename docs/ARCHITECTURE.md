@@ -73,6 +73,15 @@ src/ctbot/
                                choices, and what the bot saw just before a buy (data/bub_thoughts.jsonl);
                                notes only, never changes a trade
   tuning.py                    assistant-tunable knobs (~/.ctbot/tuning.json), bounds and denylist
+  autopilot.py                 Autopilot: every enabled model may trade; benching; trailing stops
+  variants.py                  side-by-side paper books (config/variants.toml), run in the paper process
+                               after the main book with shared market data and Claude verdicts
+  track_record.py              size multiplier per strategy from its last 30 days of paper results
+  risk_mode.py                 pull back after losses: no borrowing on a bad day, drawdown or QQQ downtrend
+  trade_log.py                 per-trade post-mortems (data/trade_log.jsonl)
+  library/                     12 published rule families x 2 universes (lib_*), traded only if
+                               ctbot-library-research admits them
+  watchdog.py, notify.py       heartbeat ping (HEARTBEAT_URL) and ntfy phone messages (NOTIFY_URL)
   risk/manager.py              check_entry / check_exit
   execution/                   OrderExecutor protocol + paper-process import guard
   paper/                       PaperBroker + `ctbot-paper` entrypoint
@@ -83,7 +92,10 @@ src/ctbot/
                                ranker (purged walk-forward + TopkDropout), registry (trial log, holdout
                                lock), validation (PBO, FDR); see docs/RESEARCH_AND_OPERATIONS.md
 tests/                         isolation, config, risk, strategies/ensemble/providers
-.claude/skills/                the day-trader skill pack (11 trader-* skills; README maps each to the bot)
+.claude/skills/                agent skills: the 11 trader-* day-trader skills, find-skills and 12 vetted
+                               trading skills (README maps each to the bot; the bot doesn't read them)
+deploy/                        Ubuntu server: setup-server.sh, tailscale.sh, update.sh, systemd units
+                               (paper, dashboard, watchdog/research/update timers); docs/CLOUD_HOSTING.md
 ```
 
 ## Extending
