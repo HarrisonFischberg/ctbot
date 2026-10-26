@@ -1,0 +1,16 @@
+# Read-only research refresh (scripts/c2_track_weekly.sh): bar caches, idea scoring, preflight,
+# the premarket plan and the end-of-day reconciliation. Started by ctbot-research.timer.
+[Unit]
+Description=CTbot research refresh and day plan
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ctbot
+WorkingDirectory=/home/ctbot/ctbot
+Environment=CTBOT_MODE=paper LIVE_TRADING_ENABLED=false
+ExecStart=/bin/bash /home/ctbot/ctbot/scripts/c2_track_weekly.sh
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full

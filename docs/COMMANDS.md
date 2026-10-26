@@ -1,5 +1,10 @@
 # CTbot commands
 
+CTbot itself runs on a cloud server (systemd units, see [CLOUD_HOSTING.md](CLOUD_HOSTING.md)):
+there the bot, dashboard and scheduled jobs start on their own, and merges to `main` deploy
+themselves. The commands below are for a local checkout, or for an SSH session on the server
+(`sudo -u ctbot -H bash`, then `cd ~/ctbot`).
+
 Run everything from the project folder:
 
 ```bash
@@ -27,7 +32,7 @@ You can leave it running. Outside the session (nights, weekends, NYSE holidays; 
 half days) it does no analysis and fetches no quotes: it records the closing equity, lets the
 Mac sleep, and resumes at the next open. The dashboard stops polling too: while the market is
 closed it shows the last saved prices with their time ("prices as of ..."), fetching once after
-the close only if it wasn't running near the bell. A sleeping Mac doesn't wake itself, so schedule a
+the close only if it wasn't running near the bell. On a Mac (the server needs none of this), a sleeping Mac doesn't wake itself, so schedule a
 weekday wake before the open, e.g. 06:55 Mountain (covers the 07:00 refresh job too):
 
 ```bash
@@ -55,7 +60,8 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
   runs while it is on. Paper only.
 - **Settings test**: `config/variants.toml` lists extra $10,000 paper accounts that the paper bot
   runs next to the main one, each changing one setting (trail, starting stop, Claude's confidence
-  floor, position count, ideas per cycle, reviewer model). They share the bot's market data and
+  floor, position count, ideas per cycle, reviewer model: `sonnet` and `opus` with their own daily
+  Claude caps, and `skill_rules` with half off at 1R, the VWAP gate and the bear-regime gate). They share the bot's market data and
   Claude's verdicts, so they add almost no data calls or cost. Each keeps its files in
   `data/variants/<name>/`; `data/HALT` stops entries in all of them. The Autopilot page's *Settings
   test* card and `.venv/bin/ctbot-variants` compare them. Edit the file and restart the bot to change
@@ -112,14 +118,20 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
 | Trend length sweep (chosen on 2010-19, checked on 2020-26) | `.venv/bin/ctbot-sweep` |
 | Tearsheet for a lab strategy | `.venv/bin/ctbot-tearsheet --lab "lev: trend QQQ 170d -> QLD capped at 30% vol"` |
 | Intraday backtest (5-minute data) | `.venv/bin/ctbot-backtest` |
+| Time machine: replay a day-trade plan 10,000 times on cached 5-minute bars | `.venv/bin/ctbot-timemachine --symbol TSLA --date 2026-10-19 --entry 364.18 --stop 358.32 --target 370.04 --entry-time 10:15` |
 | Lab with next-close execution (stricter) | `.venv/bin/ctbot-lab --lag 1 --cash-apy 0.035` |
 | Stock ranking model: walk-forward vs SPY, equal weight, momentum (dev + validation) | `.venv/bin/ctbot-rank-research` |
 | Score the locked holdout once, after choosing | `.venv/bin/ctbot-rank-research --holdout` |
 | Write the shadow model file for the bot (retrain monthly) | `.venv/bin/ctbot-rank-research --write-model` |
+| Strategy library backtest: which `lib_*` entries the autopilot may trade | `.venv/bin/ctbot-library-research` |
+| Compare the side-by-side paper books | `.venv/bin/ctbot-variants` |
 | Tests | `.venv/bin/pytest -q` |
 | Known-vulnerability scan of installed packages | `.venv/bin/pip-audit --skip-editable` |
 
 ## Start at login (optional, macOS)
+
+Superseded while the bot runs on the server: leave it uninstalled, or two bots would keep two
+diverging ledgers.
 
 `scripts/autostart.sh install` loads the launchd agent `com.ctbot.bot`
 (`scripts/com.ctbot.bot.plist.example`, installed to `~/Library/LaunchAgents/`). It runs
@@ -128,9 +140,25 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
 `scripts/autostart.sh status` shows its state, `scripts/autostart.sh uninstall` removes it.
 Run `install` again after moving the project folder.
 
+## Run on a cloud server
+
+`docs/CLOUD_HOSTING.md`: host comparison, `deploy/setup-server.sh` (Ubuntu, systemd units, paper
+only), `deploy/tailscale.sh` (dashboard on your tailnet), the Robinhood sign-in over an SSH tunnel,
+auto-updates from `main` (`ctbot-update.timer`), and `ctbot-watchdog`, which pings `HEARTBEAT_URL`
+every minute so you're alerted when the bot stops and, with `NOTIFY_URL`, sends ntfy phone
+messages at the open, after the close and on problems. Without those URLs
+`.venv/bin/ctbot-watchdog` just prints a one-line health verdict.
+
+| On the server | Command |
+|---|---|
+| Next scheduled runs | `systemctl list-timers 'ctbot-*'` |
+| Bot log / last deploy / last research run | `journalctl -u ctbot-paper -f` / `journalctl -u ctbot-update` / `journalctl -u ctbot-research` |
+| Deploy main now (refuses while the market is open) | `sudo bash ~ctbot/ctbot/deploy/update.sh` |
+| Restart after a `.env` change | `sudo systemctl restart ctbot-paper ctbot-dashboard` |
+
 ## Scheduled job (optional)
 
-On macOS, a launchd job can run the price-cache refresh, Collective2 tracking, idea scoring,
+On the server this is `ctbot-research.timer` (weekdays 08:15 and 16:30 ET), already on. On macOS, a launchd job can run the price-cache refresh, Collective2 tracking, idea scoring,
 the 3/6/12-month performance figures and the health check on weekdays at 07:00 and 15:00 local
 time (`scripts/c2_track_weekly.sh`, log `logs/c2-track.log`). To set it up, copy the template,
 replace `/path/to/ctbot` with your project folder, and load it:

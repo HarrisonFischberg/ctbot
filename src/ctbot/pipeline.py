@@ -11,11 +11,21 @@ import time
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
-from ctbot import allocations, autopilot, llm_costs, market_hours
+from ctbot import (
+    allocations,
+    autopilot,
+    llm_costs,
+    market_hours,
+    risk_mode,
+    sectors,
+    thoughts,
+    track_record,
+    trade_log,
+)
 from ctbot.aggregation.ensemble import combine
 from ctbot.config import Settings
 from ctbot.contracts import (
@@ -30,7 +40,7 @@ from ctbot.decision.engine import ClaudeDecisionEngine
 from ctbot.decision.memory import outcome_memory
 from ctbot.execution.base import OrderExecutor
 from ctbot.market_data.base import MarketDataProvider
-from ctbot.models import Candidate, Decision, Direction, Quote, Side, Signal
+from ctbot.models import Candidate, Decision, Direction, OrderRequest, Quote, Side, Signal
 from ctbot.providers.base import AltDataProvider
 from ctbot.providers.registry import fetch_all
 from ctbot.risk.manager import AccountState, RiskManager, RiskVerdict
@@ -70,6 +80,8 @@ class Components:
     recent_orders: dict = field(default_factory=dict)
     journal: Any = None  # ctbot.contracts.Journal: snapshot -> results -> order -> outcome
     fills: int = 0       # fills submitted by this process (cycle summaries count the difference)
+    trend: Any = field(default_factory=risk_mode.TrendCache)  # pull-back trend average, once a day
+    think: bool = True  # Bub's thoughts (ctbot.thoughts): notes only, never changes a trade
 
 
 DUPLICATE_WINDOW_S = 120.0
@@ -217,6 +229,23 @@ def live_quotes(md: MarketDataProvider) -> bool:
     return getattr(md, "quotes_are_live", True)
 
 
+def _entry_gates(c: Components, cand: Candidate) -> dict[str, Any]:
+    """Today's session VWAP and SPY's regime label, fetched only when their gate is on."""
+    L, out = c.settings.risk, {}
+    if L.vwap_entry_gate and hasattr(c.market_data, "today_bars"):
+        from ctbot.research.backtest import vwap_series
+
+        try:
+            bars = c.market_data.today_bars([cand.symbol]).get(cand.symbol) or []
+            if bars:
+                out["vwap"] = vwap_series(bars)[-1]
+        except Exception:  # noqa: BLE001 - no bars means no gate, never a blocked cycle
+            log.exception("vwap unavailable for %s", cand.symbol)
+    if L.regime_gate and c.context and hasattr(c.context, "market_regime"):
+        out["market_regime"] = (c.context.market_regime() or {}).get("label")
+    return out
+
+
 def avg_dollar_volume(md: MarketDataProvider, symbol: str, days: int = 20) -> float:
     bars = md.daily_bars(symbol, days)
     return sum(b.close * b.volume for b in bars) / len(bars) if bars else 0.0
@@ -248,11 +277,38 @@ def _submit(c: Components, state: AccountState, order, positions, today, decisio
     _journal(c, ExecutionOutcome(order.client_order_id, order.symbol, "filled", fill.quantity, fill.price,
                                  simulated=fill.simulated))
     if order.side is Side.SELL:
-        _book_sleeve_gain(c, state, order.symbol, positions[order.symbol].avg_cost, fill)
-        c.risk.record_exit_fill(state, positions[order.symbol], today, fill.price)
+        pos = positions[order.symbol]
+        bracket = dict(state.brackets.get(order.symbol) or {})
+        _book_sleeve_gain(c, state, order.symbol, pos.avg_cost, fill)
+        if tag == "partial_profit" and any(p.symbol == order.symbol for p in c.executor.positions()):
+            c.risk.partial_taken(state, order.symbol, pos.avg_cost)  # the rest keeps its bracket
+        else:
+            c.risk.record_exit_fill(state, pos, today, fill.price)
+        try:
+            trade_log.append(c.settings.trade_log_path, trade_log.close_record(
+                order.symbol, bracket, pos.avg_cost, fill.quantity, fill.price, pos.opened_at,
+                datetime.now(timezone.utc), tag))
+        except Exception:  # noqa: BLE001 - the post-mortem never blocks trading
+            log.exception("trade log failed for %s", order.symbol)
     else:
         c.risk.set_bracket(state, order.symbol, fill.price, decision, plan)
         bracket = state.brackets.get(order.symbol)
+        state.entry_dates.append(today)
+        if bracket is not None:
+            state.open_risk += fill.quantity * max(0.0, fill.price - bracket["stop"])
+        sec = sectors.sector(order.symbol)
+        state.sector_exposure[sec] = (state.sector_exposure.get(sec, 0.0)
+                                      + fill.quantity * fill.price * sectors.LEVERAGE.get(order.symbol, 1.0))
+        if bracket is not None:
+            models = [m for m in (tag or "").split(",") if m]
+            try:
+                bracket["ctx"] = trade_log.entry_context(
+                    c.market_data, order.symbol, fill.price, datetime.now(timezone.utc), models, decision,
+                    track_record.for_candidate(c.risk.size_mult, models), sec, state.risk_off,
+                    c.settings.risk.risk_off_trend_symbol, c.trend.avg)
+                bracket["ctx"]["r0"] = round(fill.price - bracket["stop"], 4)  # risk a share at entry: 1R
+            except Exception:  # noqa: BLE001
+                log.exception("trade log entry context failed for %s", order.symbol)
         launched = [m for m in (tag or "").split(",") if m in state.sleeves]
         if bracket is not None and not bracket.get("model") and launched:
             bracket["model"] = launched[0]  # launcher: the position counts against that strategy
@@ -303,7 +359,7 @@ def _maybe_top_up(c: Components, state: AccountState, cand: Candidate, pos, quot
         return
     if not buys_ok or state.kill_switch or state.margin_call or state.equity <= state.day_start_equity * (1 - L.max_daily_loss_pct):
         return
-    spendable = state.cash if state.buying_power is None else state.buying_power
+    spendable = state.cash if state.buying_power is None or state.risk_off else state.buying_power
     cash = spendable - sum(v for k, v in state.sleeve_reserve.items() if k != owner)  # others' money stays theirs
     if gap <= band or cash < 1:
         return
@@ -319,6 +375,51 @@ def _maybe_top_up(c: Components, state: AccountState, cand: Candidate, pos, quot
         sync_cash(c.executor, state)
 
 
+def refresh_learning(c: Components, state: AccountState, now: datetime) -> None:
+    """Once a cycle: each strategy's size multiplier from its closed trades, whether the account
+    is pulled back after losses, and what each sector holds now (for the sector cap)."""
+    L = c.settings.risk
+    if L.track_record_sizing:
+        try:
+            fills = json.loads(c.settings.paper_ledger_path.read_text()).get("fills", [])
+        except (OSError, ValueError):
+            fills = []
+        c.risk.size_mult = {m: v["mult"] for m, v in track_record.size_multipliers(
+            fills, now, L.track_record_prior_trades, L.track_record_min_mult, L.track_record_max_mult).items()}
+    else:
+        c.risk.size_mult = {}
+
+    positions = c.executor.positions()
+    syms = sorted({p.symbol for p in positions} | ({L.risk_off_trend_symbol} if L.risk_off_trend_days > 0 else set()))
+    try:
+        quotes = c.market_data.quotes(syms) if syms else {}
+    except Exception:  # noqa: BLE001 - no prices: sector exposure at cost, no trend trigger
+        log.exception("quotes for the pull-back check failed")
+        quotes = {}
+    marks = {}
+    state.open_risk = 0.0
+    for p in positions:
+        q = quotes.get(p.symbol)
+        px = q.mid if q and q.mid else p.avg_cost
+        marks[p.symbol] = p.quantity * px
+        stop = (state.brackets.get(p.symbol) or {}).get("stop")
+        if stop is not None:
+            state.open_risk += p.quantity * max(0.0, px - stop)
+    state.sector_exposure = sectors.exposure(marks)
+
+    trend_q = quotes.get(L.risk_off_trend_symbol)
+    trend_avg = c.trend.get(c.market_data, L.risk_off_trend_symbol, L.risk_off_trend_days,
+                            market_hours.trading_date(now)) if L.risk_off_trend_days > 0 else None
+    why = risk_mode.reasons(L, state.equity, state.day_start_equity, state.peak_equity,
+                            trend_q.last if trend_q else None, trend_avg)
+    if why != state.risk_off:
+        if why:
+            log.warning("pulled back (buys spend cash only, no borrowing): %s", "; ".join(why))
+        else:
+            log.info("full risk back on: no pull-back trigger holds")
+    state.risk_off = why
+
+
 def manage_positions(c: Components, state: AccountState, now: datetime) -> None:
     """Stops, targets, exit times and swings for open positions. Runs at the start of every
     cycle and, from the paper loop, every ~30 s in between (tight stops need it). Bypasses
@@ -329,6 +430,8 @@ def manage_positions(c: Components, state: AccountState, now: datetime) -> None:
     positions = {p.symbol: p for p in c.executor.positions()}
     for sym, pos in list(positions.items()):
         quote = c.market_data.quotes([sym]).get(sym)
+        if quote:
+            trade_log.track(state.brackets.get(sym), quote.bid)
         if quote and c.risk.trail(state, sym, quote.bid):
             b = state.brackets[sym]
             log.info("trail %s: new high %.2f, stop raised to %.2f", sym, b["peak"], b["stop"])
@@ -337,6 +440,15 @@ def manage_positions(c: Components, state: AccountState, now: datetime) -> None:
             b = state.brackets[sym]
             log.info("swing %s: up %.2f%%, holding to %s with stop raised to %.2f (swing %d)", sym,
                      (quote.bid / pos.avg_cost - 1) * 100, b["exit_at"], b["stop"], b["swings"])
+        half = c.risk.partial_due(state, pos, quote) if quote else 0.0
+        if half and not (market_hours.trading_date(pos.opened_at) == today and c.risk.pdt_limit_hit(state, today)):
+            log.info("partial_profit %s: selling half at %.2f, stop to break-even", sym, quote.bid)
+            order = OrderRequest(sym, Side.SELL, round(half * quote.bid, 2), quote.bid)
+            if _submit(c, state, order, positions, today, tag="partial_profit"):
+                positions = {p.symbol: p for p in c.executor.positions()}
+                pos = positions.get(sym)
+                if pos is None:
+                    continue
         reason = c.risk.bracket_hit(state, pos, quote, now) if quote else None
         if reason is None:
             continue
@@ -396,6 +508,9 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
     if c.context is not None and hasattr(c.context, "warm"):
         c.context.warm(c.universe)
     manage_positions(c, state, now)
+    refresh_learning(c, state, now)
+    if c.think:
+        thoughts.observe(c, state, now)
     positions = {p.symbol: p for p in c.executor.positions()}
     apply_launcher(c, state, positions, now)
     held = frozenset(positions)
@@ -471,6 +586,12 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                 log.info("rejected long %s: earnings_before_exit (%s)", cand.symbol, report.isoformat())
                 c.recorder(_idea(now, cand, quote, None, verdict, "rejected"))
                 continue
+            flags = c.context.red_flags(cand.symbol) if c.context and hasattr(c.context, "red_flags") else []
+            if flags:
+                verdict = RiskVerdict(False, ("sec_8k_red_flag",))
+                log.info("rejected long %s: sec_8k_red_flag (%s)", cand.symbol, "; ".join(flags))
+                c.recorder(_idea(now, cand, quote, None, verdict, "rejected"))
+                continue
             account = {
                 "equity": state.equity,
                 "cash": state.cash,
@@ -488,7 +609,7 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                 decision = Decision(True, 1.0, "systematic rule (no review)", 0.0)
                 adv = avg_dollar_volume(c.market_data, cand.symbol)
                 verdict = c.risk.check_entry(cand, decision, state, quote, adv, held, today, report, now,
-                                         live_quotes(c.market_data))
+                                         live_quotes(c.market_data), **_entry_gates(c, cand))
                 if not verdict.allowed:
                     log.info("rejected long %s: %s", cand.symbol, ", ".join(verdict.reasons))
                     c.recorder(_idea(now, cand, quote, decision, verdict, "rejected"))
@@ -497,6 +618,8 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                     log.info("shadow long %s (%s): systematic, passed risk, not executed", cand.symbol, ",".join(buyers))
                     c.recorder(_idea(now, cand, quote, decision, verdict, "shadow"))
                     continue
+                if c.think:
+                    thoughts.before_buy(c, state, now, cand, quote, decision, verdict)
                 c.recorder(_idea(now, cand, quote, decision, verdict, "auto_submitted"))
                 plan = c.risk.exit_plan(cand)
                 for order in verdict.orders:
@@ -527,6 +650,10 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                 c.reviews_today[(today, m)] = c.reviews_today.get((today, m), 0) + 1
             if c.context:
                 account["market_context"] = c.context.for_symbol(cand.symbol)
+                if hasattr(c.context, "plan_odds"):
+                    odds = c.context.plan_odds(cand.symbol, c.risk.exit_plan(cand))
+                    if odds:
+                        account["replay_odds"] = odds
             if c.settings.review_outcome_memory:
                 try:
                     account["outcome_memory"] = outcome_memory(
@@ -538,7 +665,7 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                         else c.engine.evaluate(cand, account))
             adv = avg_dollar_volume(c.market_data, cand.symbol)
             verdict = c.risk.check_entry(cand, decision, state, quote, adv, held, today, report, now,
-                                         live_quotes(c.market_data))
+                                         live_quotes(c.market_data), **_entry_gates(c, cand))
 
         if not verdict.allowed:
             log.info("rejected %s %s: %s", cand.direction.value, cand.symbol, ", ".join(verdict.reasons))
@@ -553,8 +680,12 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
             continue
         if cand.direction is Direction.LONG and c.settings.entry_mode == "manual":
             log.info("recommended long %s: awaiting your approval on the dashboard", cand.symbol)
+            if c.think:
+                thoughts.before_buy(c, state, now, cand, quote, decision, verdict, waiting=True)
             c.recorder(_idea(now, cand, quote, decision, verdict, "recommended"))
             continue
+        if c.think and cand.direction is Direction.LONG:
+            thoughts.before_buy(c, state, now, cand, quote, decision, verdict)
         c.recorder(_idea(now, cand, quote, decision, verdict, "auto_submitted"))
         plan = c.risk.exit_plan(cand) if cand.direction is Direction.LONG else None
         tag = ",".join(cand.strategies) if cand.direction is Direction.LONG else "signal_exit"
@@ -610,9 +741,10 @@ def process_manual_order(
         )
         adv = avg_dollar_volume(c.market_data, sym)
         report = c.context.next_earnings(sym) if c.context else None
+        flags = c.context.red_flags(sym) if c.context and hasattr(c.context, "red_flags") else []
         verdict = c.risk.check_entry(Candidate(sym, Direction.LONG, 1.0, sigs), decision, state,
                                      quote, adv, frozenset(positions), today, report, now,
-                                     live_quotes(c.market_data))
+                                     live_quotes(c.market_data), red_flags=flags)
     else:
         return "rejected", [f"unknown side {order['side']!r}"], None
 

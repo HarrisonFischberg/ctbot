@@ -11,6 +11,7 @@ install_paper_guard()
 import argparse  # noqa: E402
 import json  # noqa: E402
 import logging  # noqa: E402
+from logging.handlers import RotatingFileHandler  # noqa: E402
 import os  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
@@ -48,8 +49,16 @@ def _news():
     return MarketauxSentiment(os.environ["MARKETAUX_API_TOKEN"])
 
 
+def _sec():
+    """SEC EDGAR (8-K items, reported numbers) when SEC_USER_AGENT names you and an email."""
+    from ctbot.market_data.sec_edgar import SecEdgar, valid_user_agent
+
+    ua = os.environ.get("SEC_USER_AGENT", "")
+    return SecEdgar(ua) if valid_user_agent(ua) else None
+
+
 def _market_context(settings: Settings, call_many, md):
-    """Robinhood context plus the optional public sources (TradingView, Marketaux)."""
+    """Robinhood context plus the optional public sources (TradingView, Marketaux, SEC)."""
     from ctbot.market_data.context import MarketContext
 
     snapshot = None
@@ -57,7 +66,10 @@ def _market_context(settings: Settings, call_many, md):
         from ctbot.market_data.tradingview import TradingViewSnapshot
 
         snapshot = TradingViewSnapshot()
-    return MarketContext(call_many, md, snapshot=snapshot, news=_news())
+    from ctbot.research.timemachine import ReplayOdds
+
+    return MarketContext(call_many, md, snapshot=snapshot, news=_news(), sec=_sec(),
+                         replay=ReplayOdds(md) if settings.review_replay_odds else None)
 
 
 def main() -> None:
@@ -73,7 +85,7 @@ def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
-        handlers=[logging.StreamHandler(), logging.FileHandler(settings.paper_log_path)],
+        handlers=[logging.StreamHandler(), RotatingFileHandler(settings.paper_log_path, maxBytes=10_000_000, backupCount=3)],
     )
     for noisy in ("httpx", "httpx2"):  # one line per API call is noise
         logging.getLogger(noisy).setLevel(logging.WARNING)
@@ -209,7 +221,6 @@ def main() -> None:
 
     def handle_clicks() -> None:
         reload_keys()
-        _heartbeat(settings, args.interval, asleep_until)
         for order in manual_queue.pending(settings.manual_orders_path, settings.manual_results_path):
             if market_open():  # a closed market rejects the click before prices matter
                 refresh_state()

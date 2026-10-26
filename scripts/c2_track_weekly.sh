@@ -1,5 +1,6 @@
-#!/bin/zsh
-# Research refresh jobs (all read-only), weekdays 2x a day. Run by launchd: com.ctbot.c2-track.
+#!/bin/bash
+# Research refresh jobs (all read-only), weekdays 2x a day. Run by launchd (com.ctbot.c2-track) on
+# the Mac, or by ctbot-research.timer on a server (deploy/).
 # 1) grow the local 5-minute bar history for the universe (Robinhood keeps only ~8 months)
 # 2) refresh SPY daily bars for the Collective2 SPY comparison
 # 3) update data/c2/track.json (Collective2, read-only GET endpoints only)
@@ -10,14 +11,15 @@ set -u -o pipefail
 cd "$(dirname "$0")/.." || exit 1
 LOG=logs/c2-track.log
 mkdir -p logs
+days_ago() { .venv/bin/python -c "import datetime, sys; print(datetime.date.today() - datetime.timedelta(days=int(sys.argv[1])))" "$1"; }
 {
   echo "=== $(date '+%Y-%m-%d %H:%M:%S %Z') ==="
-  .venv/bin/ctbot-fetch-bars --interval 5minute --since "$(date -v-14d +%Y-%m-%d)" 2>&1 | tail -1 \
-    || echo "5-minute bar refresh failed (Robinhood sign-in expired? run ctbot-robinhood-login)"
-  .venv/bin/ctbot-fetch-bars --interval day --since "$(date -v-30d +%Y-%m-%d)" \
+  .venv/bin/ctbot-fetch-bars --interval 5minute --since "$(days_ago 14)" 2>&1 | tail -1 \
+    || echo "5-minute bar refresh failed (Robinhood sign-in expired? run .venv/bin/ctbot-robinhood-login)"
+  .venv/bin/ctbot-fetch-bars --interval day --since "$(days_ago 30)" \
     SPY QQQ QLD IWM DIA XLK XLF XLV XLY XLI XLP XLU XLE XLB SMH 2>&1 | tail -1 \
-    || echo "daily bar refresh failed (Robinhood sign-in expired? run ctbot-robinhood-login); tracking anyway"
-  .venv/bin/ctbot-fetch-bars --interval day --since "$(date -v-30d +%Y-%m-%d)" \
+    || echo "daily bar refresh failed (Robinhood sign-in expired? run .venv/bin/ctbot-robinhood-login); tracking anyway"
+  .venv/bin/ctbot-fetch-bars --interval day --since "$(days_ago 30)" \
     $(.venv/bin/python -c 'from ctbot.research.ranker import default_universe as u; print(" ".join(u()))') \
     2>&1 | tail -1 || echo "stock daily bar refresh failed"
   .venv/bin/ctbot-c2-track 2>&1

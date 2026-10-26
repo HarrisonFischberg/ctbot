@@ -43,6 +43,7 @@ ALLOWED_ENV = frozenset({
     "MIN_LONG_SCORE", "MAX_CLAUDE_REVIEWS_PER_DAY", "MAX_REVIEWS_PER_MODEL_PER_DAY",
     "MAX_CLAUDE_USD_PER_DAY", "MAX_DAILY_LOSS_PCT", "MAX_TOTAL_DRAWDOWN_PCT", "MAX_SPREAD_PCT",
     "SWING_MAX_DAYS", "MODEL_MAX_LOSING_STREAK", "REVIEW_DEBATE", "REVIEW_OUTCOME_MEMORY",
+    "PARTIAL_PROFIT_R", "VWAP_ENTRY_GATE", "REGIME_GATE",
 })
 NAME_OK = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_")
 
@@ -227,7 +228,7 @@ def build(main: Any, reviews: dict) -> list[Book]:
                                  reviews),
             risk=RiskManager(s.risk, strategy_risk_overrides(strategies)), executor=broker,
             universe=main.universe, recorder=lambda idea, p=s.ideas_path: _append(p, idea),
-            context=main.context, journal=Journal(s.journal_path))
+            context=main.context, journal=Journal(s.journal_path), think=False)  # Bub speaks for the main book
         equity = broker.equity()
         state = AccountState(equity=equity, cash=broker.cash(), peak_equity=max(equity, s.starting_capital),
                              day_start_equity=equity, open_positions=len(broker.positions()))

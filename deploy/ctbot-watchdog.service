@@ -1,0 +1,13 @@
+# One watchdog check: pings HEARTBEAT_URL (from .env) when the paper bot is healthy, or
+# HEARTBEAT_URL/fail with the reason. Started every minute by ctbot-watchdog.timer.
+[Unit]
+Description=CTbot watchdog ping
+
+[Service]
+Type=oneshot
+User=ctbot
+WorkingDirectory=/home/ctbot/ctbot
+ExecStart=/home/ctbot/ctbot/.venv/bin/ctbot-watchdog
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full

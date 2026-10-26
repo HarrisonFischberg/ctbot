@@ -5,8 +5,11 @@ ratings; per call it adds the current ET time and how SPY/QQQ are doing today.
 
 Optional public sources fill gaps: a TradingViewSnapshot adds next-report dates for names
 outside Robinhood's large-cap calendar (the guard uses the earlier of the two) and technical
-context; a MarketauxSentiment adds a numeric news-sentiment summary. The SPY regime comes
-from Robinhood's own daily bars. Every extra is advisory and skipped when unavailable.
+context; a MarketauxSentiment adds a numeric news-sentiment summary; SecEdgar adds recent 8-K
+item codes and the last reported quarter's numbers (and its red-flag 8-Ks block entries). The
+SPY regime and the daily chart setups come from Robinhood's own daily bars, and a ReplayOdds
+replays an intraday model's plan on the stock's recent 5-minute bars. Every extra is advisory
+and skipped when unavailable.
 """
 
 from __future__ import annotations
@@ -16,7 +19,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Callable
 
 from ctbot import market_hours
-from ctbot.analysis import regime
+from ctbot.analysis import regime, setups
 from ctbot.market_hours import ET
 
 log = logging.getLogger(__name__)
@@ -32,12 +35,14 @@ def report_datetime(d: date, timing: str | None) -> datetime:
 class MarketContext:
     def __init__(self, call_many: CallMany, market_data=None,
                  clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
-                 snapshot=None, news=None) -> None:
+                 snapshot=None, news=None, sec=None, replay=None) -> None:
         self._call_many = call_many
         self.md = market_data
         self.clock = clock
         self.snapshot = snapshot  # TradingViewSnapshot | None
         self.news = news  # MarketauxSentiment | None
+        self.sec = sec  # SecEdgar | None
+        self.replay = replay  # ReplayOdds | None
         self._day: date | None = None
         self._earnings: dict[str, tuple[date, str | None]] = {}
         self._ratings: dict[str, dict[str, Any]] = {}
@@ -120,6 +125,18 @@ class MarketContext:
                 self._regime = {}
         return self._regime or None
 
+    def red_flags(self, symbol: str) -> list[str]:
+        """Red-flag 8-Ks (bankruptcy, delisting notice, non-reliance) of the last two weeks."""
+        if self.sec is None:
+            return []
+        return self._extra("SEC 8-K red flags", lambda: self.sec.red_flags(symbol)) or []
+
+    def plan_odds(self, symbol: str, plan: dict | None) -> dict[str, Any] | None:
+        """Time-machine odds for a same-day exit plan (ctbot.research.timemachine)."""
+        if self.replay is None or not plan:
+            return None
+        return self._extra("time machine", lambda: self.replay.for_plan(symbol, plan, self.clock()))
+
     def _extra(self, name: str, fn: Callable[[], Any]) -> Any:
         try:
             return fn()
@@ -142,6 +159,11 @@ class MarketContext:
             out["technicals"] = self._extra("TradingView technicals", lambda: self.snapshot.technicals(sym))
         if self.news is not None:
             out["news_sentiment"] = self._extra("news sentiment", lambda: self.news.for_symbol(sym))
+        if self.md is not None:
+            out["chart_setups"] = self._extra("chart setups", lambda: setups.for_symbol(self.md, sym))
+        if self.sec is not None:
+            out["sec_8k"] = self._extra("SEC 8-K items", lambda: self.sec.filings(sym))
+            out["reported_numbers"] = self._extra("SEC reported numbers", lambda: self.sec.fundamentals(sym))
         nxt = self.next_earnings(sym)
         out["next_earnings"] = None if nxt is None else {
             "when_et": nxt.strftime("%Y-%m-%d %H:%M"), "days_away": (nxt.date() - now.astimezone(ET).date()).days}

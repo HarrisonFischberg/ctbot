@@ -36,6 +36,7 @@ ctbot-dashboard = "ctbot.dashboard.server:main"
 # Research (read-only data, offline backtests).
 ctbot-fetch-bars = "ctbot.research.bars:main"
 ctbot-backtest = "ctbot.research.backtest:main"
+ctbot-timemachine = "ctbot.research.timemachine:main"
 ctbot-c2-rank = "ctbot.research.c2_rank:main"
 ctbot-c2-track = "ctbot.research.c2_rank:track_main"
 ctbot-score-ideas = "ctbot.research.score_ideas:main"
@@ -49,6 +50,8 @@ ctbot-library-research = "ctbot.library.backtest:main"
 ctbot-variants = "ctbot.variants:main"
 ctbot-dayplan = "ctbot.dayplan:plan_main"
 ctbot-reconcile = "ctbot.dayplan:reconcile_main"
+# Pings a dead-man's-switch URL (HEARTBEAT_URL) while the paper bot is healthy; see docs/CLOUD_HOSTING.md.
+ctbot-watchdog = "ctbot.watchdog:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -57,7 +60,7 @@ where = ["src"]
 ctbot = ["dashboard/index.html"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 testpaths = ["tests"]
 
 [tool.ruff]

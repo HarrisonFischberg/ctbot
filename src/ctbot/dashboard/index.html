@@ -361,6 +361,14 @@ code { font: 12px var(--code); background: rgba(var(--tint), .06); padding: 1px 
 /* ---- plain-word helpers ---- */
 .explain { color: var(--ink-2); font-size: 13px; line-height: 1.55; margin: -4px 0 14px; max-width: 80ch; }
 .explain:empty { display: none; }
+/* ---- Bubs Thoughts ---- */
+.thoughts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.thought { display: grid; grid-template-columns: 112px 1fr auto; gap: 6px 12px; align-items: baseline; padding: 11px 14px;
+  border-radius: 14px; background: rgba(var(--tint), .035); font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
+.thought.new { background: var(--neon-soft); color: var(--ink); }
+.thought .tag { justify-self: start; }
+.thought time { color: var(--muted); font-size: 12px; white-space: nowrap; }
+@media (max-width: 640px) { .thought { grid-template-columns: 1fr; } }
 .more { color: var(--neon-ink, var(--neon)); font-size: 12.5px; font-weight: 500; white-space: nowrap; }
 [data-detail][tabindex], tr[data-lab] { cursor: pointer; }
 .disc[data-detail]:hover, .model[data-detail]:hover { box-shadow: 0 0 0 1px var(--line-2); }
@@ -446,6 +454,7 @@ code { font: 12px var(--code); background: rgba(var(--tint), .06); padding: 1px 
 .disc .dact { margin-top: auto; padding-top: 10px; display: flex; gap: 10px; align-items: center; justify-content: space-between; }
 .disc .dact .btn.solid { flex: 1; padding: 10px; font-size: 14px; }
 .lm { color: var(--muted); font-size: 12.5px; }
+.co { display: block; color: var(--muted); font-size: 11px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
 .mini { width: 100%; height: 64px; display: block; }
 .mini.empty { display: grid; place-items: center; color: var(--muted); font-size: 12px; background: rgba(var(--tint), .03); border-radius: 10px; }
 .free-note { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 16px;
@@ -587,6 +596,11 @@ main:focus { outline: none; }
       <div class="scroll" id="positions"></div>
     </div>
     <div data-tab="home" class="card span-12">
+      <h2>Bubs Thoughts <span class="count" id="bubCount"></span></h2>
+      <p class="explain">Bub speaks up only when something is worth knowing: the market turning, a limit getting close, or what it saw in a stock just before the bot buys it. Notes only: they never change a trade.</p>
+      <ul class="thoughts" id="thoughts" aria-live="polite"></ul>
+    </div>
+    <div data-tab="home" class="card span-12">
       <h2>Get started <span class="count" id="stepsMeta"></span></h2>
       <ol class="steps" id="steps"></ol>
     </div>
@@ -617,17 +631,19 @@ main:focus { outline: none; }
     </div>
     <div data-tab="trading" class="card span-12">
       <h2>Autopilot <span class="count" id="apMeta"></span></h2>
-      <p class="explain">Autopilot trades the paper account by itself. It picks from every strategy below: day trades,
-        overnight holds, multi-day swings and the long-term trend funds. Claude reviews each short-term trade and sets its
-        starting stop; code sizes the trade and enforces every safety limit. Winners have no fixed sell price: the stop
-        follows the highest price up and sells when the price falls back through it. Strategies that research rejected,
-        or that lose money over 10+ recent paper trades, sit on the bench.</p>
+      <p class="explain">Autopilot trades the practice account for you. It picks from every strategy in the library below:
+        trades that last a few hours, overnight holds, trades that last a few days, and long-term funds.
+        Before each short-term buy, Claude (the AI) looks at the idea, says yes or no, and picks a safety sell point: the price
+        where the bot sells to stop the loss (a stop-loss). The bot decides how much to buy and enforces every safety limit.
+        Winners have no fixed sell price: when the price goes up, the safety sell point moves up with it, and the bot sells
+        when the price falls back to it. Strategies that failed testing, or lost money over their last 10+ trades, are
+        benched: they aren't allowed to trade.</p>
       <form class="ap-form" id="apForm">
         <label class="ap-switch"><input type="checkbox" id="apOn"> <b>Autopilot on</b></label>
         <label>Max loss per trade <span class="ap-in"><input type="number" id="apLoss" min="1" max="25" step="0.5" required> %</span>
-          <span class="lm">furthest a new trade's starting stop can sit below what it paid</span></label>
+          <span class="lm">the most a new trade can fall below its buy price before the bot sells it</span></label>
         <label>Give back from the high <span class="ap-in"><input type="number" id="apGive" min="1" max="30" step="0.5" required> %</span>
-          <span class="lm">how far the trailing stop follows below each position's highest price</span></label>
+          <span class="lm">once a stock rises, the bot sells it if it falls this much from its highest price</span></label>
         <button class="btn solid" type="submit" id="apSave">Save</button>
       </form>
       <h3 class="ap-h3">Latest decisions</h3>
@@ -636,8 +652,9 @@ main:focus { outline: none; }
 
     <div data-tab="trading" class="card span-12" id="varCard" hidden>
       <h2>Settings test <span class="count" id="varMeta"></span></h2>
-      <p class="explain">Extra $10,000 paper accounts running next to yours on the same prices and the same Claude verdicts.
-        Each changes one setting, so after a week or two the best settings stand out. Set them in <code>config/variants.toml</code>.</p>
+      <p class="explain">Practice $10,000 accounts that trade next to yours, on the same prices and with the same yes/no answers from Claude.
+        Each one changes a single setting. After a week or two, the settings that work best will stand out.
+        You can change the list in <code>config/variants.toml</code>.</p>
       <div id="variants" class="xscroll"></div>
     </div>
 
@@ -651,27 +668,36 @@ main:focus { outline: none; }
 
     <div data-tab="activity" class="card span-12">
       <h2>Results by strategy <span class="count" id="modelCount"></span></h2>
+      <p class="explain">How each strategy's trades have done. A trade counts as closed once the stock is sold.</p>
       <div class="scroll" id="models"></div>
       <div class="clicks xscroll" id="filterScore"></div>
     </div>
 
     <div data-tab="activity" class="card span-12">
+      <h2>What each trade taught <span class="count" id="postCount"></span></h2>
+      <p class="explain">Every sold trade, with why it was bought and how it ended: the most it was up and down, and whether a stop sold below its price (a gap, or the bot had no prices).</p>
+      <div class="scroll" id="postmortems" style="max-height:420px"></div>
+    </div>
+
+    <div data-tab="activity" class="card span-12">
       <h2>Safety limits</h2>
+      <p class="explain">Rules the bot always follows, whatever a strategy or Claude says.</p>
       <dl class="limits" id="limits"></dl>
     </div>
 
     <div data-tab="trading" class="card span-12">
       <h2>Strategy library <span class="count" id="catMeta"></span></h2>
-      <p class="explain">Every strategy Autopilot can use, one per row: trading or benched and why, its simulated past year and its real
-        paper record. Click a row for the full story and charts. Simulated results aren't a promise of future returns.</p>
+      <p class="explain">Every strategy Autopilot can use, one per row: whether it's trading or benched and why, how it would have done
+        over the past year (a simulation), and how its real practice trades have gone. Click a row to see how it works, with charts.
+        Simulated results don't promise future returns.</p>
       <div class="catalog" id="catalog"></div>
     </div>
 
     <div data-tab="trading" class="card span-12">
       <h2>Growth of $5,000 since 2010 <span class="count" id="cmpMeta"></span><span class="spacer"></span>
         <span class="seg" role="group" aria-label="Scale"><button data-scale="log" class="on">Log</button><button data-scale="lin">Linear</button></span></h2>
-      <p class="explain">What $5,000 would have grown to with each test. Higher is better; a smoother line means fewer scary drops.
-        Pick which lines to show from the leaderboard below. "Log" makes equal percentage moves look the same size.</p>
+      <p class="explain">What $5,000 would have grown to with each idea, using real past prices. Higher is better; a smoother line means fewer scary drops.
+        Pick which lines to show in the leaderboard below. "Log" draws a 10% move the same size whether the account is small or large.</p>
       <div class="chart" id="cmpChart" style="height:320px"></div>
       <div id="cmpLegend" class="legend"></div>
     </div>
@@ -679,20 +705,20 @@ main:focus { outline: none; }
     <div data-tab="trading" class="card span-6">
       <h2>Crash test <span class="count">1999-2026, including the dot-com crash</span></h2>
       <p class="explain">How each idea would have survived the 2000-02 crash (Nasdaq fell about 80%), 2008 and 2020.
-        Leveraged funds didn't exist back then, so they're rebuilt from QQQ's daily moves. A red worst drop (60%+) means it nearly wiped out.</p>
+        2x and 3x funds didn't exist back then, so they're rebuilt from the Nasdaq-100's daily moves. A red worst drop (60%+) means it nearly wiped out.</p>
       <div class="scroll" id="stress"></div>
     </div>
     <div data-tab="trading" class="card span-6">
-      <h2>No-hindsight test <span class="count">walk-forward</span></h2>
-      <p class="explain">A fairer test: each year, the setting (how many days of trend to look at) is picked using only the 5 years before it,
+      <h2>No-hindsight test <span class="count">each year picked using only the past</span></h2>
+      <p class="explain">A fairer test: each year, the setting (how many days of average price to look at) is picked using only the 5 years before it,
         as if you were living through it. If these numbers stay close to the leaderboard's, the result wasn't just hindsight.</p>
       <div class="scroll" id="wf"></div>
     </div>
 
     <div data-tab="trading" class="card span-12">
       <h2>Backtest leaderboard <span class="count" id="labMeta"></span></h2>
-      <p class="explain">Every idea tested on 16 years of real prices after trading costs, best first. Designed on 2010-19, then judged on 2020-26,
-        which it never saw. Click a row for the full explanation and a chart; tick the box to add it to the growth chart.</p>
+      <p class="explain">Every idea tested on 16 years of real prices, after trading costs, best first. Each was designed using 2010-19, then
+        judged on 2020-26, years it never saw. Click a row for the full explanation and a chart; tick the box to add it to the growth chart.</p>
       <div class="scroll" id="lab"></div>
       <div id="labNote" style="margin-top:10px;color:var(--muted);font-size:12.5px"></div>
     </div>
@@ -700,7 +726,7 @@ main:focus { outline: none; }
     <div data-tab="trading" class="card span-12">
       <h2>Outside traders we track <span class="count" id="c2Meta"></span><span class="spacer"></span>
         <span class="seg" role="group" aria-label="Collective2 view">
-          <button data-c2="watch" class="on">Watchlist</button><button data-c2="runners">Runners-up</button>
+          <button data-c2="watch" class="on">Watching</button><button data-c2="runners">Next best</button>
         </span>
       </h2>
       <p class="explain">The best-ranked public traders on Collective2, tracked to see if any keeps beating the S&amp;P 500 after its subscription fee.
@@ -709,13 +735,15 @@ main:focus { outline: none; }
       <div id="c2Note" style="margin-top:10px;color:var(--muted);font-size:12.5px"></div>
     </div>
 
-    <div data-tab="activity" class="card span-5">
-      <h2>Watchlist <span class="count" id="wlSrc"></span></h2>
-      <div class="scroll" id="watchlist"></div>
-    </div>
-    <div data-tab="activity" class="card span-7">
-      <h2>Order history <span class="count" id="fillCount"></span></h2>
+    <div data-tab="activity" class="card span-12">
+      <h2>Trade history <span class="count" id="fillCount"></span></h2>
+      <p class="explain">Every practice buy and sell, newest first: why it happened, and for sales, the profit or loss.</p>
       <div class="scroll" id="fills"></div>
+    </div>
+    <div data-tab="activity" class="card span-12">
+      <h2>Stocks the bot watches <span class="count" id="wlSrc"></span></h2>
+      <p class="explain">The prices right now. "Buy price" is what you'd pay, "Sell price" is what you'd get; a big gap between them makes trading costly.</p>
+      <div class="scroll" id="watchlist"></div>
     </div>
 
     <div data-tab="settings" class="card span-7">
@@ -750,10 +778,10 @@ main:focus { outline: none; }
       <div class="strats" id="strategies"></div>
     </div>
     <div data-tab="activity" class="card span-12">
-      <h2>Bot log <span class="count">this Mac's time</span><span class="spacer"></span>
+      <h2>What the bot did <span class="count">step by step, this Mac's time · hover a line for the raw log</span><span class="spacer"></span>
         <span class="seg" role="group" aria-label="Log filter">
-          <button data-log="all" class="on">All</button><button data-log="fill">Fills</button>
-          <button data-log="reject">Rejects</button><button data-log="warn">Warnings</button>
+          <button data-log="all" class="on">All</button><button data-log="fill">Trades</button>
+          <button data-log="reject">Turned down</button><button data-log="warn">Problems</button>
         </span>
       </h2>
       <div class="log" id="log"></div>
@@ -842,6 +870,98 @@ main:focus { outline: none; }
   const ET = "America/New_York";
   const fmtTime = (iso) => { if (!iso) return "—"; const d = new Date(iso); return d.toLocaleString("en-US", { timeZone: ET, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) + " ET"; };
 
+  // What each stock is, in a few words (config/universe.txt plus a few common extras).
+  const STOCKS = {
+    SPY: "S&P 500 fund (500 biggest US companies)", QQQ: "Nasdaq-100 fund (100 big tech-heavy companies)", IWM: "Russell 2000 fund (small US companies)",
+    DIA: "Dow Jones fund (30 big US companies)", XLF: "Banks & finance fund", XLE: "Oil & energy fund", XLK: "Tech fund", XLV: "Healthcare fund",
+    XLY: "Shopping & leisure fund", XLP: "Everyday goods fund (food, household)", XLI: "Industrial companies fund", XLU: "Utilities fund (power, water)",
+    XLB: "Materials fund (chemicals, mining)", XLC: "Communications fund (Google, Meta, telecoms)", SMH: "Chip makers fund", GLD: "Gold fund",
+    TLT: "Long-term US government bonds fund", QLD: "Nasdaq-100 fund, 2x daily moves", TQQQ: "Nasdaq-100 fund, 3x daily moves", SSO: "S&P 500 fund, 2x daily moves",
+    AAPL: "Apple (iPhone, Mac)", MSFT: "Microsoft (Windows, Office, cloud)", NVDA: "Nvidia (AI chips)", AMZN: "Amazon (online shopping, cloud)",
+    GOOGL: "Alphabet (Google, YouTube)", META: "Meta (Facebook, Instagram)", TSLA: "Tesla (electric cars)", AVGO: "Broadcom (chips, software)",
+    "BRK.B": "Berkshire Hathaway (Warren Buffett's company)", JPM: "JPMorgan Chase (bank)", V: "Visa (card payments)", MA: "Mastercard (card payments)",
+    UNH: "UnitedHealth (health insurance)", XOM: "ExxonMobil (oil)", LLY: "Eli Lilly (medicines)", JNJ: "Johnson & Johnson (health products)",
+    PG: "Procter & Gamble (household goods)", HD: "Home Depot (home improvement stores)", COST: "Costco (warehouse stores)", ABBV: "AbbVie (medicines)",
+    MRK: "Merck (medicines)", PEP: "PepsiCo (drinks, snacks)", KO: "Coca-Cola (drinks)", WMT: "Walmart (stores)", BAC: "Bank of America (bank)",
+    CVX: "Chevron (oil)", ORCL: "Oracle (business software, cloud)", CRM: "Salesforce (business software)", AMD: "AMD (computer chips)",
+    NFLX: "Netflix (streaming)", ADBE: "Adobe (Photoshop, PDF software)", CSCO: "Cisco (network equipment)", INTC: "Intel (computer chips)",
+    QCOM: "Qualcomm (phone chips)", TXN: "Texas Instruments (chips)", INTU: "Intuit (TurboTax, QuickBooks)", AMAT: "Applied Materials (chip-making machines)",
+    MU: "Micron (memory chips)", LRCX: "Lam Research (chip-making machines)", PFE: "Pfizer (medicines)", TMO: "Thermo Fisher (lab equipment)",
+    ABT: "Abbott (medical devices)", DIS: "Disney (movies, parks)", NKE: "Nike (shoes, sportswear)", MCD: "McDonald's (restaurants)",
+    SBUX: "Starbucks (coffee shops)", LOW: "Lowe's (home improvement stores)", CAT: "Caterpillar (construction machines)", DE: "John Deere (farm machines)",
+    GE: "GE Aerospace (jet engines)", BA: "Boeing (airplanes)", HON: "Honeywell (industrial tech)", UPS: "UPS (package delivery)",
+    GS: "Goldman Sachs (investment bank)", MS: "Morgan Stanley (investment bank)", C: "Citigroup (bank)", WFC: "Wells Fargo (bank)",
+    SCHW: "Charles Schwab (brokerage)", BLK: "BlackRock (fund manager)", PYPL: "PayPal (online payments)", UBER: "Uber (rides, food delivery)",
+    SHOP: "Shopify (online store software)", PLTR: "Palantir (data software)", COIN: "Coinbase (crypto exchange)", HOOD: "Robinhood (trading app)",
+    MRVL: "Marvell (chips)", PANW: "Palo Alto Networks (cybersecurity)", CRWD: "CrowdStrike (cybersecurity)", ANET: "Arista (network equipment)",
+    NOW: "ServiceNow (business software)", ISRG: "Intuitive Surgical (surgery robots)",
+  };
+  const stockCell = (sym) => `${esc(sym)}${STOCKS[sym] ? `<span class="co" title="${esc(STOCKS[sym])}">${esc(STOCKS[sym])}</span>` : ""}`;
+  // Fill tags: a buy names the strategies that picked it; a sell names why it sold.
+  const EXIT_WORDS = { stop_loss: "hit its stop-loss (price fell to the safety point)", trailing_stop: "fell back from its high (trailing stop)",
+    take_profit: "hit its profit target", time_exit: "time limit reached", signal_exit: "its strategy said sell", stopped: "you stopped the strategy",
+    manual: "you sold it", rebalance: "trimmed back to its target size", "?": "reason not recorded" };
+  const EXIT_SHORT = { stop_loss: "hit stop-loss", trailing_stop: "trailing stop", take_profit: "hit profit target", time_exit: "time limit reached",
+    signal_exit: "strategy said sell", stopped: "you stopped it", manual: "you sold it", rebalance: "trimmed to size", "?": "unknown" };
+  const stratNames = (tag) => !tag || tag === "untagged" ? "Unlabeled" : String(tag).split(",").map((n) => plainOf(n).title).join(" + ");
+  const exitWord = (k) => EXIT_SHORT[k] || `${stratNames(k)} said sell`;
+  const whyFill = (f) => f.side === "buy"
+    ? (f.tag === "manual" ? "You bought it by hand" : f.tag === "rebalance" ? "Topped up to its target size" : f.tag ? `Picked by ${stratNames(f.tag)}` : "Reason not recorded")
+    : (EXIT_WORDS[f.tag] ? EXIT_WORDS[f.tag][0].toUpperCase() + EXIT_WORDS[f.tag].slice(1) : f.tag ? `${stratNames(f.tag)} said sell` : "Reason not recorded");
+  // Research test names (ctbot-lab) in words.
+  const TESTS = {
+    "LIVE core: trend QQQ 170d": "What the bot runs now: Nasdaq-100 when it's above its 170-day average, cash otherwise",
+    "LIVE: 40% QQQ trend + 40% QLD capped (+20% cash)": "What the bot runs now: 40% Nasdaq-100 trend + 40% 2x Nasdaq (risk-capped) + 20% cash",
+    "LIVE: 50% trend QQQ + rsi2/TOM": "What the bot runs now: 50% Nasdaq-100 trend + 50% dip-buying and month-end trades",
+    "hold QQQ": "Just hold the Nasdaq-100 (QQQ)", "hold SPY": "Just hold the S&P 500 (SPY)",
+    "hold 3x (no filter)": "Just hold a 3x fund, no safety rule", "lev: hold QLD (2x)": "Just hold 2x Nasdaq-100 (QLD)",
+    "lev: hold TQQQ (3x)": "Just hold 3x Nasdaq-100 (TQQQ)",
+    "lev: trend QQQ 170d -> QLD capped at 30% vol": "2x Nasdaq-100 when above its 170-day average, sized to keep swings under 30%",
+    "lev: trend QQQ 170d -> TQQQ capped at 35% vol": "3x Nasdaq-100 when above its 170-day average, sized to keep swings under 35%",
+    "lev: trend QQQ 170d -> hold QLD (2x)": "2x Nasdaq-100 when above its 170-day average, cash otherwise",
+    "lev: trend QQQ 170d -> hold TQQQ (3x)": "3x Nasdaq-100 when above its 170-day average, cash otherwise",
+    "lev: trend SPY 200d -> hold SSO (2x)": "2x S&P 500 when above its 200-day average, cash otherwise",
+    "rsi2 + turn-of-month book": "Dip-buying + month-end trades", rsi2: "Buy fund dips (2-day RSI)",
+    "trend 170d -> 2x": "2x when above the 170-day average", "trend 170d -> 2x capped 30% vol": "2x when above the 170-day average, swings capped at 30%",
+    "trend 170d -> 3x": "3x when above the 170-day average", "trend 170d -> 3x capped 35% vol": "3x when above the 170-day average, swings capped at 35%",
+    "trend QQQ (length)": "Nasdaq-100 trend (best average length)", "trend QQQ -> QLD 30% cap (length)": "2x Nasdaq-100 trend, swings capped at 30% (best length)",
+  };
+  const testName = (n) => TESTS[n] || String(n).replace(/^LIVE( core)?: /, "What the bot runs now: ")
+    .replace(/trend (\w+) (\d+)d/g, "$1 when above its $2-day average").replace(/ -> /g, " → ");
+  // Bot log lines in words; the original stays in the row's tooltip.
+  const SIDE = { buy: "Bought", sell: "Sold" };
+  const LOG_WORDS = [
+    [/^submitted .*symbol='([^']+)', side=<Side\.(\w+)[^>]*>, quantity=([\d.e-]+), price=([\d.]+).*?tag='([^']*)'/s,
+      (m, sym, side, q, px, tag) => `${SIDE[side.toLowerCase()] || side} ${qty(+(+q).toFixed(4))} ${sym} at ${usd(+px)}: ${whyFill({ side: side.toLowerCase(), tag }).toLowerCase()}.`],
+    [/^submitted .*symbol='([^']+)', side=<Side\.(\w+).*fill=None/s, (m, sym, side) => `Tried to ${side.toLowerCase()} ${sym}, but it didn't fill.`],
+    [/^rejected long (\S+): (.+)$/, (m, sym, r) => `Didn't buy ${sym}: ${r.replace(/ \(.*\)$/, "").split(", ").map(reasonWords).join("; ")}.`],
+    [/^rejected (\w+) (\S+): (.+)$/, (m, d, sym, r) => `Didn't ${d === "long" ? "buy" : "sell"} ${sym}: ${r.split(", ").map(reasonWords).join("; ")}.`],
+    [/^trail (\S+): new high ([\d.]+), stop raised to ([\d.]+)/, (m, sym, hi, st) => `${sym} hit a new high of ${usd(+hi)}, so its safety sell point moved up to ${usd(+st)}.`],
+    [/^swing (\S+): up ([\d.]+)%, holding to (\S+) with stop raised to ([\d.]+)/, (m, sym, up, until, st) => `${sym} is up ${(+up).toFixed(1)}%, so the bot keeps it overnight (until ${fmtTime(until)}) and moved its safety sell point up to ${usd(+st)}.`],
+    [/^(\w+) triggered for (\S+)/, (m, r, sym) => `Selling ${sym}: ${EXIT_WORDS[r] || r.replace(/_/g, " ")}.`],
+    [/^(\w+) exit blocked for (\S+): (.+)$/, (m, r, sym, why) => `Wanted to sell ${sym} (${EXIT_SHORT[r] || r}) but couldn't: ${why.split(", ").map(reasonWords).join("; ")}.`],
+    [/^shadow long (\S+) \(([^)]*)\)/, (m, sym, by) => `${stratNames(by)} liked ${sym}, but that strategy is only being watched, so nothing was bought.`],
+    [/^recommended long (\S+)/, (m, sym) => `${sym} passed every check. It's waiting for you to press Buy on the Activity tab.`],
+    [/^skipping entry (\S+): within (\d+) min of close/, (m, sym, n) => `Didn't buy ${sym}: less than ${n} minutes until the market closes.`],
+    [/^skipping entry (\S+): HALT file present/, (m, sym) => `Didn't buy ${sym}: buying is paused (HALT file).`],
+    [/^skipping review of (\S+).*budget/, (m, sym) => `Didn't ask Claude about ${sym}: today's Claude limit is used up.`],
+    [/^(\d+) events, (\d+) signals, (\d+) candidates/, (m, e, sg, c) => `Checked the market: ${sg} signals from the strategies, ${c} trade idea${c === "1" ? "" : "s"}.`],
+    [/^market closed: sleeping until (.+?) \(/, (m, t) => `Market closed. The bot is resting until ${t}.`],
+    [/^market closed at /, () => "Market closed: nothing to do this round."],
+    [/^market open: resuming/, () => "Market open: the bot is back to work."],
+    [/^autopilot: trading (.+?); benched (.+)$/, (m, on, off) => {
+      const benched = off === "none" ? [] : [...off.matchAll(/(?:^|\), )(\w+) \(/g)].map((x) => x[1]);
+      return `Autopilot: trading ${on === "none" ? "nothing" : on.split(", ").map((n) => plainOf(n).title).join(", ")}. Benched (not allowed to trade): ${benched.length ? benched.map((n) => plainOf(n).title).join(", ") : "none"}.`; }],
+    [/^launcher: (.+) hit its max loss/, (m, n) => `${stratNames(n)} hit the max loss you set, so the bot is selling it and stopping it.`],
+    [/^launcher: (.+) hit its take-profit/, (m, n) => `${stratNames(n)} hit the profit target you set, so the bot is selling it and locking in the gain.`],
+    [/^launcher: sold (\S+) for stopped strategy (\S+)/, (m, sym, n) => `Sold ${sym} because you stopped ${stratNames(n)}.`],
+    [/^trim (\S+): -\$([\d.]+) to its target \$([\d.]+)/, (m, sym, a, t) => `Sold ${usd(+a)} of ${sym} to bring it back to its target size of ${usd(+t, 0)}.`],
+    [/^top-up (\S+): \+\$([\d.]+) to its target \$([\d.]+)/, (m, sym, a, t) => `Bought ${usd(+a)} more ${sym} to bring it up to its target size of ${usd(+t, 0)}.`],
+    [/^Claude rate limited/, () => "Claude was busy (too many requests). The bot will try again."],
+    [/^Claude API error (\d+)/, (m, c) => `Claude returned an error (${c}). ${c === "401" ? "Check your Claude API key on the Settings tab." : "The bot will try again."}`],
+    [/^paper loop started/, () => "The bot started."],
+  ];
+  const logWords = (msg) => { for (const [re, fn] of LOG_WORDS) { const m = msg.match(re); if (m) return fn(...m); } return msg; };
   let S = null, range = "all", view = "chart", logFilter = "all", ideaFilter = "all", c2View = "watch", cmpScale = "log";
   let tab = "home", cmpSel = ["LIVE core: trend QQQ 170d", "hold QQQ", "lev: trend QQQ 170d -> QLD capped at 30% vol"];
   try { tab = ({ strategies: "trading", discover: "trading", research: "trading" })[localStorage.getItem("ctbot.tab")] || localStorage.getItem("ctbot.tab") || tab; cmpSel = JSON.parse(localStorage.getItem("ctbot.cmp")) || cmpSel; } catch (e) {}
@@ -1015,15 +1135,15 @@ main:focus { outline: none; }
 
   async function sendOrder(payload, label) {
     if (!canTrade()) return toast("Clicks are disabled in this view.", true);
-    if (!confirm(`PAPER ${label}\n\nThe paper bot re-runs every risk check with a fresh quote before filling. No real money.`)) return;
+    if (!confirm(`Practice trade: ${label}\n\nThe bot checks every safety rule again with a fresh price before it trades. No real money is used.`)) return;
     try {
       const r = await fetch("/api/paper/order", { method: "POST", cache: "no-store",
         headers: { "Content-Type": "application/json", "X-Ctbot-Token": TOKEN }, body: JSON.stringify(payload) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
-      toast(S.bot.running ? `Queued: ${label}. Executes within seconds.` : `Queued: ${label}. Start ctbot-paper --loop to execute it.`);
+      toast(S.bot.running ? `Sent: ${label}. It happens within seconds.` : `Saved: ${label}. It happens once the bot is running (start it with ./run_ctbot.sh).`);
       load();
-    } catch (e) { toast("Not queued: " + e.message, true); }
+    } catch (e) { toast("Not sent: " + e.message, true); }
   }
 
   // ---- chrome ----------------------------------------------------------------
@@ -1032,10 +1152,10 @@ main:focus { outline: none; }
     const model = S.claude.model.replace(/^claude-/, "").replace(/-(\d+)-(\d+)$/, " $1.$2").replace(/^./, (c) => c.toUpperCase());
     $("sub").textContent = `${m.et_time} · AI: Claude ${model} · ${S.claude.reviews_today} of ${S.claude.review_budget} trade reviews used today`;
     const chips = [];
-    chips.push(`<span class="chip neon"><span class="dot on"></span><b>${S.mode === "paper" ? "Paper trading" : "Live"}</b></span>`);
+    chips.push(`<span class="chip neon" title="Real prices, pretend money"><span class="dot on"></span><b>${S.mode === "paper" ? "Practice trading" : "Live"}</b></span>`);
     chips.push(S.live_trading_enabled
       ? `<span class="chip crit"><b>Live on</b></span>`
-      : `<span class="chip"><span class="dot off"></span>real money off</span>`);
+      : `<span class="chip"><span class="dot off"></span>real money: off</span>`);
     chips.push(`<span class="chip">Robinhood <b>${esc(S.account.nickname)} ••••${esc(S.account.last4 ?? "????")}</b></span>`);
     const mins = Math.round(m.minutes_to_close);
     chips.push(m.open
@@ -1052,15 +1172,17 @@ main:focus { outline: none; }
     $("chips").innerHTML = chips.join("");
 
     const alerts = [];
-    if (a.kill_switch) alerts.push(["crit", "!", "Kill switch is ON: equity fell 15%+ from peak. No new entries until you delete data/paper_risk_state.json."]);
-    if (S.live_trading_enabled) alerts.push(["crit", "!", "LIVE_TRADING_ENABLED is true in this environment."]);
-    if (m.data_error) alerts.push(["warn", "△", "Market data unavailable: " + m.data_error]);
+    if (a.kill_switch) alerts.push(["crit", "!", `Emergency stop is on: the account fell ${pct(S.limits.max_total_drawdown_pct, 0)} or more from its high, so the bot won't buy anything. To let it buy again, delete data/paper_risk_state.json.`]);
+    if (S.live_trading_enabled) alerts.push(["crit", "!", "Real-money trading is switched on (LIVE_TRADING_ENABLED is true)."]);
+    if (m.data_error) alerts.push(["warn", "△", "Can't get stock prices right now: " + m.data_error]);
     const pf = S.preflight || {};
-    if (pf.ok === false) alerts.push(["crit", "!", "Preflight " + fmtTime(pf.ts) + " failed: " +
-      (pf.checks || []).filter((c) => !c.ok).map((c) => c.check + " (" + c.detail + ")").join("; ")]);
-    if (a.day_pnl_pct <= -S.limits.max_daily_loss_pct) alerts.push(["warn", "△", "Daily loss limit reached: no new entries today."]);
-    if (a.margin_call) alerts.push(["crit", "!", "Margin maintenance: equity is under 25% of positions, so new buys are paused until it recovers."]);
-    if (S.limits.pdt_rule && a.day_trades_5d >= S.limits.max_day_trades_5d) alerts.push(["warn", "△", `Day-trade limit reached (${a.day_trades_5d}/${S.limits.max_day_trades_5d} in 5 days): same-day exits are blocked.`]);
+    const pfHint = (c) => /401|invalid x-api-key|authentication/i.test(c.detail || "") ? " Your Claude API key looks wrong or expired: paste a new one on the Settings tab." : "";
+    if (pf.ok === false) alerts.push(["crit", "!", "Start-up check at " + fmtTime(pf.ts) + " found a problem: " +
+      (pf.checks || []).filter((c) => !c.ok).map((c) => c.check + " (" + c.detail + ")." + pfHint(c)).join(" ")]);
+    if (a.day_pnl_pct <= -S.limits.max_daily_loss_pct) alerts.push(["warn", "△", `Down ${pct(S.limits.max_daily_loss_pct, 0)} today, the most allowed: the bot won't buy anything else until tomorrow.`]);
+    if ((a.pulled_back || []).length) alerts.push(["warn", "△", `Playing it safe: ${a.pulled_back.join(", ")}. New buys use only cash on hand, no borrowing, until that clears.`]);
+    if (a.margin_call) alerts.push(["crit", "!", "Borrowed too much: your account value is under 25% of what you hold, so buying is paused until it recovers."]);
+    if (S.limits.pdt_rule && a.day_trades_5d >= S.limits.max_day_trades_5d) alerts.push(["warn", "△", `Day-trade limit reached (${a.day_trades_5d} of ${S.limits.max_day_trades_5d} in 5 days): the bot can't buy and sell the same stock on the same day.`]);
     $("alerts").innerHTML = alerts.map(([k, ic, t]) => `<div class="alert ${k}"><span class="ic">${ic}</span><span>${esc(t)}</span></div>`).join("");
   }
 
@@ -1079,17 +1201,17 @@ main:focus { outline: none; }
       (M.loose ? ` + ${M.loose} other stock${M.loose === 1 ? "" : "s"}` : "") : `stock${M.loose === 1 ? "" : "s"} and funds`;
     const tiles = [
       ["Account value", `<div class="value hero">${usd(a.equity)}</div>
-        <div class="sub ${dir(a.total_pnl)}">${arrow(a.total_pnl)} ${sgnUsd(a.total_pnl)} · ${sgnPct(a.total_pnl / a.starting_capital)} vs ${usd(a.starting_capital, 0)}</div>`, "Portfolio value"],
-      ["Today's return", `<div class="value ${dir(a.day_pnl)}">${sgnUsd(a.day_pnl)}</div>
-        <div class="sub">${sgnPct(a.day_pnl_pct)} · bot pauses at −${pct(L.max_daily_loss_pct, 0)}</div>${meter(lossUsed, lossUsed >= 1 ? "crit" : lossUsed > .6 ? "warn" : "")}`],
-      ["Down from high", `<div class="value ${a.drawdown_pct < -1e-9 ? "down" : "flat"}">${sgnPct(a.drawdown_pct)}</div>
-        <div class="sub">high ${usd(a.peak_equity)} · bot stops at −${pct(L.max_total_drawdown_pct, 0)}</div>${meter(ddUsed, ddUsed >= 1 ? "crit" : ddUsed > .6 ? "warn" : "")}`],
+        <div class="sub ${dir(a.total_pnl)}">${arrow(a.total_pnl)} ${a.total_pnl >= 0 ? "profit" : "loss"} ${sgnUsd(a.total_pnl)} (${sgnPct(a.total_pnl / a.starting_capital)}) since you started with ${usd(a.starting_capital, 0)}</div>`, "Portfolio value"],
+      ["Today's profit / loss", `<div class="value ${dir(a.day_pnl)}">${sgnUsd(a.day_pnl)}</div>
+        <div class="sub">${sgnPct(a.day_pnl_pct)} today · the bot stops buying for the day at −${pct(L.max_daily_loss_pct, 0)}</div>${meter(lossUsed, lossUsed >= 1 ? "crit" : lossUsed > .6 ? "warn" : "")}`, "Today's return"],
+      ["Down from its best", `<div class="value ${a.drawdown_pct < -1e-9 ? "down" : "flat"}">${sgnPct(a.drawdown_pct)}</div>
+        <div class="sub">best was ${usd(a.peak_equity)} · the bot stops buying at −${pct(L.max_total_drawdown_pct, 0)}</div>${meter(ddUsed, ddUsed >= 1 ? "crit" : ddUsed > .6 ? "warn" : "")}`, "Down from high"],
       ["Cash", `<div class="value">${usd(M.cash)}</div>
-        <div class="sub">free to trade now${M.cash - M.free > 1 ? ` · ${usd(M.cash - M.free, 0)} is over your ${usd(L.max_trading_capital, 0)} limit` : ""}${a.unsettled ? " · " + usd(a.unsettled) + " settling" : ""}${L.paper_margin > 1 ? ` · margin ${L.paper_margin}x: ${usd(a.buying_power, 0)} buying power${a.borrowed ? `, ${usd(a.borrowed, 0)} borrowed` : ""}` : ""}</div>`, "Buying power"],
+        <div class="sub">free to trade now${M.cash - M.free > 1 ? ` · ${usd(M.cash - M.free, 0)} is over your ${usd(L.max_trading_capital, 0)} limit` : ""}${a.unsettled ? " · " + usd(a.unsettled) + " settling" : ""}${L.paper_margin > 1 ? ` · can borrow up to ${L.paper_margin}x: ${usd(a.buying_power, 0)} available to buy with${a.borrowed ? `, ${usd(a.borrowed, 0)} borrowed now` : ""}` : ""}</div>`, "Buying power"],
       ["Invested", `<div class="value">${usd(M.invested)}</div>
         <div class="sub">${inv}</div>${meter(a.equity ? M.invested / a.equity : 0)}`],
-      ["Positions", `<div class="value">${nRuns + M.loose}</div>
-        <div class="sub">${what} · ${L.pdt_rule ? `day trades ${a.day_trades_5d} of ${L.max_day_trades_5d} (5 days)</div>${meter(a.day_trades_5d / L.max_day_trades_5d, a.day_trades_5d >= L.max_day_trades_5d ? "crit" : "")}` : `${a.day_trades_5d} day trades in 5 days (no limit)</div>`}`],
+      ["What you hold", `<div class="value">${nRuns + M.loose}</div>
+        <div class="sub">${what} · ${L.pdt_rule ? `same-day buy-and-sells: ${a.day_trades_5d} of ${L.max_day_trades_5d} allowed in 5 days</div>${meter(a.day_trades_5d / L.max_day_trades_5d, a.day_trades_5d >= L.max_day_trades_5d ? "crit" : "")}` : `${a.day_trades_5d} same-day buy-and-sells in 5 days (no limit)</div>`}`, "Positions"],
     ];
     const box = $("kpis");
     let added = false;
@@ -1120,15 +1242,15 @@ main:focus { outline: none; }
   }
   function renderChart() {
     const el = $("chart"), pts = historyInRange();
-    $("eqCount").textContent = pts.length ? `${pts.length} pts` : "";
+    $("eqCount").textContent = pts.length ? `${pts.length} points` : "";
     if (view === "table") {
-      el.innerHTML = pts.length ? `<div class="scroll" style="max-height:280px"><table class="tbl"><thead><tr><th>Time</th><th class="r">Equity</th><th class="r">Cash</th></tr></thead><tbody>${
+      el.innerHTML = pts.length ? `<div class="scroll" style="max-height:280px"><table class="tbl"><thead><tr><th>Time</th><th class="r">Account value</th><th class="r">Cash</th></tr></thead><tbody>${
         pts.slice().reverse().map((p) => `<tr><td>${fmtTime(p.t)}</td><td class="r">${usd(p.v)}</td><td class="r">${usd(p.cash)}</td></tr>`).join("")
-      }</tbody></table></div>` : `<div class="empty">No equity history yet.<br>Each paper cycle records a point.</div>`;
+      }</tbody></table></div>` : `<div class="empty">No history yet.<br>The bot adds a point every few minutes while it runs.</div>`;
       return;
     }
     if (pts.length < 2) {
-      el.innerHTML = `<div class="empty">No equity history yet.<br>Each paper cycle records a point; run ctbot-paper --loop during market hours.</div>`;
+      el.innerHTML = `<div class="empty">No history yet.<br>The bot adds a point every few minutes while the market is open. Start it with ./run_ctbot.sh.</div>`;
       return;
     }
     const base = S.account_summary.starting_capital;
@@ -1280,7 +1402,7 @@ main:focus { outline: none; }
       return;
     }
     const first = B[0], last = B[B.length - 1], chg = last.c - first.o;
-    $("pxMeta").innerHTML = `${usd(last.c)} <span class="${dir(chg)}">${sgnPct(chg / first.o)}</span> · ${esc(PX.interval)} candles · from ${esc(PX.source)}`;
+    $("pxMeta").innerHTML = `${STOCKS[PX.symbol] ? esc(STOCKS[PX.symbol]) + " · " : ""}${usd(last.c)} <span class="${dir(chg)}">${sgnPct(chg / first.o)}</span> · one bar per ${esc(PX.interval)} · prices from ${esc(PX.source)}`;
     drawCandles(el, B, { vol: true, fmtT: PX.span === "1d" || PX.span === "1w" ? fmtTime : fmtDay,
       aria: `${PX.symbol} price in ${PX.interval} candles, last ${usd(last.c)}` });
   }
@@ -1304,40 +1426,41 @@ main:focus { outline: none; }
     $("posCount").textContent = `${P.length} of ${S.limits.max_open_positions} max`;
     const M = money();
     $("ownSum").innerHTML = `<div><span class="lm">Stocks &amp; funds</span><b>${usd(total)}</b></div>
-      <div><span class="lm">Gain / loss on them</span><b class="${dir(gain)}">${sgnUsd(gain)}</b></div>
+      <div><span class="lm">Profit / loss on them</span><b class="${dir(gain)}">${sgnUsd(gain)}</b></div>
       ${M.held > 1 ? `<div><span class="lm">Waiting inside strategies</span><b>${usd(M.held)}</b></div>` : ""}
       <div><span class="lm">Cash</span><b>${usd(M.cash)}</b></div>
       <div><span class="lm">Account value</span><b>${usd(S.account_summary.equity)}</b></div>`;
     if (!P.length) { $("positions").innerHTML = `<div class="empty-row"><p>You don't own any stocks right now: it's all cash. Invest in a strategy and the bot buys for you.</p><button class="btn" type="button" data-goto="trading">Open Autopilot</button></div>`; return; }
     $("positions").innerHTML = `<table class="tbl"><thead><tr>
-      <th>Stock</th><th>Bought by</th><th class="r">Shares</th><th class="r">Paid (avg)</th><th class="r">Price now</th><th class="r">Worth</th>
-      <th class="r">Gain / loss</th><th>Stop-loss ← price → target</th><th>Sells</th><th>Bought</th><th></th></tr></thead><tbody>${P.map((p) => {
+      <th>Stock</th><th title="The strategy that chose it. Click its name to see how it works.">Why it was bought</th><th class="r">Shares</th><th class="r" title="Average price paid per share">Paid per share</th><th class="r">Price now</th><th class="r">Worth now</th>
+      <th class="r">Profit / loss</th><th title="Red mark: the price where the bot sells to limit the loss. Green mark: the profit target. Dot: the price now.">Auto-sell points</th><th>When it sells</th><th>Bought on</th><th></th></tr></thead><tbody>${P.map((p) => {
         const px = p.last ?? p.avg_cost, stop = p.stop, tgt = p.target ?? p.avg_cost * 1.1;
         const lo = Math.min(stop ?? px, px) , hi = Math.max(tgt, px), f = (v) => ((v - lo) / ((hi - lo) || 1)) * 100;
         const rng = stop == null ? "—" : `<div class="range" title="stop ${usd(stop)} · last ${usd(px)}${p.target ? " · target " + usd(p.target) : ""}">
           <span class="stop" style="left:${f(stop)}%"></span>${p.target ? `<span class="tgt" style="left:${f(p.target)}%"></span>` : ""}
           <span class="pt" style="left:${f(px)}%"></span></div>`;
         const run = p.model ? runOf(p.model) : null;
-        return `<tr><td class="sym big">${esc(p.symbol)}</td>
-          <td>${p.model ? `<button class="linkish who" type="button" data-detail="${esc(p.model)}">${esc(plainOf(p.model).title)}</button>${run ? "" : ` <span class="tag off" title="Not invested: left from before, it still sells on its own rules">leftover</span>`}` : `<span class="lm">you (by hand)</span>`}</td>
+        const why = p.model ? plainOf(p.model.split(",")[0]).tagline || "" : "";
+        return `<tr><td class="sym big">${stockCell(p.symbol)}</td>
+          <td>${p.model ? `<button class="linkish who" type="button" data-detail="${esc(p.model.split(",")[0])}" title="${esc(why)}">${esc(stratNames(p.model))}</button>${run ? "" : ` <span class="tag off" title="You're not invested in this strategy any more. The bot still sells this stock on the strategy's rules.">leftover</span>`}${why ? `<span class="co" style="max-width:260px" title="${esc(why)}">${esc(why)}</span>` : ""}` : `<span class="lm">you bought it by hand</span>`}</td>
           <td class="r">${qty(p.quantity)}</td><td class="r">${usd(p.avg_cost)}</td>
           <td class="r">${p.last == null ? "—" : usd(p.last)}</td><td class="r"><b>${usd(p.market_value)}</b></td>
           <td class="r ${dir(p.pnl)}">${arrow(p.pnl)} ${sgnUsd(p.pnl)} <span style="opacity:.75">${sgnPct(p.pnl_pct)}</span></td>
-          <td>${rng} <span style="color:var(--muted);font-size:11px">${stop == null ? "" : (p.trail ? "trailing stop " : "stop ") + usd(stop)}${p.trail ? ` · ${pct(p.trail, 1)} below high ${usd(p.peak)}` : ""}${p.target ? " · target " + usd(p.target) : ""}</span></td>
-          <td class="lm">${p.exit_at ? fmtTime(p.exit_at) : p.target || stop != null ? "at stop or target" : "when the strategy says"}${p.swings ? ` · held overnight ${p.swings}×` : ""}</td>
+          <td style="white-space:normal;min-width:230px">${rng} <span style="color:var(--muted);font-size:11px">${stop == null ? "" : `sells if it falls to ${usd(stop)}`}${p.trail ? ` (moves up: stays ${pct(p.trail, 1)} below its high of ${usd(p.peak)})` : ""}${p.target ? ` · sells for profit at ${usd(p.target)}` : ""}</span></td>
+          <td class="lm">${p.exit_at ? `by ${fmtTime(p.exit_at)}, or sooner at a sell point` : p.target || stop != null ? "when the price reaches a sell point" : "when its strategy says to"}${p.swings ? ` · kept overnight ${p.swings}× because it was winning` : ""}</td>
           <td>${fmtTime(p.opened_at)}</td>
           <td class="r"><button class="btn sell" data-close="${esc(p.symbol)}" ${canTrade() ? "" : "disabled"}>Sell</button></td></tr>`;
       }).join("")}</tbody></table>`;
     $("positions").querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", () =>
-      sendOrder({ side: "sell", symbol: b.dataset.close }, `SELL all ${b.dataset.close}`)));
+      sendOrder({ side: "sell", symbol: b.dataset.close }, `sell all of ${b.dataset.close}`)));
   }
   function renderWatchlist() {
     const W = S.watchlist;
-    $("wlSrc").textContent = S.market.data_source === "robinhood" ? "robinhood · live" : S.market.data_source;
-    $("watchlist").innerHTML = `<table class="tbl"><thead><tr><th>Symbol</th><th class="r">Bid</th><th class="r">Ask</th><th class="r">Last</th><th class="r">Spread</th></tr></thead><tbody>${
+    $("wlSrc").textContent = S.market.data_source === "robinhood" ? "live prices from Robinhood" : "prices from " + S.market.data_source;
+    $("watchlist").innerHTML = `<table class="tbl"><thead><tr><th>Stock</th><th class="r" title="The most a buyer will pay now (bid): roughly what you'd get if you sold">Sell price</th><th class="r" title="The least a seller will take now (ask): roughly what you'd pay">Buy price</th><th class="r">Last trade</th><th class="r" title="Gap between the buy and sell price. The bot skips stocks where it's too wide.">Gap</th></tr></thead><tbody>${
       W.map((q) => {
         const sp = q.spread_pct, wide = sp != null && sp > S.limits.max_spread_pct;
-        return `<tr><td class="sym">${esc(q.symbol)}</td><td class="r">${q.bid == null ? "—" : usd(q.bid)}</td><td class="r">${q.ask == null ? "—" : usd(q.ask)}</td>
+        return `<tr><td class="sym">${stockCell(q.symbol)}</td><td class="r">${q.bid == null ? "—" : usd(q.bid)}</td><td class="r">${q.ask == null ? "—" : usd(q.ask)}</td>
           <td class="r">${q.last == null ? "—" : usd(q.last)}</td>
           <td class="r" style="color:${wide ? "var(--warn)" : "var(--ink-2)"}">${sp == null ? "—" : (wide ? "△ " : "") + pct(sp, 3)}</td></tr>`;
       }).join("")}</tbody></table>`;
@@ -1345,25 +1468,31 @@ main:focus { outline: none; }
   function renderFills() {
     const F = S.fills;
     $("fillCount").textContent = F.length ? `last ${F.length}` : "";
-    if (!F.length) { $("fills").innerHTML = `<div class="empty" style="height:80px">No paper fills yet.</div>`; return; }
-    $("fills").innerHTML = `<table class="tbl"><thead><tr><th>Time</th><th>Side</th><th>Symbol</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Notional</th></tr></thead><tbody>${
-      F.map((f) => `<tr><td>${fmtTime(f.ts)}</td><td><span class="tag ${f.side}">${esc(f.side[0].toUpperCase() + f.side.slice(1))}</span></td>
-        <td class="sym">${esc(f.symbol)}</td><td class="r">${qty(f.quantity)}</td><td class="r">${usd(f.price)}</td>
-        <td class="r">${usd(f.quantity * f.price)}</td></tr>`).join("")}</tbody></table>`;
+    if (!F.length) { $("fills").innerHTML = `<div class="empty" style="height:80px">No trades yet.</div>`; return; }
+    $("fills").innerHTML = `<table class="tbl"><thead><tr><th>When</th><th></th><th>Stock</th><th class="r">Shares</th><th class="r">Price</th><th class="r">Total</th><th>Why</th><th class="r" title="For a sale: what it made or lost against the price paid">Profit / loss</th></tr></thead><tbody>${
+      F.map((f) => `<tr><td>${fmtTime(f.ts)}</td><td><span class="tag ${f.side}">${f.side === "buy" ? "Bought" : f.side === "sell" ? "Sold" : esc(f.side)}</span></td>
+        <td class="sym">${stockCell(f.symbol)}</td><td class="r">${qty(f.quantity)}</td><td class="r">${usd(f.price)}</td>
+        <td class="r">${usd(f.quantity * f.price)}</td><td class="why" style="white-space:normal">${esc(whyFill(f))}</td>
+        <td class="r ${f.pnl == null ? "" : dir(f.pnl)}">${f.pnl == null ? "—" : `${sgnUsd(f.pnl)} <span style="opacity:.75">${sgnPct(f.pnl_pct, 1)}</span>`}</td></tr>`).join("")}</tbody></table>`;
   }
 
   // ---- limits / strategies / log ---------------------------------------------
   function renderLimits() {
     const L = S.limits, rows = [
-      ["Biggest single position", pct(L.max_position_pct, 0) + " of your money"], ["Most positions at once", L.max_open_positions],
-      ["Paper money the bot can use", usd(L.max_trading_capital, 0)], ["Pauses for the day if down", pct(L.max_daily_loss_pct, 0)],
-      ["Stops everything if down from high", pct(L.max_total_drawdown_pct, 0)], ["Day trades allowed (5 days)", L.pdt_rule ? L.max_day_trades_5d : "No limit"], ["Margin (paper)", L.paper_margin > 1 ? `up to ${L.paper_margin}x equity` : "Cash only"], null,
-      ["Standard stop-loss", "−" + pct(L.default_stop_loss_pct, 0)], ["Widest stop-loss", "−" + pct(L.max_stop_loss_pct, 0)],
-      ["Skips if bid/ask gap over", pct(L.max_spread_pct, 1)], ["AI must be at least", pct(L.min_claude_confidence, 0) + " confident"],
-      ["Skips stocks under", usd(L.min_share_price)], ["Skips if trading volume under", "$" + (L.min_avg_dollar_volume / 1e6).toFixed(0) + "M a day"],
-      ["No new buys in the last", L.no_entries_last_minutes + " min of the day"], null,
-      ["Holds winners overnight if up", pct(L.swing_min_profit_pct, 1) + " (up to " + L.swing_max_days + " times)"],
-      ["Pauses a strategy after", L.model_max_losing_streak ? L.model_max_losing_streak + " losses in a row" : "never"],
+      ["Most in any one stock", pct(L.max_position_pct, 0) + " of your money"], ["Most stocks held at once", L.max_open_positions],
+      ["Practice money the bot can use", usd(L.max_trading_capital, 0)], ["Stops buying for the day if down", pct(L.max_daily_loss_pct, 0)],
+      ["Stops buying if down from its best", pct(L.max_total_drawdown_pct, 0)], ["Same-day buy-and-sells allowed (5 days)", L.pdt_rule ? L.max_day_trades_5d : "No limit"], ["Borrowing (practice money)", L.paper_margin > 1 ? `up to ${L.paper_margin}x your account value` : "None: cash only"], null,
+      ["Usual stop-loss (sells if a stock falls)", "−" + pct(L.default_stop_loss_pct, 0)], ["Largest stop-loss allowed", "−" + pct(L.max_stop_loss_pct, 0)],
+      ["Skips if buy/sell price gap is over", pct(L.max_spread_pct, 1)], ["Claude must be at least", pct(L.min_claude_confidence, 0) + " sure to buy"],
+      ["Skips stocks priced under", usd(L.min_share_price)], ["Skips stocks that trade less than", "$" + (L.min_avg_dollar_volume / 1e6).toFixed(0) + "M a day"],
+      ["No new buys in the last", L.no_entries_last_minutes + " min before the close"], null,
+      ["Keeps winners overnight if up", pct(L.swing_min_profit_pct, 1) + " (up to " + L.swing_max_days + " nights)"],
+      ["Pauses a strategy after", L.model_max_losing_streak ? L.model_max_losing_streak + " losses in a row" : "never"], null,
+      ["Sizes each strategy by its record", L.track_record_sizing ? `${L.track_record_min_mult}x to ${L.track_record_max_mult}x its usual size` : "off"],
+      ["Stops borrowing if down today", L.risk_off_day_loss_pct ? pct(L.risk_off_day_loss_pct, 0) : "never"],
+      ["Stops borrowing if down from its best", L.risk_off_drawdown_pct ? pct(L.risk_off_drawdown_pct, 0) : "never"],
+      ["Stops borrowing when", L.risk_off_trend_days ? `${L.risk_off_trend_symbol} is under its ${L.risk_off_trend_days}-day average` : "never"],
+      ["Most in any one sector", L.max_sector_pct ? pct(L.max_sector_pct, 0) + " of your money (Claude-picked buys)" : "No limit"],
     ];
     $("limits").innerHTML = rows.map((r) => r ? `<dt>${r[0]}</dt><dd>${esc(r[1])}</dd>` : `<div class="divider"></div>`).join("");
   }
@@ -1384,9 +1513,10 @@ main:focus { outline: none; }
     if (logFilter === "fill") rows = rows.filter((r) => r.kind === "fill" || r.kind === "risk");
     else if (logFilter === "reject") rows = rows.filter((r) => r.kind === "reject");
     else if (logFilter === "warn") rows = rows.filter((r) => r.level !== "INFO" && r.level !== "DEBUG");
-    $("log").innerHTML = rows.length ? rows.map((r) => `<div class="row ${r.kind}"><span class="ts">${esc(r.ts.slice(11, 19))}</span>
-      <span class="lv ${esc(r.level)}">${esc(r.level)}</span><span class="msg">${esc(r.msg)}</span></div>`).join("")
-      : `<div class="empty" style="height:80px">No log lines yet. They appear after ctbot-paper runs.</div>`;
+    const LV = { INFO: "info", DEBUG: "detail", WARNING: "warning", ERROR: "error", CRITICAL: "error" };
+    $("log").innerHTML = rows.length ? rows.map((r) => `<div class="row ${r.kind}" title="${esc(r.msg)}"><span class="ts">${esc(r.ts.slice(11, 19))}</span>
+      <span class="lv ${esc(r.level)}">${esc(LV[r.level] || r.level)}</span><span class="msg">${esc(logWords(r.msg))}</span></div>`).join("")
+      : `<div class="empty" style="height:80px">Nothing yet. Lines appear once the bot is running.</div>`;
   }
 
   function ideaStatus(i) {
@@ -1396,20 +1526,20 @@ main:focus { outline: none; }
     }
     return ({
       recommended: `<span class="tag rec">★ RECOMMENDED</span>`,
-      auto_submitted: `<span class="tag on">auto-bought</span>`,
-      rejected: `<span class="tag rej">rejected</span>`,
-      too_close_to_close: `<span class="tag off">near close</span>`,
-      review_budget_used: `<span class="tag off">review budget used</span>`,
-      shadow: `<span class="tag q">shadow · not traded</span>`,
-      shadow_unreviewed: `<span class="tag q">shadow · not reviewed</span>`,
+      auto_submitted: `<span class="tag on">bot bought it</span>`,
+      rejected: `<span class="tag rej">turned down</span>`,
+      too_close_to_close: `<span class="tag off">too close to the close</span>`,
+      review_budget_used: `<span class="tag off">Claude limit used</span>`,
+      shadow: `<span class="tag q">watching only</span>`,
+      shadow_unreviewed: `<span class="tag q">watching only</span>`,
     })[i.status] || `<span class="tag">${esc(i.status)}</span>`;
   }
   const REASON = {  // risk-check codes in words
-    claude_rejected: "Claude said no", spread_too_wide: "the bid/ask gap was too wide", price_below_min: "the share price is too low",
+    claude_rejected: "Claude said no", spread_too_wide: "the gap between the buy and sell price was too wide", price_below_min: "the share price is too low",
     illiquid: "too little trading volume", already_held: "already owned", max_open_positions: "already holding the most positions allowed",
-    daily_loss_limit: "the daily loss limit was hit", max_drawdown_kill: "the account's max drop was hit", kill_switch_active: "the kill switch is on",
+    daily_loss_limit: "the account lost the most allowed today", max_drawdown_kill: "the account fell the most allowed from its best", kill_switch_active: "the emergency stop is on",
     trading_capital_cap: "no paper money left to use", notional_too_small: "the trade would be too small", pdt_guard: "day-trade limit (PDT rule)",
-    pdt_budget_used: "day-trade limit used up", margin_maintenance: "margin maintenance call", earnings_before_exit: "earnings come out before it would sell", no_quote: "no price quote",
+    pdt_budget_used: "day-trade limit used up", margin_maintenance: "too much borrowed money", earnings_before_exit: "earnings come out before it would sell", no_quote: "no price quote",
     bad_quote: "the price quote looked wrong", no_position: "nothing to sell", short_not_allowed_in_cash_account: "short selling isn't allowed",
     model_losing_streak: "this strategy is paused after a losing streak",
   };
@@ -1418,17 +1548,17 @@ main:focus { outline: none; }
   function ideaOutcome(i) {  // [group, label, sentence]
     const d = i.decision, rk = i.risk, long = i.direction === "long", rs = rk ? rk.reasons : [];
     if (i.click && i.click.status === "filled") return ["bought", "You bought", "You bought it from this idea."];
-    if (i.status === "auto_submitted") return ["bought", long ? "Auto-bought" : "Auto-sold", long ? "The bot bought it: every check passed." : "The bot sold it on its exit rule."];
+    if (i.status === "auto_submitted") return ["bought", long ? "Bought" : "Sold", long ? "The bot bought it: the strategy liked it, Claude said yes and every safety check passed." : "The bot sold it because its strategy's sell rule said so."];
     if (i.status === "recommended") return ["rec", "★ Recommended", "Passed every check. Buy it below if you want it."];
-    if (i.status === "shadow") return ["watch", "Watching only", "It passed, but this strategy isn't invested, so nothing was bought."];
-    if (i.status === "shadow_unreviewed") return ["watch", "Watching only", "This strategy isn't invested, so the idea was saved without a paid AI review."];
+    if (i.status === "shadow") return ["watch", "Watching only", "It passed every check, but you aren't invested in this strategy, so nothing was bought."];
+    if (i.status === "shadow_unreviewed") return ["watch", "Watching only", "You aren't invested in this strategy, so the idea was only noted (Claude wasn't asked, to save money)."];
     if (i.status === "too_close_to_close") return ["blocked", "Too late", "Too close to the market close to buy."];
     if (i.status === "review_budget_used") return ["blocked", "Skipped", "Claude's review limit for today was used up."];
-    if ((d && !d.approve) || rs.includes("claude_rejected")) return ["no", "AI said no", d && d.rationale ? d.rationale : "Claude didn't approve it."];
+    if ((d && !d.approve) || rs.includes("claude_rejected")) return ["no", "Claude said no", d && d.rationale ? d.rationale : "Claude didn't approve it."];
     if (rs.length) return ["blocked", "Blocked", `A safety check stopped it: ${rs.map(reasonWords).join("; ")}.`];
     return ["blocked", esc(i.status), ""];
   }
-  const IDEA_GROUPS = [["all", "All"], ["rec", "Recommended"], ["bought", "Bought"], ["no", "AI said no"], ["blocked", "Blocked"], ["watch", "Watching"]];
+  const IDEA_GROUPS = [["all", "All"], ["rec", "Recommended"], ["bought", "Bought"], ["no", "Claude said no"], ["blocked", "Blocked"], ["watch", "Watching"]];
   function renderIdeas() {
     const typed = {};
     $("ideas").querySelectorAll("[data-amt]").forEach((el) => (typed[el.dataset.amt] = el.value));
@@ -1439,40 +1569,40 @@ main:focus { outline: none; }
     const rows = ideaFilter === "all" ? all : all.filter((i) => ideaOutcome(i)[0] === ideaFilter);
     $("ideaCount").textContent = `${all.length} ideas`;
     $("ideaSum").innerHTML = all.length ? `The bot looked at <b>${all.length}</b> ideas: <b>${groups.bought || 0}</b> bought, <b>${groups.rec || 0}</b> recommended to you,
-      <b>${groups.no || 0}</b> turned down by Claude, <b>${groups.blocked || 0}</b> blocked by a safety check, and <b>${groups.watch || 0}</b> from strategies you're only watching.
-      Click a row for the reasons.` : "";
+      <b>${groups.no || 0}</b> turned down by Claude, <b>${groups.blocked || 0}</b> stopped by a safety rule, and <b>${groups.watch || 0}</b> from strategies you're only watching.
+      Click a row to see why.` : "";
     if (!rows.length) {
       $("ideas").innerHTML = `<div class="empty" style="height:90px">${ideaFilter === "rec"
         ? "No recommended trades right now. They appear here when strategies agree, Claude approves and every risk check passes."
         : all.length ? "Nothing in this group. Try All." : "No trade ideas yet. They appear after the paper bot runs a cycle during market hours."}</div>`;
     } else {
-      $("ideas").innerHTML = `<table class="tbl"><thead><tr><th>Time</th><th>Stock</th><th>Idea</th><th>From</th><th>What happened</th>
-        <th title="Claude's verdict and how sure it was">Claude</th><th class="r" title="Dollars of paper money to buy, filled in from the bot's suggested size. Change it, then press Buy.">Paper trade ($)</th></tr></thead><tbody>${rows.map((i) => {
+      $("ideas").innerHTML = `<table class="tbl"><thead><tr><th>When</th><th>Stock</th><th>Idea</th><th>Strategy</th><th>What happened</th>
+        <th title="Claude's answer and how sure it was">Claude said</th><th class="r" title="Dollars of practice money to buy, filled in with the bot's suggested size. Change it, then press Buy.">Buy with practice $</th></tr></thead><tbody>${rows.map((i) => {
         const d = i.decision, rk = i.risk, open = openIdeas.has(i.id), long = i.direction === "long";
         const [g, label, why] = ideaOutcome(i);
         const amt = rk && rk.notional ? rk.notional : d && d.suggested_notional ? Math.min(d.suggested_notional, S.limits.max_trading_capital) : 50;
         const filled = i.click && i.click.status === "filled";
         const claude = d ? `<span class="${d.approve ? "up" : "down"}">${d.approve ? "✓ yes" : "✗ no"} · ${(d.confidence * 100).toFixed(0)}% sure</span>` : `<span class="flat">not asked</span>`;
         const tagc = { rec: "rec", bought: "on", no: "rej", blocked: "sell", watch: "q" }[g] || "";
-        const act = !long ? `<span class="flat" style="font-size:11px">exits run automatically</span>` : filled ? `<span class="up">✓ filled</span>`
+        const act = !long ? `<span class="flat" style="font-size:11px">sells happen on their own</span>` : filled ? `<span class="up">✓ bought</span>`
           : `<span class="act"><span class="usd" aria-hidden="true">$</span><input type="number" min="1" max="${S.limits.max_trading_capital}" step="1" value="${Math.round(amt)}" aria-label="Dollar amount for ${esc(i.symbol)}" data-amt="${esc(i.id)}">
              <button class="btn ${i.status === "recommended" ? "solid" : ""}" data-buy="${esc(i.id)}" data-sym="${esc(i.symbol)}" ${canTrade() ? "" : "disabled"}>Buy</button></span>`;
-        const sig = i.signals.map((s) => `<li><b>${esc(plainOf(s.strategy).title)}</b> said ${esc(s.direction === "long" ? "buy" : s.direction)} (strength ${(s.strength * 100).toFixed(0)}%)
-          <span class="lm">${esc(Object.entries(s.evidence || {}).map(([k, v]) => `${k.replace(/_/g, " ")} ${typeof v === "number" ? +v.toFixed(4) : v}`).join(" · "))}</span></li>`).join("");
+        const sig = i.signals.map((s) => `<li><b>${esc(plainOf(s.strategy).title)}</b> said ${esc(s.direction === "long" ? "buy" : s.direction === "exit" ? "sell" : s.direction)} (${(s.strength * 100).toFixed(0)}% strong)${plainOf(s.strategy).tagline ? `: <span>${esc(plainOf(s.strategy).tagline)}</span>` : ""}
+          <span class="lm">Numbers it used: ${esc(Object.entries(s.evidence || {}).map(([k, v]) => `${k.replace(/_/g, " ")} ${typeof v === "number" ? +v.toFixed(4) : v}`).join(" · "))}</span></li>`).join("");
         return `<tr class="idea ${g === "rec" ? "rec" : ""}" data-idea="${esc(i.id)}" aria-expanded="${open}">
-          <td>${fmtTime(i.ts)}</td><td class="sym">${esc(i.symbol)}</td>
+          <td>${fmtTime(i.ts)}</td><td class="sym">${stockCell(i.symbol)}</td>
           <td><span class="tag ${long ? "buy" : "sell"}">${long ? "Buy" : "Sell"}</span></td>
           <td>${esc(i.strategies.map((n) => plainOf(n).title).join(", "))}</td>
           <td class="what"><span class="tag ${tagc}">${label}</span> <span class="lm">${esc(why.length > 90 ? why.slice(0, 88) + "…" : why)}</span></td>
           <td>${claude}</td><td class="r">${act}</td></tr>
           ${open ? `<tr class="detail"><td colspan="7"><div class="why"><b>${label}.</b> ${esc(why)}</div>
             ${d ? `<div><b>Claude:</b> ${d.approve ? "approved" : "turned it down"}, ${(d.confidence * 100).toFixed(0)}% sure. ${esc(d.rationale || "")}</div>` : `<div><b>Claude:</b> not asked${long ? "" : " (sells don't need a review)"}.</div>`}
-            ${d && d.stop_loss_pct ? `<div>Claude's plan: stop-loss −${pct(d.stop_loss_pct, 1)}${d.take_profit_pct ? ", take profit +" + pct(d.take_profit_pct, 1) : ""}.</div>` : ""}
-            ${rk ? `<div><b>Safety checks:</b> ${rk.allowed ? `all passed${rk.notional ? `, size ${usd(rk.notional)}` : ""}` : rk.reasons.map(reasonWords).join("; ")}.</div>` : ""}
-            ${i.quote ? `<div>Price when the idea came up: bid ${usd(i.quote.bid)} · ask ${usd(i.quote.ask)}.</div>` : ""}
+            ${d && d.stop_loss_pct ? `<div>Claude's plan: sell if it falls ${pct(d.stop_loss_pct, 1)}${d.take_profit_pct ? `, take the profit if it rises ${pct(d.take_profit_pct, 1)}` : ""}.</div>` : ""}
+            ${rk ? `<div><b>Safety checks:</b> ${rk.allowed ? `all passed${rk.notional ? `, buy ${usd(rk.notional)} worth` : ""}` : rk.reasons.map(reasonWords).join("; ")}.</div>` : ""}
+            ${i.quote ? `<div>Price when the idea came up: you could buy at ${usd(i.quote.ask)} or sell at ${usd(i.quote.bid)}.</div>` : ""}
             ${i.click && i.click.reasons.length ? `<div>Your click: ${esc(i.click.reasons.map(reasonWords).join("; "))}.</div>` : ""}
             <div><b>Why it came up:</b></div><ul class="dl">${sig}</ul>
-            <div class="lm">Score ${i.score.toFixed(2)} (how strongly the strategies agreed, −1 to 1).</div></td></tr>` : ""}`;
+            <div class="lm">Agreement score ${i.score.toFixed(2)} (how strongly the strategies agreed, from −1 = sell to 1 = buy).</div></td></tr>` : ""}`;
       }).join("")}</tbody></table>`;
       $("ideas").querySelectorAll("[data-amt]").forEach((el) => {
         if (typed[el.dataset.amt] !== undefined) el.value = typed[el.dataset.amt];
@@ -1485,24 +1615,24 @@ main:focus { outline: none; }
       $("ideas").querySelectorAll("[data-buy]").forEach((b) => b.addEventListener("click", () => {
         const amt = parseFloat($("ideas").querySelector(`[data-amt="${b.dataset.buy}"]`).value);
         if (!(amt >= 1 && amt <= S.limits.max_trading_capital)) return toast(`Amount must be $1–$${S.limits.max_trading_capital}`, true);
-        sendOrder({ side: "buy", symbol: b.dataset.sym, notional: amt, idea_id: b.dataset.buy }, `BUY ${usd(amt)} of ${b.dataset.sym}`);
+        sendOrder({ side: "buy", symbol: b.dataset.sym, notional: amt, idea_id: b.dataset.buy }, `buy ${usd(amt)} of ${b.dataset.sym}`);
       }));
     }
     const C = S.manual_orders.slice(0, 6);
-    $("clicks").innerHTML = C.length ? `<div style="color:var(--muted);font-size:11px;">Your recent clicks</div>` +
+    $("clicks").innerHTML = C.length ? `<div style="color:var(--muted);font-size:11px;">Your recent Buy and Sell clicks</div>` +
       C.map((o) => `<div class="c"><span>${fmtTime(o.ts)}</span><span class="tag ${o.side}">${esc(o.side[0].toUpperCase() + o.side.slice(1))}</span>
         <span class="sym" style="color:var(--ink)">${esc(o.symbol)}</span><span>${o.notional ? usd(o.notional) : "all"}</span>
-        <span>${ideaStatus({ click: o })} ${o.reasons.length ? esc(o.reasons.join(", ")) : ""}</span></div>`).join("") : "";
+        <span>${ideaStatus({ click: o })} ${o.reasons.length ? esc(o.reasons.map(reasonWords).join("; ")) : ""}</span></div>`).join("") : "";
   }
 
   function renderC2() {
     const C = S.collective2 || {}, n = C.counts || {};
     $("c2Meta").textContent = C.ranked_at
-      ? `${n.stocks_only ?? "?"} stock-only · ${n.fresh ?? "?"} fresh · ${n.positive_all_windows ?? "?"} positive 3/6/12m · ${n.pass_filters ?? "?"} pass · ranked ${fmtTime(C.ranked_at)}`
+      ? `${n.stocks_only ?? "?"} trade only stocks · ${n.fresh ?? "?"} recently active · ${n.positive_all_windows ?? "?"} up over 3, 6 and 12 months · ${n.pass_filters ?? "?"} passed every filter · ranked ${fmtTime(C.ranked_at)}`
       : "";
     const rows = c2View === "watch" ? C.watchlist || [] : C.runners_up || [];
     if (!C.ranked_at) {
-      $("c2").innerHTML = `<div class="empty" style="height:90px">No Collective2 ranking yet. Run ctbot-c2-rank, then ctbot-c2-track.</div>`;
+      $("c2").innerHTML = `<div class="empty" style="height:90px">No Collective2 ranking yet. Run ctbot-c2-rank, then ctbot-c2-track, in Terminal.</div>`;
       $("c2Note").textContent = ""; return;
     }
     const p0 = (v) => v == null ? "—" : sgnPct(v, 0);
@@ -1522,47 +1652,86 @@ main:focus { outline: none; }
           <td class="r ${dir(r.edge_after_fees)}">${r.edge_after_fees == null ? "—" : arrow(r.edge_after_fees) + " " + sgnPct(r.edge_after_fees, 1)}</td>` : ""}</tr>`).join("")
       }</tbody></table>` : `<div class="empty" style="height:80px">${c2View === "watch" ? "Watchlist is empty." : "No other strategies passed the filters."}</div>`;
     const since = (C.watchlist || []).map((r) => r.added).filter(Boolean).sort()[0];
-    $("c2Note").innerHTML = `Tracking only: open positions need a paid subscription, so the bot can't copy entries. ` +
-      `"Since added" is out-of-sample${since ? " from " + esc(since) : ""}; fee drag = subscription cost so far ÷ $250; ` +
-      `edge = since added − fee drag − SPY. Updated ${C.tracked_at ? fmtTime(C.tracked_at) : "never"} · run ctbot-c2-track to refresh. ` +
-      `Hypothetical model-account results, live strategies only.`;
+    $("c2Note").innerHTML = `Watching only: seeing their open trades needs a paid subscription, so the bot can't copy their buys. ` +
+      `"Since added" only counts the time after we started watching${since ? " (from " + esc(since) + ")" : ""}, so it isn't hindsight. ` +
+      `Fee cost = the subscription paid so far, as a share of a $250 account. "Beat the S&P after fees?" = since added, minus fee cost, minus the S&P 500. ` +
+      `Updated ${C.tracked_at ? fmtTime(C.tracked_at) : "never"} · run ctbot-c2-track to refresh. These are the traders' own reported results, not real accounts we hold.`;
   }
 
   function renderModels() {
     const M = S.models || [];
     $("modelCount").textContent = M.length ? `${M.reduce((a, m) => a + m.closed, 0)} closed trades` : "";
-    $("models").innerHTML = M.length ? `<table class="tbl"><thead><tr><th>Model</th><th class="r">Closed</th><th class="r">Win rate</th>
-      <th class="r">Avg / trade</th><th class="r">Realized P&amp;L</th><th class="r">Open</th><th class="r">Open P&amp;L</th><th>Exits</th></tr></thead><tbody>${
-      M.map((m) => `<tr><td class="sym">${esc(m.model)} ${m.paused ? `<span class="tag rej">paused today</span>` : m.losing_streak ? `<span style="color:var(--muted);font-size:11px">${m.losing_streak} loss${m.losing_streak > 1 ? "es" : ""} in a row</span>` : ""}</td><td class="r">${m.closed}</td>
+    $("models").innerHTML = M.length ? `<table class="tbl"><thead><tr><th>Strategy</th><th class="r">Trades closed</th><th class="r">Won</th>
+      <th class="r" title="Average gain or loss per closed trade">Avg per trade</th><th class="r" title="Profit or loss from stocks already sold">Profit (sold)</th>
+      <th class="r">Still holding</th><th class="r" title="Profit or loss so far on stocks still held">Profit (holding)</th>
+      <th class="r" title="Next buy size compared with usual, from this strategy's last 30 days of closed trades">Next size</th><th>Why it sold</th></tr></thead><tbody>${
+      M.map((m) => `<tr><td class="sym">${esc(stratNames(m.model))} ${m.paused ? `<span class="tag rej">paused today</span>` : m.losing_streak ? `<span style="color:var(--muted);font-size:11px">${m.losing_streak} loss${m.losing_streak > 1 ? "es" : ""} in a row</span>` : ""}</td><td class="r">${m.closed}</td>
         <td class="r">${m.win_rate == null ? "—" : pct(m.win_rate, 0)}</td>
         <td class="r ${dir(m.avg_ret ?? 0)}">${m.avg_ret == null ? "—" : sgnPct(m.avg_ret, 2)}</td>
         <td class="r ${dir(m.pnl)}">${sgnUsd(m.pnl)}</td><td class="r">${m.open}</td>
         <td class="r ${dir(m.open_pnl)}">${m.open ? sgnUsd(m.open_pnl) : "—"}</td>
-        <td style="color:var(--muted)">${esc(Object.entries(m.exits).map(([k, v]) => k + " " + v).join(" · "))}</td></tr>`).join("")
-      }</tbody></table>` : `<div class="empty" style="height:80px">No model trades yet. Each paper fill is tagged with the model that produced it.</div>`;
+        <td class="r ${m.size_mult < 1 ? "down" : m.size_mult > 1 ? "up" : ""}">${m.size_mult == null ? "—" : (+m.size_mult).toFixed(2) + "x"}</td>
+        <td style="color:var(--muted)">${esc(Object.entries(m.exits).map(([k, v]) => `${exitWord(k)} ×${v}`).join(" · "))}</td></tr>`).join("")
+      }</tbody></table>` : `<div class="empty" style="height:80px">No trades yet. Each practice trade is labeled with the strategy that picked it.</div>`;
+  }
+
+  function renderThoughts() {
+    const T = S.thoughts || [];
+    const KIND = { trade: ["buy", "Before a buy"], idea: ["rec", "Waiting for you"], market: ["", "Market"],
+      caution: ["q", "Careful"], choice: ["on", "Choosing"] };
+    const ago = (iso) => { const m = Math.round((Date.now() - new Date(iso)) / 60000);
+      return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : fmtTime(iso); };
+    $("bubCount").textContent = T.length ? `latest ${ago(T[0].ts)}` : "";
+    $("thoughts").innerHTML = T.length ? T.map((t, i) => {
+      const [cls, word] = KIND[t.kind] || ["", "Thought"];
+      const text = String(t.text || "").replace("{models}", stratNames((t.models || []).join(",")));
+      const fresh = i === 0 && Date.now() - new Date(t.ts) < 3600e3;
+      return `<li class="thought${fresh ? " new" : ""}"><span class="tag ${cls}">${esc(word)}</span><span>${esc(text)}</span><time datetime="${esc(t.ts)}" title="${esc(fmtTime(t.ts))}">${esc(ago(t.ts))}</time></li>`;
+    }).join("") : `<li class="empty" style="height:64px">Nothing worth saying yet. Bub speaks up when the market turns, a limit gets close, or right before a buy.</li>`;
+  }
+
+  function renderPostmortems() {
+    const T = S.trade_log || [];
+    $("postCount").textContent = T.length ? `${T.length} trade${T.length === 1 ? "" : "s"}` : "";
+    const why = (c) => !c ? "Bought before this log started" : [
+      c.confidence != null ? `Claude ${pct(c.confidence, 0)} sure` : null,
+      c.size_mult != null && c.size_mult !== 1 ? `${(+c.size_mult).toFixed(2)}x size` : null,
+      c.stock_day_move != null ? `stock ${sgnPct(c.stock_day_move, 1)} that day` : null,
+      c.market_vs_trend != null ? `market ${c.market_vs_trend < 0 ? "under" : "over"} its trend` : null,
+      (c.pulled_back || []).length ? "bought while playing it safe" : null,
+    ].filter(Boolean).join(" · ");
+    $("postmortems").innerHTML = T.length ? `<table class="tbl"><thead><tr><th>Sold</th><th>Stock</th><th>Strategy</th><th class="r">Result</th>
+      <th class="r" title="Most it was up while held">Best</th><th class="r" title="Most it was down while held">Worst</th><th>How it ended</th><th>Why it was bought</th></tr></thead><tbody>${
+      T.map((t) => `<tr><td>${fmtTime(t.closed_at)}</td><td class="sym">${esc(t.symbol)}</td><td>${esc(stratNames((t.models || []).join(",")))}</td>
+        <td class="r ${dir(t.pnl)}">${sgnUsd(t.pnl)} <span style="color:var(--muted)">${sgnPct(t.ret, 1)}</span></td>
+        <td class="r">${sgnPct(t.max_up, 1)}</td><td class="r">${sgnPct(t.max_down, 1)}</td>
+        <td>${esc(exitWord(t.exit_reason || "?"))}${t.note ? ` <span class="tag rej">${esc(t.note)}</span>` : ""}</td>
+        <td style="color:var(--muted)">${esc(why(t.context))}</td></tr>`).join("")
+      }</tbody></table>` : `<div class="empty" style="height:80px">No sold trades logged yet. From now on each sale is written here with why it was bought.</div>`;
   }
 
   function renderFilterScore() {
     const I = S.idea_scores || {}, sm = I.summary || {};
     const models = Object.keys(sm).filter((m) => m !== "all").sort();
     if (!I.generated_at || !models.length) {
-      $("filterScore").innerHTML = `<div style="color:var(--muted);font-size:12px">Claude filter scorecard: after the close, every reviewed idea (approved or rejected) is replayed on real bars. Nothing scored yet.</div>`;
+      $("filterScore").innerHTML = `<div style="color:var(--muted);font-size:12px">Did Claude choose well? After the market closes, every idea Claude said yes or no to is checked against what the price really did. Nothing checked yet.</div>`;
       return;
     }
-    const cell = (x) => !x || x.avg_bps == null ? "—" : `<span class="${dir(x.avg_bps)}">${x.avg_bps >= 0 ? "+" : "−"}${Math.abs(x.avg_bps).toFixed(1)} bps</span> <span style="color:var(--muted)">n=${x.n} · win ${pct(x.win_rate, 0)}</span>`;
-    $("filterScore").innerHTML = `<div style="color:var(--muted);font-size:12.5px"><b style="color:var(--ink-2)">Claude filter</b> · every reviewed idea replayed on real bars · ${I.scored} scored, ${I.pending} pending</div>
-      <table class="tbl"><thead><tr><th>Model</th><th>Claude approved</th><th>Claude rejected</th></tr></thead><tbody>${
-      ["all", ...models].map((m) => `<tr><td class="sym">${esc(m)}</td><td>${cell(sm[m].approved)}</td><td>${cell(sm[m].rejected)}</td></tr>`).join("")
+    // avg_bps is basis points: 100 bps = 1%
+    const cell = (x) => !x || x.avg_bps == null ? "—" : `<span class="${dir(x.avg_bps)}">${x.avg_bps >= 0 ? "+" : "−"}${Math.abs(x.avg_bps / 100).toFixed(2)}% avg</span> <span style="color:var(--muted)">${x.n} idea${x.n === 1 ? "" : "s"} · ${pct(x.win_rate, 0)} made money</span>`;
+    $("filterScore").innerHTML = `<div style="color:var(--muted);font-size:12.5px"><b style="color:var(--ink-2)">Did Claude choose well?</b> · each idea Claude said yes or no to, checked against what the price really did · ${I.scored} checked, ${I.pending} waiting for prices</div>
+      <table class="tbl"><thead><tr><th>Strategy</th><th>Ideas Claude said yes to</th><th>Ideas Claude said no to</th></tr></thead><tbody>${
+      ["all", ...models].map((m) => `<tr><td class="sym">${esc(m === "all" ? "All strategies" : stratNames(m))}</td><td>${cell(sm[m].approved)}</td><td>${cell(sm[m].rejected)}</td></tr>`).join("")
     }</tbody></table>`;
   }
 
   function renderLab() {
     const R = S.research || {}, L = R.lab || {}, rows = L.rows || [];
-    $("labMeta").textContent = L.generated_at ? `ranked by 2020-26 Sharpe · cash yield ${pct(L.cash_apy || 0, 1)} · ${fmtTime(L.generated_at)}` : "";
-    if (!rows.length) { $("lab").innerHTML = `<div class="empty" style="height:80px">No lab results yet. Run ctbot-lab --cash-apy 0.035.</div>`; return; }
+    $("labMeta").textContent = L.generated_at ? `smoothest 2020-26 results first · cash earns ${pct(L.cash_apy || 0, 1)} a year · ${fmtTime(L.generated_at)}` : "";
+    if (!rows.length) { $("lab").innerHTML = `<div class="empty" style="height:80px">No test results yet. Run ctbot-lab --cash-apy 0.035 in Terminal.</div>`; return; }
     const reports = new Set(R.reports || []);
     const p0 = (v) => v == null ? "—" : sgnPct(v, 1);
-    $("lab").innerHTML = `<table class="tbl"><thead><tr><th title="Show on the growth chart">Chart</th><th>Test</th><th>2010-26</th>
+    $("lab").innerHTML = `<table class="tbl"><thead><tr><th title="Show on the growth chart">Chart</th><th>Idea</th><th>2010-26</th>
       <th class="r" title="Average yearly return, 2020-26 (the unseen years)">Yearly return</th><th class="r" title="Biggest fall from a high, 2020-26">Worst drop</th>
       <th class="r" title="Worst calendar year, 2020-26">Worst year</th>
       <th class="r" title="Sharpe ratio: return per unit of bumpiness. Above 1 is smooth, under 0.5 is rough">Smoothness</th>
@@ -1570,15 +1739,15 @@ main:focus { outline: none; }
       rows.map((r) => { const o = r.out_of_sample, live = r.strategy.startsWith("LIVE"), on = cmpSel.includes(r.strategy);
         return `<tr class="clk ${on ? "pick" : ""}" data-lab="${esc(r.strategy)}" tabindex="0"${live ? ' style="background:rgba(61,255,143,.05)"' : ""}>
         <td><input type="checkbox" data-cmp="${esc(r.strategy)}" ${on ? "checked" : ""} aria-label="Show ${esc(r.strategy)} on the growth chart"></td>
-        <td class="sym">${esc(r.strategy)}</td><td>${spark(r.curve)}</td>
+        <td class="sym" title="${esc(r.strategy)}">${esc(testName(r.strategy))}</td><td>${spark(r.curve)}</td>
         <td class="r ${dir(o.cagr)}">${p0(o.cagr)}</td><td class="r down">${p0(o.max_dd)}</td><td class="r ${dir(o.worst_year)}">${p0(o.worst_year)}</td>
         <td class="r">${(o.sharpe ?? 0).toFixed(2)}</td><td class="r">${pct(o.exposure, 0)}</td>
         <td class="r"><span class="more">Details →</span></td></tr>`; }).join("")
     }</tbody></table>`;
     const sw = R.sweep || {};
-    $("labNote").innerHTML = (sw.symbol ? `Trend sweep (${esc(sw.symbol)}): length chosen on 2010-19 = ${sw.chosen_in_sample}d, its 2020-26 Sharpe ${(sw.oos_sharpe_of_chosen || 0).toFixed(2)}; median across all lengths ${(sw.oos_sharpe_median || 0).toFixed(2)} (a broad plateau = robust). ` : "") +
+    $("labNote").innerHTML = (sw.symbol ? `Average-length test (${esc(sw.symbol)}): 2010-19 picked a ${sw.chosen_in_sample}-day average; on 2020-26 it scored ${(sw.oos_sharpe_of_chosen || 0).toFixed(2)} for smoothness, and the typical length scored ${(sw.oos_sharpe_median || 0).toFixed(2)} (close numbers mean the exact choice doesn't matter much, which is good). ` : "") +
       (reports.has("paper_book.html") ? `<a href="/reports/paper_book.html" target="_blank" rel="noopener" style="color:var(--neon)">Paper book tearsheet ↗</a> · ` : "") +
-      `Daily closes, dividends excluded, costs included. LIVE rows mirror what the bot runs now. Up to 6 lines on the chart.`;
+      `Uses each day's closing price, includes trading costs, leaves out dividends. "What the bot runs now" rows match the bot's real setup. Up to 6 lines on the chart.`;
   }
 
   function renderCatalog() {
@@ -1588,10 +1757,10 @@ main:focus { outline: none; }
     const rank = (s) => runOf(s.name) ? 0 : apOf[s.name] && apOf[s.name].status === "trading" ? 1 : s.enabled ? 2 : 9;
     const list = strats.slice().sort((a, b) => rank(a) - rank(b));
     $("catMeta").textContent = A.enabled
-      ? `${A.models.filter((m) => m.status === "trading").length} trading · ${A.models.filter((m) => m.status !== "trading").length} benched`
+      ? `${A.models.filter((m) => m.status === "trading").length} trading · ${A.models.filter((m) => m.status !== "trading").length} benched (not allowed to trade)`
       : `${strats.filter((s) => runOf(s.name)).length} invested · ${strats.filter((s) => !runOf(s.name)).length} watching`;
     $("catalog").innerHTML = `<table class="tbl lib"><thead><tr><th>Strategy</th><th>Status</th><th>Why</th>
-      <th class="r" title="Simulated over the past year">Past year</th><th class="r">Paper trades</th><th class="r">Profit / loss</th></tr></thead><tbody>${list.map((s) => {
+      <th class="r" title="How it would have done over the past year (simulation)">Past year (simulated)</th><th class="r">Practice trades</th><th class="r">Profit / loss</th></tr></thead><tbody>${list.map((s) => {
       const P = s.plain || {}, m = models[s.name], run = runOf(s.name), ap = apOf[s.name], yr = ((s.performance || {}).windows || {})["1Y"];
       const badge = !s.enabled ? `<span class="tag off">Off</span>`
         : A.enabled && ap ? `<span class="tag ${ap.status === "trading" ? "on" : "rej"}">${ap.status === "trading" ? "Trading" : "Benched"}</span>`
@@ -1763,8 +1932,8 @@ main:focus { outline: none; }
     const reports = new Set((S.research || {}).reports || []), slug = "lab_" + r.strategy.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") + ".html";
     const sharpeWord = (v) => v == null ? "" : v >= 1 ? " (smooth)" : v >= 0.5 ? " (bumpy)" : " (rough)";
     const chance = (v) => v == null ? "—" : `${Math.round(v * 100)}%`;
-    return `${r.strategy.startsWith("LIVE") ? `<p class="dstat"><span class="tag on">LIVE</span> <span class="lm">This test mirrors what the bot runs now.</span></p>` : ""}
-      ${bigChart(r.curve, qqq && qqq !== r ? qqq.curve : null, 0, `growth of $5,000${qqq && qqq !== r ? " vs just holding QQQ (dashed)" : ""}, log scale`)}
+    return `${r.strategy.startsWith("LIVE") ? `<p class="dstat"><span class="tag on">Runs now</span> <span class="lm">This test matches what the bot really runs.</span></p>` : ""}
+      ${bigChart(r.curve, qqq && qqq !== r ? qqq.curve : null, 0, `growth of $5,000${qqq && qqq !== r ? " vs just holding the Nasdaq-100 (dashed)" : ""}`)}
       <div class="isec">2020-2026: the test it never saw while being designed</div>
       ${kv([["Yearly return", `<span class="${dir(o.cagr)}">${sgnPct(o.cagr, 1)}</span>`], ["Worst drop from a high", pct(o.max_dd, 0)],
         ["Worst calendar year", `<span class="${dir(o.worst_year)}">${sgnPct(o.worst_year, 1)}</span>`],
@@ -1772,7 +1941,7 @@ main:focus { outline: none; }
       <div class="isec">2010-2019: the years used to design it</div>
       ${kv([["Yearly return", `<span class="${dir(i.cagr)}">${sgnPct(i.cagr, 1)}</span>`], ["Smoothness (Sharpe)", (i.sharpe ?? 0).toFixed(2) + sharpeWord(i.sharpe)]])}
       <div class="isec">Could it be luck?</div>
-      ${kv([["Chance the result is real, not luck", chance(dsr)], ["Chance it truly beats holding QQQ", chance(vq)]])}
+      ${kv([["Chance the result is real, not luck", chance(dsr)], ["Chance it truly beats just holding the Nasdaq-100", chance(vq)]])}
       <p class="note">If the 2020-26 numbers are close to the 2010-19 ones, the idea held up on new data. Many variations were tried, so the "luck" check discounts the best one; 95%+ is strong.</p>
       ${reports.has(slug) ? `<p><a href="/reports/${slug}" target="_blank" rel="noopener" class="ext">Full tearsheet ↗</a></p>` : ""}`;
   }
@@ -1807,7 +1976,7 @@ main:focus { outline: none; }
     if (!r) return;
     const inv = Object.keys(LAB_FOR).find((k) => LAB_FOR[k] === name && stratOf(k).enabled);
     const picked = cmpSel.includes(name);
-    showSheet({ title: name, tag: inv ? `The tested version of ${plainOf(inv).title}.` : "A research test. You can't invest in it directly; it's here to compare ideas.",
+    showSheet({ title: testName(name), tag: inv ? `The tested version of ${plainOf(inv).title}.` : "A research test. You can't invest in it directly; it's here to compare ideas.",
       body: labBody(r), invest: inv,
       extra: `<button class="btn" type="button" data-cmp="${esc(name)}">${picked ? "Remove from" : "Add to"} the compare chart</button>` });
   }
@@ -1905,22 +2074,22 @@ main:focus { outline: none; }
       ${series.map((s, k) => { const p = s[s.length - 1]; return `<circle cx="${x(p[0])}" cy="${y(p[1])}" r="4" fill="${COLORS[k]}" stroke="var(--bg)" stroke-width="2"/>`; }).join("")}
     </svg>`;
     $("cmpLegend").innerHTML = sel.map((n, k) => { const c = rows[n].curve, v = c[c.length - 1][1], o = rows[n].out_of_sample;
-      return `<span><i style="background:${COLORS[k]}"></i>${esc(n)} · <b style="color:var(--ink)">${usd(v, 0)}</b> · DD ${pct(o.max_dd, 0)} (20-26)</span>`; }).join("");
+      return `<span><i style="background:${COLORS[k]}"></i>${esc(testName(n))} · <b style="color:var(--ink)">${usd(v, 0)}</b> · worst drop ${pct(o.max_dd, 0)} (2020-26)</span>`; }).join("");
   }
   function renderStressWF() {
     const L = (S.research || {}).lab || {}, st = L.stress || {}, wf = L.walk_forward || {};
     $("stress").innerHTML = Object.keys(st).length ? Object.entries(st).map(([w, rows]) => `<div class="sec" style="margin:6px 0">${esc(w)}</div>
       <table class="tbl"><thead><tr><th>Test</th><th class="r">Yearly return</th><th class="r">Worst drop</th><th class="r" title="Sharpe: above 1 is smooth">Smoothness</th><th class="r">$5,000 became</th></tr></thead><tbody>${
-      rows.map((r) => `<tr><td class="sym">${esc(r.strategy)}</td><td class="r ${dir(r.cagr)}">${sgnPct(r.cagr, 1)}</td>
+      rows.map((r) => `<tr><td class="sym" title="${esc(r.strategy)}">${esc(testName(r.strategy))}</td><td class="r ${dir(r.cagr)}">${sgnPct(r.cagr, 1)}</td>
         <td class="r" style="color:${r.max_dd <= -0.6 ? "var(--crit)" : "var(--ink-2)"}">${r.max_dd <= -0.6 ? "△ " : ""}${pct(r.max_dd, 0)}</td>
         <td class="r">${(r.sharpe || 0).toFixed(2)}</td><td class="r">${usd(r.growth_of_5000, 0)}</td></tr>`).join("")}</tbody></table>`).join("")
-      : `<div class="empty" style="height:80px">Run ctbot-lab to populate.</div>`;
+      : `<div class="empty" style="height:80px">No results yet. Run ctbot-lab in Terminal to create them.</div>`;
     const wfe = Object.entries(wf);
     $("wf").innerHTML = wfe.length ? `<table class="tbl"><thead><tr><th>Idea</th><th class="r">Yearly return</th><th class="r">Worst drop</th><th class="r" title="Sharpe: above 1 is smooth">Smoothness</th><th>Trend length it picked each year (days)</th></tr></thead><tbody>${
-      wfe.map(([n, w]) => `<tr><td class="sym">${esc(n)}</td><td class="r ${dir(w.cagr)}">${sgnPct(w.cagr, 1)}</td><td class="r down">${pct(w.max_dd, 0)}</td>
+      wfe.map(([n, w]) => `<tr><td class="sym" title="${esc(n)}">${esc(testName(n))}</td><td class="r ${dir(w.cagr)}">${sgnPct(w.cagr, 1)}</td><td class="r down">${pct(w.max_dd, 0)}</td>
         <td class="r">${(w.sharpe || 0).toFixed(2)}</td><td style="white-space:normal;color:var(--ink-2)">${Object.entries(w.picks).map(([yy, p]) => `${yy}:${p}`).join(" ")}</td></tr>`).join("")
       }</tbody></table><div style="color:var(--muted);font-size:12px;margin-top:8px">${esc(wfe[0][1].from)} → ${esc(wfe[0][1].to)} · each year used the trend length that did best over the 5 years before it.</div>`
-      : `<div class="empty" style="height:80px">Run ctbot-lab to populate.</div>`;
+      : `<div class="empty" style="height:80px">No results yet. Run ctbot-lab in Terminal to create them.</div>`;
   }
 
   let apDirty = false;  // don't overwrite the form while you're editing it
@@ -1935,11 +2104,11 @@ main:focus { outline: none; }
     const recent = (S.ideas || []).slice(0, 12);  // S.ideas is newest first
     const TAGC = { rec: "rec", bought: "on", no: "rej", blocked: "sell", watch: "q" };
     $("apDecisions").innerHTML = recent.length ? `<table class="tbl lib apdec"><colgroup><col class="c-when"><col class="c-sym"><col class="c-from"><col class="c-out"><col></colgroup>
-      <thead><tr><th>When</th><th>Stock</th><th>From</th><th>Outcome</th><th>Why</th></tr></thead><tbody>${
+      <thead><tr><th>When</th><th>Stock</th><th>Strategy</th><th>What happened</th><th>Why</th></tr></thead><tbody>${
       recent.map((i) => {
         const names = (i.strategies || []).map((n) => plainOf(n).title), [g, label, why] = ideaOutcome(i);
         const from = names.length > 1 ? `${esc(names[0])} <span class="more">+${names.length - 1} more</span>` : esc(names[0] || "");
-        return `<tr class="clk" title="Click to show all of it"><td>${fmtTime(i.ts)}</td><td class="sym">${esc(i.symbol)}</td>
+        return `<tr class="clk" title="Click to show all of it"><td>${fmtTime(i.ts)}</td><td class="sym" title="${esc(STOCKS[i.symbol] || "")}">${esc(i.symbol)}</td>
         <td class="why" title="${esc(names.join(", "))}"><span class="short">${from}</span><span class="full">${esc(names.join(", "))}</span></td>
         <td><span class="tag ${TAGC[g] || ""}">${label}</span></td>
         <td class="why" title="${esc(why)}">${esc(why)}</td></tr>`;
@@ -1953,10 +2122,18 @@ main:focus { outline: none; }
     if (V.length < 2) return;
     const since = V.map((v) => v.since).filter(Boolean).sort()[0];
     $("varMeta").textContent = `${V.length} accounts${since ? ` · since ${fmtTime(since)}` : ""}`;
+    const ENV_WORDS = {
+      CLAUDE_MODEL: (x) => `Claude ${String(x).replace(/^claude-/, "").replace(/-(\d+)-(\d+)$/, " $1.$2").replace(/^\w/, (c) => c.toUpperCase())}`,
+      MAX_CLAUDE_USD_PER_DAY: (x) => `Claude budget $${x}/day`,
+      MAX_CANDIDATES_PER_CYCLE: (x) => `reviews ${x} ideas each round`,
+      MAX_OPEN_POSITIONS: (x) => `up to ${x} stocks at once`,
+      MAX_POSITION_PCT: (x) => `up to ${pct(+x, 0)} in one stock`,
+    };
     const extra = (v) => Object.entries(v.env || {}).filter(([k]) => k !== "CLAUDE_MODEL" || v.name !== "main")
-      .map(([k, x]) => `${k.toLowerCase().replaceAll("_", " ")} ${x}`).join(" · ");
+      .map(([k, x]) => ENV_WORDS[k] ? ENV_WORDS[k](x) : `${k.toLowerCase().replaceAll("_", " ")} ${x}`).join(" · ");
     $("variants").innerHTML = `<table class="tbl lib"><thead><tr><th>Account</th><th class="r">Value</th><th class="r">Return</th>
-      <th class="r">Worst drop</th><th class="r">Trades</th><th class="r">Won</th><th class="r">Open</th><th>Max loss · trail · Claude floor</th></tr></thead><tbody>${
+      <th class="r" title="Biggest fall from a high point">Worst drop</th><th class="r" title="Trades closed">Trades</th><th class="r">Won</th><th class="r" title="Stocks held now">Holding</th>
+      <th title="Max loss before selling · how far the trailing stop sits below the high · how sure Claude must be to buy">Settings: stop-loss · trail · how sure Claude must be</th></tr></thead><tbody>${
       V.map((v) => `<tr><td class="sym">${esc(v.title)}</td><td class="r">${usd(v.equity, 0)}</td>
         <td class="r ${dir(v.return)}">${sgnPct(v.return, 1)}</td><td class="r">${pct(v.max_dd, 1)}</td><td class="r">${v.trades}</td>
         <td class="r">${v.win_rate == null ? "–" : pct(v.win_rate, 0)}</td><td class="r">${v.open}</td>
@@ -1976,7 +2153,7 @@ main:focus { outline: none; }
   });
   function renderAll() {
     renderChrome(); renderAutopilot(); renderVariants(); renderKpis(); renderIdeas(); renderChart(); renderLimits(); renderPositions();
-    renderWatchlist(); renderFills(); renderStrategies(); renderLog(); renderC2(); renderModels(); renderFilterScore(); renderLab();
+    renderWatchlist(); renderFills(); renderStrategies(); renderLog(); renderC2(); renderModels(); renderPostmortems(); renderThoughts(); renderFilterScore(); renderLab();
     renderRuns(); renderCatalog(); renderCompare(); renderStressWF(); renderSteps();
     loadPx();
     applySorts();
@@ -2212,6 +2389,10 @@ main:focus { outline: none; }
     if (layout.cards) layout.cards = ["posCount", ...layout.cards.filter((k) => k !== "posCount")];
     closed.delete("posCount"); mini.delete("posCount"); writeJSON(CLOSED, [...closed]); writeJSON(MINI, [...mini]);
     layout.ownFirst = true; writeJSON(LAYOUT, layout);
+  }
+  if (!layout.thoughtsNearTop) {  // once: "Bubs Thoughts" goes right under "What you own"
+    if (layout.cards) layout.cards = layout.cards.filter((k) => k !== "bubCount").flatMap((k) => k === "posCount" ? [k, "bubCount"] : [k]);
+    layout.thoughtsNearTop = true; writeJSON(LAYOUT, layout);
   }
   cardsOf($("cards")).forEach((c) => { const inner = c.querySelector("[id]"); c.dataset.card = inner ? inner.id : ""; decorate(c); });
   restoreOrder($("cards"));

@@ -170,7 +170,9 @@ class PaperBroker:
                 {**asdict(f), "side": f.side.value, "ts": f.ts.isoformat()} for f in self._fills
             ],
         }
-        self.ledger_path.write_text(json.dumps(data, indent=2))
+        tmp = self.ledger_path.with_suffix(".tmp")  # a crash mid-write must not leave a half ledger
+        tmp.write_text(json.dumps(data, indent=2))
+        tmp.replace(self.ledger_path)
 
     def _load(self) -> None:
         if not self.ledger_path.exists():

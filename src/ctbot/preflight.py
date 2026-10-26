@@ -51,7 +51,7 @@ def run_checks(settings) -> list[dict[str, Any]]:
             last = q["data"]["results"][0]["quote"]["last_trade_price"]
             add("robinhood sign-in", True, f"SPY last {float(last):.2f}")
         except Exception as e:  # noqa: BLE001
-            add("robinhood sign-in", False, f"{type(e).__name__}: {e} -> run ctbot-robinhood-login")
+            add("robinhood sign-in", False, f"{type(e).__name__}: {e} -> run .venv/bin/ctbot-robinhood-login")
     from ctbot.market_data.tradingflow_client import TradingFlowClient
 
     tf = TradingFlowClient()

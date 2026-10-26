@@ -103,7 +103,7 @@ risk state for restarts.
 | Shadow ideas | $0 by default | were paid reviews before this change |
 | Ranker, factors, research tools | $0 | local CPU; a full `ctbot-rank-research` run takes about a minute |
 | Market data | $0 | Robinhood read-only with your account; TradingFlow / Marketaux / Webull optional keys |
-| Infrastructure | $0 | your Mac; no new services or subscriptions |
+| Infrastructure | ~$7/month | the Hetzner server (docs/CLOUD_HOSTING.md); Tailscale, Healthchecks.io and ntfy free tiers. $0 on your own Mac |
 
 Measured spend: `python -c "from ctbot.llm_costs import summary; from pathlib import Path; print(summary(Path('data/llm_usage.jsonl')))"`.
 The review estimate above is not measured yet; the log replaces it after a few trading days.

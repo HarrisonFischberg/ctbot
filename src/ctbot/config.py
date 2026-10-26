@@ -65,6 +65,33 @@ class RiskLimits:
     swing_max_days: int = 2               # extra sessions a winner may be held (0 disables)
     model_max_losing_streak: int = 3      # pause a model for the day after this many losses in a row
     max_quote_age_s: float = 120.0        # entries refuse a quote older than this (stale data)
+    # Track-record sizing (ctbot.track_record): a strategy's reviewed entries are scaled by its
+    # recent closed trades, pulled toward "no edge" by this many imaginary flat trades.
+    track_record_sizing: bool = True
+    track_record_prior_trades: int = 10
+    track_record_min_mult: float = 0.25
+    track_record_max_mult: float = 1.25
+    # Pull back after losses (ctbot.risk_mode): while the day is down this much, the account is
+    # this far below its best, or the trend symbol trades under its N-day average, buys may not
+    # borrow (paper margin acts as 1x). 0 turns a trigger off.
+    risk_off_day_loss_pct: float = 0.03
+    risk_off_drawdown_pct: float = 0.05
+    risk_off_trend_symbol: str = "QQQ"
+    risk_off_trend_days: int = 50
+    max_sector_pct: float = 0.40          # reviewed entries stop adding to a sector above this share of equity
+    # Day-trader pack checks (github.com/Jakeschincariol/day-trader-skill: trader-exit, -budget,
+    # -risk). 0 / "" turns a check off; only the too-tight stop is on by default.
+    min_stop_distance_pct: float = 0.0005 # a model's stop this close to its entry is refused (spread noise)
+    min_reward_risk: float = 0.0          # a model's (target - entry) / (entry - stop) must reach this
+    max_loss_per_trade_pct: float = 0.0   # size reviewed entries so the loss at the stop is at most this
+    max_open_risk_pct: float = 0.0        # loss at every open stop plus this entry's, as a share of equity
+    max_entries_per_day: int = 0          # new positions per trading day
+    no_entries_before: str = ""           # "HH:MM" ET: no new entries before this (e.g. "09:45")
+    # Trading-skill rules (SKE-Labs/agent-trading-skills: partial-profit-taking, vwap-trading,
+    # market-regime-detection). Off by default.
+    partial_profit_r: float = 0.0         # sell half once the bid is this many R above the entry (0 = off)
+    vwap_entry_gate: bool = False         # same-day plans buy only above today's session VWAP
+    regime_gate: bool = False             # no Claude-reviewed entries while SPY's regime is "bear"
 
 
 
@@ -87,6 +114,7 @@ class Settings:
     review_shadow_ideas: bool = False     # pay for Claude reviews of ideas from shadow-only models
     review_outcome_memory: bool = True    # show the reviewer each model's settled paper results (no LLM)
     review_debate: bool = False           # two extra short calls (case for / against) before the verdict
+    review_replay_odds: bool = True       # time-machine odds for intraday plans in reviews (no LLM)
     starting_capital: float = 250.0
     risk: RiskLimits = RiskLimits()
     ensemble: EnsembleParams = EnsembleParams()
@@ -136,6 +164,16 @@ class Settings:
     def journal_path(self) -> Path:
         """Decision journal: snapshot -> strategy results -> proposed order -> outcome (ctbot.contracts)."""
         return self.paper_ledger_path.with_name("journal.jsonl")
+
+    @property
+    def trade_log_path(self) -> Path:
+        """Trade post-mortems: why each trade was taken and how it ended (ctbot.trade_log)."""
+        return self.paper_ledger_path.with_name("trade_log.jsonl")
+
+    @property
+    def thoughts_path(self) -> Path:
+        """Bub's thoughts: notes on the market and on choices, shown on the Home tab (ctbot.thoughts)."""
+        return self.paper_ledger_path.with_name("bub_thoughts.jsonl")
 
     @property
     def halt_path(self) -> Path:
@@ -208,6 +246,24 @@ class Settings:
             swing_max_days=_int(env, "SWING_MAX_DAYS", 2),
             model_max_losing_streak=_int(env, "MODEL_MAX_LOSING_STREAK", 3),
             max_quote_age_s=_float(env, "MAX_QUOTE_AGE_S", 120.0),
+            track_record_sizing=_bool(env, "TRACK_RECORD_SIZING", True),
+            track_record_prior_trades=_int(env, "TRACK_RECORD_PRIOR_TRADES", 10),
+            track_record_min_mult=_float(env, "TRACK_RECORD_MIN_MULT", 0.25),
+            track_record_max_mult=_float(env, "TRACK_RECORD_MAX_MULT", 1.25),
+            risk_off_day_loss_pct=_float(env, "RISK_OFF_DAY_LOSS_PCT", 0.03),
+            risk_off_drawdown_pct=_float(env, "RISK_OFF_DRAWDOWN_PCT", 0.05),
+            risk_off_trend_symbol=env.get("RISK_OFF_TREND_SYMBOL", "QQQ").strip().upper(),
+            risk_off_trend_days=_int(env, "RISK_OFF_TREND_DAYS", 50),
+            max_sector_pct=_float(env, "MAX_SECTOR_PCT", 0.40),
+            min_stop_distance_pct=_float(env, "MIN_STOP_DISTANCE_PCT", 0.0005),
+            min_reward_risk=_float(env, "MIN_REWARD_RISK", 0.0),
+            max_loss_per_trade_pct=_float(env, "MAX_LOSS_PER_TRADE_PCT", 0.0),
+            max_open_risk_pct=_float(env, "MAX_OPEN_RISK_PCT", 0.0),
+            max_entries_per_day=_int(env, "MAX_ENTRIES_PER_DAY", 0),
+            no_entries_before=env.get("NO_ENTRIES_BEFORE", "").strip(),
+            partial_profit_r=_float(env, "PARTIAL_PROFIT_R", 0.0),
+            vwap_entry_gate=_bool(env, "VWAP_ENTRY_GATE", False),
+            regime_gate=_bool(env, "REGIME_GATE", False),
         )
         ensemble = EnsembleParams(
             min_long_score=_float(env, "MIN_LONG_SCORE", 0.15),
@@ -233,6 +289,7 @@ class Settings:
             review_shadow_ideas=_bool(env, "REVIEW_SHADOW_IDEAS", False),
             review_outcome_memory=_bool(env, "REVIEW_OUTCOME_MEMORY", True),
             review_debate=_bool(env, "REVIEW_DEBATE", False),
+            review_replay_odds=_bool(env, "REVIEW_REPLAY_ODDS", True),
             starting_capital=_float(env, "STARTING_CAPITAL", 250.0),
             risk=risk,
             ensemble=ensemble,

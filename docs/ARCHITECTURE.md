@@ -37,6 +37,8 @@ src/ctbot/
     context.py                 review context + earnings guard (Robinhood, then public extras)
     tradingview.py             public TradingView scanner: earnings dates, technical rating
     news.py                    Marketaux news sentiment (optional key; numbers only)
+    sec_edgar.py               SEC EDGAR (SEC_USER_AGENT): 8-K item codes + last reported quarter for
+                               reviews; bankruptcy / delisting / non-reliance 8-Ks block entries
   providers/                   alt data, normalized to AltDataEvent
     base.py                    AltDataProvider protocol
     registry.py                build by name; one failing provider never blocks others
@@ -46,6 +48,7 @@ src/ctbot/
     robinhood_mcp.py           Robinhood MCP stub (get_politician_trades, ...)
     cboe_options.py            free Cboe delayed chains -> unusual-volume OPTIONS_FLOW events
     tradingflow_options.py     TradingFlow trade-level flow (ask/bid side) -> OPTIONS_FLOW events
+    house_clerk.py             free House PTRs (pdftotext) -> CONGRESS_TRADE events
   strategies/
     base.py                    Strategy protocol + StrategyContext
     registry.py                load strategies.toml, build enabled strategies
@@ -58,6 +61,7 @@ src/ctbot/
   aggregation/ensemble.py      weighted agreement score; min agreeing strategies; caps Claude calls
   analysis/stats.py            z-score, returns, SMA, vol, half-life
   analysis/regime.py           SPY trend/volatility regime label for reviews
+  analysis/setups.py           daily-close chart setups (20d breakout, bull flag, MA20 reclaim, oversold)
   decision/                    Claude review -> JSON Decision; fails closed; memory.py (settled paper
                                results per model, as-of); optional bounded for/against debate
   contracts.py                 MarketSnapshot / StrategyResult / ProposedOrder / ExecutionOutcome /
@@ -65,15 +69,33 @@ src/ctbot/
   llm_costs.py                 measured Claude spend per call; daily $ cap
   dayplan.py                   ctbot-dayplan (premarket plan, explicit no-trade) / ctbot-reconcile (EOD)
   assistant/                   dashboard assistant (Bub): context, allowlisted proposals, audit, Claude chat
+  thoughts.py                  "Bubs Thoughts": deduped, rate-limited notes on the market and on
+                               choices, and what the bot saw just before a buy (data/bub_thoughts.jsonl);
+                               notes only, never changes a trade
   tuning.py                    assistant-tunable knobs (~/.ctbot/tuning.json), bounds and denylist
+  autopilot.py                 Autopilot: every enabled model may trade; benching; trailing stops
+  variants.py                  side-by-side paper books (config/variants.toml), run in the paper process
+                               after the main book with shared market data and Claude verdicts
+  track_record.py              size multiplier per strategy from its last 30 days of paper results
+  risk_mode.py                 pull back after losses: no borrowing on a bad day, drawdown or QQQ downtrend
+  trade_log.py                 per-trade post-mortems (data/trade_log.jsonl)
+  library/                     12 published rule families x 2 universes (lib_*), traded only if
+                               ctbot-library-research admits them
+  watchdog.py, notify.py       heartbeat ping (HEARTBEAT_URL) and ntfy phone messages (NOTIFY_URL)
   risk/manager.py              check_entry / check_exit
   execution/                   OrderExecutor protocol + paper-process import guard
   paper/                       PaperBroker + `ctbot-paper` entrypoint
   live/                        RobinhoodLiveExecutor (guarded, not implemented) + `ctbot-live`
+  research/timemachine.py      seeded replays of the rest of a session from 5-min bars (ctbot-timemachine;
+                               intraday reviews get the odds)
   research/                    backtest (5-min), lab (daily portfolios, --lag), factors (Alpha158 subset),
                                ranker (purged walk-forward + TopkDropout), registry (trial log, holdout
                                lock), validation (PBO, FDR); see docs/RESEARCH_AND_OPERATIONS.md
 tests/                         isolation, config, risk, strategies/ensemble/providers
+.claude/skills/                agent skills: the 11 trader-* day-trader skills, find-skills and 12 vetted
+                               trading skills (README maps each to the bot; the bot doesn't read them)
+deploy/                        Ubuntu server: setup-server.sh, tailscale.sh, update.sh, systemd units
+                               (paper, dashboard, watchdog/research/update timers); docs/CLOUD_HOSTING.md
 ```
 
 ## Extending
