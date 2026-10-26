@@ -39,7 +39,7 @@ def _settings(tmp_path):
     logs = tmp_path / "logs"
     logs.mkdir()
     (logs / "ctbot-paper.log").write_text(
-        "2026-10-21 10:00:00,1 WARNING ctbot.x quote late from 95.217.169.154 key sk-ant-abcdefghijklmnopqrstuvwxyz\n"
+        "2026-10-21 10:00:00,1 WARNING ctbot.x quote late from 203.0.113.7 key sk-ant-abcdefghijklmnopqrstuvwxyz\n"
         "2026-10-21 10:05:00,1 ERROR ctbot.variants book tight cycle failed; continuing\n"
         "2026-10-20 10:05:00,1 ERROR ctbot.x yesterday's error\n")
     return Settings.from_env({"PAPER_LEDGER_PATH": str(data / "paper_ledger.json"), "LOG_DIR": str(logs),
@@ -55,7 +55,7 @@ def test_readout_ranks_books_and_lists_trades_halts_and_masked_events(tmp_path):
     assert "closed AAPL +50.00 (trail)" in text and "bought: MSFT" in text and "closed NVDA -20.00 (stop)" in text
     assert "pulled back: SPY below its trend" in text
     assert "1 errors, 1 warnings" in text and "yesterday" not in text
-    assert "95.217" not in text and "sk-ant" not in text and "<ip>" in text and "<token>" in text
+    assert "203.0.113" not in text and "sk-ant" not in text and "<ip>" in text and "<token>" in text
 
 
 def test_sent_once_15_minutes_after_the_close(tmp_path, monkeypatch):

@@ -428,6 +428,7 @@ code { font: 12px var(--code); background: rgba(var(--tint), .06); padding: 1px 
 .ap-h3 { font: 500 14px var(--sans); color: var(--ink); margin: 20px 0 8px; }
 .empty-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--ink-2); }
 .empty-row p { margin: 0; }
+.empty-row[hidden] { display: none; }  /* display:flex would otherwise beat the hidden attribute */
 /* ---- home positions ---- */
 .holdings { display: grid; }
 .hrow { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }

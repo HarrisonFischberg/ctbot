@@ -56,8 +56,20 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
   non-systematic entry and sets its starting stop; those positions have no fixed take-profit, and
   winners keep rolling past their usual exit time while they are up. The trend cores keep their own
   backtested exits. The page also lists the latest decisions with Claude's reasons, and below it the
-  strategy library and research (the old Discover and Research tabs). Autopilot replaces Invest
-  runs while it is on. Paper only.
+  strategy library and research (the old Discover and Research tabs). Strategies you invested in
+  (by hand or with *Invest for me*) keep trading while Autopilot is on, each on its own money:
+  Autopilot's other models can't spend money kept for them. Paper only.
+- **Invest for me** (on Autopilot): one amount (defaults to `MAX_TRADING_CAPITAL`) and a max loss.
+  The bot ranks the unbenched strategies by their simulated year (return per unit of worst drop),
+  splits the amount evenly over the top five, skipping a second version of the same library rule
+  and any strategy whose daily moves track one already picked (correlation above 0.8), and starts
+  them through the normal launch checks. The plan is saved in `data/auto_invest.json`: each paper
+  cycle tops picks up as cash frees, and once a week it re-ranks, swapping a pick only for one at
+  least 20% better (`src/ctbot/auto_invest.py`). **Turn off** stops the re-picks; the strategies keep
+  running until you stop them.
+- **Add paper cash**: when the paper account is worth less than `MAX_TRADING_CAPITAL`, Autopilot
+  offers to top it up. The dashboard asks the paper bot to add the difference; the deposit is
+  recorded in the ledger and left out of profit, returns and readouts. Paper only.
 - **Settings test**: `config/variants.toml` lists extra $10,000 paper accounts that the paper bot
   runs next to the main one, each changing one setting (trail, starting stop, Claude's confidence
   floor, position count, ideas per cycle, reviewer model: `sonnet` and `opus` with their own daily
@@ -91,7 +103,7 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
   has a Revert for each. Uses the Settings-tab Anthropic key, capped by
   `MAX_ASSISTANT_MESSAGES_PER_DAY` (default 100). To undo everything at once, delete
   `~/.ctbot/tuning.json`.
-- Discover's numbers come from `.venv/bin/ctbot-perf` (cached prices only; the scheduled job
+- The strategy library's numbers come from `.venv/bin/ctbot-perf` (cached prices only; the scheduled job
   refreshes them twice a day).
 
 ## Collective2

@@ -15,16 +15,16 @@ no servers of ours, no tracking: your keys and data stay on your machine (or on 
 yourself, see [Run it on a server](#run-it-on-a-server-recommended-for-all-day-trading)).
 
 <p align="center">
-  <img src="docs/images/home.png" alt="CTbot Home screen in dark mode: account value, today's return, cash and other summary tiles, and What you own: QQQ, QLD and IWM with the strategy that bought each, gain or loss and a stop-loss bar" width="790">
+  <img src="docs/images/home.png" alt="CTbot Home screen in dark mode: practice-trading and market status chips, account value, today's profit, cash and other summary tiles, and What you own: QQQ, NVDA and IWM with the strategy that bought each, gain or loss and auto-sell points" width="790">
 </p>
 
-| Discover: strategies with simulated 3/6/12-month returns | Invest: amount, max loss, take-profit |
+| Autopilot: Invest for me, top up paper cash | Strategy library: trading or benched, and why |
 |---|---|
-| <img src="docs/images/discover.png" alt="Discover tab: strategy cards with past-year simulated returns, worst drop, a small chart against the S&P 500 and Stop buttons on the ones you invested in" width="400"> | <img src="docs/images/invest.png" alt="Invest section of a strategy sheet: $1,000 into Overnight Hold with a 15% max loss and a 20% take-profit, and a plain-English summary" width="400"> |
-| **Your strategies: what each one holds and returns** | **Research: backtests since 2010** |
-| <img src="docs/images/strategies.png" alt="Your strategies table: four strategies with the amount in each, value now, total return, cash waiting for the next buy, limits and Stop buttons" width="400"> | <img src="docs/images/research.png" alt="Research chart: growth of $5,000 since 2010 for the Nasdaq-100 trend, holding QQQ, and the 2x volatility-capped trend, on a log scale" width="400"> |
+| <img src="docs/images/autopilot.png" alt="Autopilot card: Autopilot on with a 5% max loss per trade and 8% give-back, Invest for me with up to $10,500 and a 15% max loss, an Add $324 paper cash button, and a note that Invest for me is running three strategies and re-picks weekly" width="400"> | <img src="docs/images/library.png" alt="Strategy library table: each strategy with a Trading or Benched badge, the reason, its simulated past year, practice trades and profit or loss, including Last Half-Hour Momentum" width="400"> |
+| **Your strategies: what each one holds and returns** | **Research: growth of $5,000 since 2010** |
+| <img src="docs/images/strategies.png" alt="Your strategies table: three strategies with $3,333 each, value now, total return, cash waiting for the next buy, a 15% max loss and Stop buttons" width="400"> | <img src="docs/images/research.png" alt="Research chart: growth of $5,000 since 2010 for the Nasdaq-100 trend, holding QQQ, and the 2x volatility-capped trend, on a log scale" width="400"> |
 
-<sub>Screenshots: dark mode with made-up demo data (generated prices and a paper account; no real account). Every number comes from those made-up prices, so none of it is a real result or a promise of anything.</sub>
+<sub>Screenshots: dark mode with made-up demo data (randomly generated prices and a paper account; no real account, keys or server). Every number comes from those made-up prices, so none of it is a real result or a promise of anything.</sub>
 
 ## What you get
 
@@ -38,13 +38,24 @@ yourself, see [Run it on a server](#run-it-on-a-server-recommended-for-all-day-t
     trailing stops and no fixed profit cap, and shows what it trades and why. It learns from its
     own paper record: each closed trade gets a post-mortem (`data/trade_log.jsonl`), a strategy's
     size grows or shrinks with its last 30 days of results, a strategy losing over 10+ trades is
-    benched, and the account stops borrowing after a bad day, a drawdown or a QQQ downtrend. Below it: every
-    strategy in plain English with simulated returns (Invest still starts one by hand), each
-    strategy's paper record, growth of $5,000 since 2010, a crash test back to 1999, a no-hindsight
-    (walk-forward) test and the backtest leaderboard.
+    benched, and the account stops borrowing after a bad day, a drawdown or a QQQ downtrend.
+  - **Invest for me** (on the Autopilot tab): enter one amount and a max loss. The bot picks the
+    five best strategies by their simulated past year (return per unit of worst drop, one version
+    of each rule, none that move alike), splits the money between them, tops them up as cash frees
+    and re-picks every week, swapping a pick only for one clearly better. Picks keep trading on
+    their own money while Autopilot is on.
+  - **Add paper cash**: if the paper account is worth less than your limit (`MAX_TRADING_CAPITAL`),
+    one click tops it up. The deposit is left out of profit and returns.
+  - **Strategy library** (also on Autopilot): every strategy in plain English, trading or benched
+    and why, with simulated returns and its paper record (**Invest** still starts one by hand),
+    plus growth of $5,000 since 2010, a crash test back to 1999, a no-hindsight (walk-forward)
+    test, the backtest leaderboard and the *Settings test* comparison books.
   - **Settings**: add your API keys, connect Robinhood, run a health check.
 - **Strategies** you can run alone or together: Nasdaq-100 trend (plain and 2× leveraged), buy the
-  dip on index funds, turn of the month, and same-day breakout models. Each is described, with its
+  dip on index funds, turn of the month, overnight holds, same-day breakout and dip models,
+  **Last Half-Hour Momentum** (when SPY is up from yesterday's close at 10:00 ET, buy in the last
+  half hour and sell at 15:55; from Gao, Han, Li and Zhou, 2018), and 24 published rules from the
+  strategy library that trade only once their backtest admits them. Each is described, with its
   risk level, on the Autopilot tab.
 - **Hard limits** no model can override: per-position size, total money, daily loss pause,
   drawdown stop, bid/ask spread and liquidity checks, no holding through earnings, SEC 8-K red
@@ -68,13 +79,14 @@ cp .env.example .env              # optional: you can also add keys in the dashb
 ```
 
 Open `http://127.0.0.1:8787`, go to **Settings**, add your keys and press **Connect Robinhood**.
-Then turn on **Autopilot** (or invest in one strategy below it). The bot trades during US market hours while
+Then turn on **Autopilot** and press **Invest for me** (or invest in one strategy by hand). The bot trades during US market hours while
 `./run_ctbot.sh` is running.
 
 ### Run it on a server (recommended for all-day trading)
 
 A laptop sleeps, travels and loses Wi-Fi. For a bot that trades every session, run it on a small
-Linux server instead (a ~$7/month Hetzner or ~$12 DigitalOcean VM works). Everything is in
+Linux server instead. CTbot's own paper bot runs on a ~$7/month Hetzner CX23 (Ubuntu 24.04); a
+~$12 DigitalOcean droplet works the same. Everything is in
 [docs/CLOUD_HOSTING.md](docs/CLOUD_HOSTING.md); in short:
 
 - `deploy/setup-server.sh` (Ubuntu 24.04, as root) installs CTbot as systemd services, paper only.
@@ -85,6 +97,9 @@ Linux server instead (a ~$7/month Hetzner or ~$12 DigitalOcean VM works). Everyt
 - **Alerts**: `ctbot-watchdog` pings a Healthchecks.io URL every minute (`HEARTBEAT_URL`) and,
   with `NOTIFY_URL` set to an ntfy topic, sends phone messages at the open, after the close and
   when something breaks.
+- **Daily readout**: after the close it also posts every paper book's day (P&L, trades, Claude
+  spend, halts, masked warnings) to a side topic your phone doesn't subscribe to, so a Claude
+  session can review the day. `python -m ctbot.readout` prints it locally.
 
 Run only one bot per paper account: once the server trades, turn Mac autostart off
 (`scripts/autostart.sh uninstall`).

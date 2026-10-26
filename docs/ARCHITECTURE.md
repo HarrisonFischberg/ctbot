@@ -58,6 +58,7 @@ src/ctbot/
     options_flow.py            net bullish premium of large prints
     trend_template.py          stage-2 trend template (maverick-mcp supply/demand screen)
     ranker_signal.py           frozen walk-forward ranking model (shadow, systematic, no review)
+    intraday.py                same-day models, incl. last-half-hour SPY momentum (intraday_momentum)
   aggregation/ensemble.py      weighted agreement score; min agreeing strategies; caps Claude calls
   analysis/stats.py            z-score, returns, SMA, vol, half-life
   analysis/regime.py           SPY trend/volatility regime label for reviews
@@ -74,6 +75,8 @@ src/ctbot/
                                notes only, never changes a trade
   tuning.py                    assistant-tunable knobs (~/.ctbot/tuning.json), bounds and denylist
   autopilot.py                 Autopilot: every enabled model may trade; benching; trailing stops
+  allocations.py               paper launcher: a strategy runs on its own money with a max loss/take-profit
+  auto_invest.py               Invest for me: picks and funds the top 5 strategies, re-picks weekly
   variants.py                  side-by-side paper books (config/variants.toml), run in the paper process
                                after the main book with shared market data and Claude verdicts
   track_record.py              size multiplier per strategy from its last 30 days of paper results
@@ -82,6 +85,7 @@ src/ctbot/
   library/                     12 published rule families x 2 universes (lib_*), traded only if
                                ctbot-library-research admits them
   watchdog.py, notify.py       heartbeat ping (HEARTBEAT_URL) and ntfy phone messages (NOTIFY_URL)
+  readout.py                   end-of-day readout per paper book (P&L, trades, Claude spend, halts)
   risk/manager.py              check_entry / check_exit
   execution/                   OrderExecutor protocol + paper-process import guard
   paper/                       PaperBroker + `ctbot-paper` entrypoint
