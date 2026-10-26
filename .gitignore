@@ -15,6 +15,7 @@ data/events/*
 .DS_Store
 .claude/*
 !.claude/skills/
+!.claude/ponytail-rules.md
 # the day-trader skills' working folder (trader/config.json, plan.json, state/...)
 trader/
 # reports from backtest-expert, trade-performance-coach and market-breadth-analyzer

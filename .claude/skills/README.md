@@ -76,3 +76,24 @@ can compare it with `base`.
 | `PARTIAL_PROFIT_R=1.0` | partial-profit-taking | sells half a position once the bid is 1R above the entry, then moves the stop to break-even; the rest keeps trailing |
 | `VWAP_ENTRY_GATE=true` | vwap-trading | a same-day plan (orb_sip and other intraday models) buys only above today's session VWAP (`below_vwap`) |
 | `REGIME_GATE=true` | market-regime-detection | no Claude-reviewed entries while SPY's daily regime is "bear" (`bear_regime`); the trend cores keep their own rules |
+
+## Ponytail (installed project-local)
+
+The six `ponytail*` folders here are Dietrich Gebert's
+[ponytail](https://github.com/DietrichGebert/ponytail) skills (MIT, see `LICENSE-ponytail`),
+copied unchanged at commit `09c434a` (v5.3.2). Ponytail is a coding style for the agents that
+work on this repo, not a bot feature: take the smallest change that fully solves the task, reuse
+what is already here, never cut validation, error handling, security or tests, and end each reply
+with what was skipped and any risk. Nothing in `src/ctbot` uses it.
+
+- Always on: `CLAUDE.md` imports `.claude/ponytail-rules.md` (ponytail's `AGENTS.md`, also unchanged).
+  The safety boundaries in `CLAUDE.md` still win over it.
+- Skills: `/ponytail [lite|full|ultra]`, `/ponytail-review` (review a change), `/ponytail-audit`
+  (rank problems across the repo), `/ponytail-debt` (list `shortcut:` comments), `/ponytail-gain`,
+  `/ponytail-help`.
+- Not installed: the plugin's Node hooks and its "band" cost panel. Without the hooks, a level set
+  with `/ponytail lite` holds for that conversation only, not across sessions. For the band, install
+  the plugin in your own Claude Code with `/plugin marketplace add DietrichGebert/ponytail`, then
+  `/plugin install ponytail@ponytail`.
+
+To update: copy the folders and `AGENTS.md` again from a fresh clone.
