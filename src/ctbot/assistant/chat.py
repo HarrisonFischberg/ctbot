@@ -1,7 +1,6 @@
 """Model client for the dashboard assistant: plain-text answers, tool use for proposals.
 
-Backends are tried in ASSISTANT_BACKENDS order (backends.py: Apple via a Mac bridge, then Claude,
-then OpenAI). Keys come from the Settings tab (secret_store, applied to os.environ); clients are
+Backends are tried in order (backends.py: Claude, then OpenAI). Keys come from the Settings tab (secret_store, applied to os.environ); clients are
 rebuilt when secret_store.reload_if_changed() reports a change. A backend that errors, or that
 says it can't answer (PASS), hands the question to the next one, and the cards it proposed are
 dropped. Fails closed: if the last one errors too, the user gets a friendly message and nothing
@@ -225,8 +224,7 @@ class Assistant:
         base = {"conversation_id": cid}
         if not self.has_key():
             return {**base, "error": "no_key", "usage": self.usage(),
-                    "reply": "I need a model before I can think: add an Anthropic or OpenAI API key on the "
-                             "Settings tab, or set APPLE_AI_URL to your Mac's Apple Intelligence bridge."}
+                    "reply": "I need an Anthropic or OpenAI API key before I can think. Add one on the Settings tab."}
         if not self._count():
             u = self.usage()
             return {**base, "error": "cap", "usage": u,
@@ -338,7 +336,7 @@ def _error_code(e: Exception) -> str:
         return f"api_error_{e.status_code}"
     if isinstance(e, anthropic.APIConnectionError):
         return "connection_error"
-    if isinstance(e, httpx.HTTPStatusError):  # the OpenAI-compatible backends
+    if isinstance(e, httpx.HTTPStatusError):  # the OpenAI backend
         code = e.response.status_code
         return "rate_limited" if code == 429 else "bad_key" if code in (401, 403) else f"api_error_{code}"
     if isinstance(e, httpx.TransportError):

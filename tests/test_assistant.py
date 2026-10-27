@@ -430,38 +430,37 @@ def test_no_key_and_daily_cap(d, monkeypatch):
     assert not (d / "ideas.jsonl").exists()  # trade-review budget untouched
 
 
-def test_backend_chain_apple_first_then_fallback(d):
+def test_claude_first_then_openai_fallback(d, monkeypatch):
+    import anthropic
     import httpx
 
     from ctbot.assistant import backends
 
     calls = []
 
-    def bridge(answer):
+    def openai(answer):
         def handle(req):
             calls.append(json.loads(req.content))
-            if answer is None:
-                raise httpx.ConnectError("mac asleep", request=req)
             return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"content": answer}}]})
-        return backends.OpenAICompat("http://127.0.0.1:11535/v1", "", httpx.Client(transport=httpx.MockTransport(handle)))
+        return backends.OpenAICompat(backends.OPENAI_URL, "k", httpx.Client(transport=httpx.MockTransport(handle)))
 
-    s = _settings(d, APPLE_AI_URL="http://127.0.0.1:11535/v1")
-    assert backends.configured(s) == ["apple", "anthropic"]  # no OpenAI key set
-    claude = FakeClient(text("Claude here."), text("Claude again."))
+    s = _settings(d)
+    assert backends.configured(s) == ["anthropic"]  # no OpenAI key yet: Claude alone, no PASS option
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-openai-000000000000")
+    assert backends.configured(s) == ["anthropic", "openai"]
+    req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    claude = FakeClient(text("We bought KO on Oct 13."), text("PASS"),
+                        anthropic.APIConnectionError(request=req))
     a = Assistant(lambda: s, lambda: build_state(s, None, NOW), Proposals(_backend(d, s, [])), d / "u.json",
-                  client=claude, now=lambda: NOW, clients={"apple": bridge("We bought KO on Oct 13.")})
+                  client=claude, now=lambda: NOW, clients={"openai": openai("OpenAI here.")})
     out = a.chat(None, "when did we buy KO?", None)
-    assert out["reply"] == "We bought KO on Oct 13." and out["backend"] == "Apple Intelligence" and not claude.calls
-    assert calls[0]["messages"][0]["role"] == "system" and "<bot_data>" in calls[0]["messages"][0]["content"]
-    assert "reply with exactly PASS" in calls[0]["messages"][0]["content"]  # it may hand off
+    assert out["reply"] == "We bought KO on Oct 13." and out["backend"] == "Claude" and not calls
+    assert "reply with exactly PASS" in json.dumps(claude.calls[0]["system"])  # it may hand off
 
-    a._clients["apple"] = a._injected["apple"] = bridge("PASS")  # Apple can't answer -> Claude
-    out = a.chat(None, "why?", None)
-    assert out["reply"] == "Claude here." and out["backend"] == "Claude"
-    assert "PASS" not in json.dumps(claude.calls[0]["system"])  # last in line: answers itself
-
-    a._clients["apple"] = a._injected["apple"] = bridge(None)  # Mac unreachable -> Claude
-    assert a.chat(None, "and now?", None)["backend"] == "Claude"
+    out = a.chat(None, "why?", None)  # Claude can't answer -> OpenAI
+    assert out["reply"] == "OpenAI here." and out["backend"] == "OpenAI"
+    assert "PASS" not in calls[0]["messages"][0]["content"].split("</bot_data>")[-1]  # last in line answers itself
+    assert a.chat(None, "and now?", None)["backend"] == "OpenAI"  # Claude down -> OpenAI
     assert FAKE_KEY not in json.dumps(calls)
 
 

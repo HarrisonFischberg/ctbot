@@ -1,8 +1,5 @@
-"""Bub's model backends, tried in the order of ASSISTANT_BACKENDS (default apple, anthropic, openai).
+"""Bub's model backends, tried in order: Claude first, OpenAI as the fallback.
 
-- apple: Apple's Foundation Models (on-device or Private Cloud Compute) only run on Apple devices,
-  never on this Linux server, so it is reached through an OpenAI-compatible bridge running on your
-  Mac (APPLE_AI_URL, e.g. over an SSH reverse tunnel). Unset or unreachable: skipped.
 - anthropic: ANTHROPIC_API_KEY, the same lazy anthropic.Anthropic() client as the decision engine.
 - openai: OPENAI_API_KEY, Chat Completions over httpx (no extra dependency).
 
@@ -23,19 +20,18 @@ from ctbot.config import Settings
 
 OPENAI_URL = "https://api.openai.com/v1"
 TIMEOUT_S = 90.0
-LABELS = {"apple": "Apple Intelligence", "anthropic": "Claude", "openai": "OpenAI"}
+LABELS = {"anthropic": "Claude", "openai": "OpenAI"}
+ORDER = ("anthropic", "openai")
 
 
 def configured(settings: Settings) -> list[str]:
-    """The backends in ASSISTANT_BACKENDS order that have what they need (a key or a bridge URL)."""
-    ready = {"apple": bool(settings.apple_ai_url),
-             "anthropic": bool(os.environ.get("ANTHROPIC_API_KEY", "").strip()),
-             "openai": bool(os.environ.get("OPENAI_API_KEY", "").strip())}
-    return [b for b in settings.assistant_backends if ready.get(b)]
+    """The backends, in ORDER, whose API key is set."""
+    keys = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}
+    return [b for b in ORDER if os.environ.get(keys[b], "").strip()]
 
 
 def model_for(name: str, settings: Settings) -> str:
-    return {"apple": settings.apple_ai_model, "openai": settings.openai_model}.get(name, settings.claude_model)
+    return settings.openai_model if name == "openai" else settings.claude_model
 
 
 def make(name: str, settings: Settings):
@@ -45,13 +41,11 @@ def make(name: str, settings: Settings):
         return anthropic.Anthropic()
     if name == "openai":
         return OpenAICompat(OPENAI_URL, os.environ.get("OPENAI_API_KEY", "").strip())
-    if name == "apple":
-        return OpenAICompat(settings.apple_ai_url.rstrip("/"), "")
     raise ValueError(f"unknown assistant backend {name}")
 
 
 class OpenAICompat:
-    """An OpenAI-compatible /chat/completions endpoint behind Anthropic's messages.create shape."""
+    """OpenAI's /chat/completions behind Anthropic's messages.create shape."""
 
     def __init__(self, base_url: str, key: str, http: httpx.Client | None = None) -> None:
         self.base_url, self.key = base_url, key

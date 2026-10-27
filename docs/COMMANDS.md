@@ -92,10 +92,8 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
   Every proposal and outcome is in `data/assistant_audit.jsonl`; Settings → *Assistant changes*
   has a Revert for each. Bub sees every open position however old (when and why it was bought,
   its stop, trailing stop and planned sell time), recent closed trades, and one price snapshot per
-  answer. Models are tried in `ASSISTANT_BACKENDS` order (default `apple,anthropic,openai`): Apple
-  Intelligence through an OpenAI-compatible bridge on your Mac (`APPLE_AI_URL`, skipped when blank or
-  unreachable), then the Settings-tab Anthropic key, then an OpenAI key. One that errors or says it
-  can't answer hands the question on. Capped by `MAX_ASSISTANT_MESSAGES_PER_DAY` (default 100). To
+  answer. Uses the Settings-tab Anthropic key; an OpenAI key (also on Settings, model `OPENAI_MODEL`)
+  takes over when Claude errors or says it can't answer. Capped by `MAX_ASSISTANT_MESSAGES_PER_DAY` (default 100). To
   undo everything at once, delete `~/.ctbot/tuning.json`.
 - Discover's numbers come from `.venv/bin/ctbot-perf` (cached prices only; the scheduled job
   refreshes them twice a day).

@@ -2685,7 +2685,7 @@ main:focus { outline: none; }
       const sub = [e.error, e.user_message && e.user_message !== "(revert)" ? `you asked: "${e.user_message}"` : "", e.reverted ? "reverted since" : ""].filter(Boolean).join(" · ");
       return `<li><span class="t">${esc(fmtTime(e.ts))}</span><span class="s"><span class="tag ${tagc}">${esc(label)}</span> ${esc(what)}${sub ? `<small>${esc(sub)}</small>` : ""}</span>
         <span>${e.can_revert ? `<button class="btn" type="button" data-revert="${esc(e.id)}">Revert</button>` : ""}</span></li>`;
-    }).join("")}</ul>` : `<div class="note">Nothing yet. Open Bub (bottom right) and ask what to change.${j.has_key ? "" : " Bub needs an Anthropic or OpenAI API key above (or an Apple Intelligence bridge)."}</div>`;
+    }).join("")}</ul>` : `<div class="note">Nothing yet. Open Bub (bottom right) and ask what to change.${j.has_key ? "" : " Bub needs an Anthropic or OpenAI API key above."}</div>`;
   }
   $("asstAudit").addEventListener("click", async (e) => {
     const b = e.target.closest("[data-revert]"); if (!b) return;
