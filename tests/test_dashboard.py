@@ -236,6 +236,17 @@ def test_what_you_own_shows_on_home_and_autopilot():
     assert '<div data-tab="home trading" data-sub="overview" class="card span-12 own">' in new
 
 
+
+def test_hidden_topup_row_stays_hidden():
+    """A display rule on the row must not beat [hidden], or "Add -$236 paper cash" shows above the limit."""
+    html = (ROOT / "src" / "ctbot" / "dashboard" / "index.html").read_text()
+    assert 'class="empty-row" id="topup" hidden' in html and ".empty-row[hidden] { display: none; }" in html
+    new = (ROOT / "src" / "ctbot" / "dashboard" / "observatory.html").read_text()
+    assert 'class="ap-side" id="topup" hidden' in new and "[hidden], .tab-off, .sub-off { display: none !important; }" in new
+    for page in (html, new):
+        assert '$("topup").hidden = !(short >= 1);' in page
+
+
 def test_prev_closes_needs_the_exact_previous_session(tmp_path):
     from ctbot.dashboard.state import prev_closes
     from ctbot.models import Bar
