@@ -2640,7 +2640,8 @@ main:focus { outline: none; }
     if (j.conversation_id) { bub.cid = j.conversation_id; try { sessionStorage.setItem("ctbot.bubCid", bub.cid); } catch (e) {} }
     bubUsage(j.usage);
     if (!ok) { bubSay(esc(j.error || "The dashboard server didn't answer. Is ctbot-dashboard running?"), "bot err"); return; }
-    const m = bubSay(md(j.reply), "bot" + (j.error ? " err" : ""));
+    const m = bubSay(md(j.reply) + (j.backend ? `<small style="display:block;margin-top:4px;color:var(--muted)">via ${esc(j.backend)}</small>` : ""),
+      "bot" + (j.error ? " err" : ""));
     if (j.error === "no_key") {
       const go = document.createElement("button"); go.type = "button"; go.className = "btn"; go.textContent = "Open Settings";
       go.style.marginTop = "8px"; go.addEventListener("click", () => document.querySelector('.tabs [data-tab="settings"]').click());
@@ -2684,7 +2685,7 @@ main:focus { outline: none; }
       const sub = [e.error, e.user_message && e.user_message !== "(revert)" ? `you asked: "${e.user_message}"` : "", e.reverted ? "reverted since" : ""].filter(Boolean).join(" · ");
       return `<li><span class="t">${esc(fmtTime(e.ts))}</span><span class="s"><span class="tag ${tagc}">${esc(label)}</span> ${esc(what)}${sub ? `<small>${esc(sub)}</small>` : ""}</span>
         <span>${e.can_revert ? `<button class="btn" type="button" data-revert="${esc(e.id)}">Revert</button>` : ""}</span></li>`;
-    }).join("")}</ul>` : `<div class="note">Nothing yet. Open Bub (bottom right) and ask what to change.${j.has_key ? "" : " Bub needs the Anthropic API key above."}</div>`;
+    }).join("")}</ul>` : `<div class="note">Nothing yet. Open Bub (bottom right) and ask what to change.${j.has_key ? "" : " Bub needs an Anthropic or OpenAI API key above (or an Apple Intelligence bridge)."}</div>`;
   }
   $("asstAudit").addEventListener("click", async (e) => {
     const b = e.target.closest("[data-revert]"); if (!b) return;

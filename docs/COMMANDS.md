@@ -90,9 +90,13 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
   Knob changes are saved in `~/.ctbot/tuning.json` and reach the running bot within seconds;
   strategy shadow/trade switches edit `config/strategies.toml` and also apply without a restart.
   Every proposal and outcome is in `data/assistant_audit.jsonl`; Settings → *Assistant changes*
-  has a Revert for each. Uses the Settings-tab Anthropic key, capped by
-  `MAX_ASSISTANT_MESSAGES_PER_DAY` (default 100). To undo everything at once, delete
-  `~/.ctbot/tuning.json`.
+  has a Revert for each. Bub sees every open position however old (when and why it was bought,
+  its stop, trailing stop and planned sell time), recent closed trades, and one price snapshot per
+  answer. Models are tried in `ASSISTANT_BACKENDS` order (default `apple,anthropic,openai`): Apple
+  Intelligence through an OpenAI-compatible bridge on your Mac (`APPLE_AI_URL`, skipped when blank or
+  unreachable), then the Settings-tab Anthropic key, then an OpenAI key. One that errors or says it
+  can't answer hands the question on. Capped by `MAX_ASSISTANT_MESSAGES_PER_DAY` (default 100). To
+  undo everything at once, delete `~/.ctbot/tuning.json`.
 - Discover's numbers come from `.venv/bin/ctbot-perf` (cached prices only; the scheduled job
   refreshes them twice a day).
 

@@ -38,6 +38,7 @@ def d(tmp_path, monkeypatch):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.delenv("MAX_ASSISTANT_MESSAGES_PER_DAY", raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("ROBINHOOD_ACCOUNT_NUMBER", "123459999")
     shutil.copy(ROOT / "config" / "strategies.toml", tmp_path / "strategies.toml")
     (tmp_path / "logs").mkdir()
@@ -134,6 +135,64 @@ def test_context_is_capped(d, monkeypatch):
     monkeypatch.setattr(context, "MAX_CONTEXT_CHARS", 3000)
     s = _settings(d)
     assert len(build_context(s, build_state(s, None, NOW), NOW)) <= 3000
+
+
+def test_context_explains_every_position_however_old(d):
+    """Bub couldn't say when CRWD/QQQ were bought: every holding carries its entry, reasons and exit plan."""
+    from ctbot.models import Quote
+
+    (d / "ledger.json").write_text(json.dumps({"cash": 50.0, "positions": [
+        {"symbol": "CRWD", "quantity": 0.2, "avg_cost": 400.0, "opened_at": "2026-10-01T14:05:00+00:00"},
+        {"symbol": "QQQ", "quantity": 0.5, "avg_cost": 500.0, "opened_at": "2026-09-15T19:30:00.123456+00:00"}],
+        "fills": [
+            {"symbol": "CRWD", "side": "buy", "quantity": 1, "price": 300.0, "ts": "2026-08-03T14:00:00+00:00", "tag": "orb"},
+            {"symbol": "CRWD", "side": "sell", "quantity": 1, "price": 310.0, "ts": "2026-08-04T14:00:00+00:00", "tag": "take_profit"},
+            {"symbol": "QQQ", "side": "buy", "quantity": 0.5, "price": 500.0, "ts": "2026-09-15T19:30:00.200000+00:00",
+             "tag": "trend_core"},
+            {"symbol": "CRWD", "side": "buy", "quantity": 0.2, "price": 400.0, "ts": "2026-10-01T14:05:01+00:00",
+             "tag": "momentum,options_flow"}]}))
+    (d / "risk.json").write_text(json.dumps({"brackets": {
+        "CRWD": {"stop": 380.0, "target": None, "entry": 400.0, "peak": 412.0, "trail": 0.05,
+                 "exit_at": "2026-10-28T19:50:00+00:00", "swings": 2, "model": "momentum", "r0": 20.0,
+                 "ctx": {"models": ["momentum", "options_flow"], "confidence": 0.78, "sector": "Technology",
+                         "rationale": "Breakout on 2x volume after earnings beat", "size_mult": 1.0}},
+        "QQQ": {"stop": 425.0, "target": None, "model": "trend_core"}}}))
+    idea = _idea(1, "auto_submitted", [], {"approve": True, "confidence": 0.78, "rationale": "Breakout on 2x volume",
+                                           "suggested_notional": 80}, ts=datetime(2026, 10, 1, 14, 4, tzinfo=timezone.utc))
+    idea.update(symbol="CRWD", signals=[{"strategy": "momentum", "direction": "long", "strength": 0.7,
+                                         "horizon_days": 20, "evidence": {"ret_3m": 0.21}}])
+    later = {**idea, "id": "late", "ts": "2026-10-20T14:00:00+00:00"}  # after the buy: not the reason
+    (d / "ideas.jsonl").write_text(json.dumps(idea) + "\n" + json.dumps(later) + "\n")
+    (d / "trade_log.jsonl").write_text(json.dumps({
+        "symbol": "KO", "models": ["trend_template"], "opened_at": "2026-10-05T13:31:00+00:00",
+        "closed_at": "2026-10-09T19:50:00+00:00", "entry": 60.0, "exit": 62.0, "pnl": 1.5, "ret": 0.033,
+        "exit_reason": "time_exit", "context": {"rationale": "Stage 2 uptrend"}}) + "\n")
+    s = _settings(d)
+    quotes = lambda syms: {"CRWD": Quote("CRWD", 409.0, 411.0, 410.0, NOW), "QQQ": Quote("QQQ", 519.0, 521.0, 520.0, NOW)}  # noqa: E731
+    state = build_state(s, quotes, NOW)
+    ctx = json.loads(build_context(s, state, NOW))
+
+    pos = {p["symbol"]: p for p in ctx["open_positions"]}
+    crwd, qqq = pos["CRWD"], pos["QQQ"]
+    assert crwd["bought"] == "Thu Oct 01 10:05 ET" and crwd["held_days"] == 12.0
+    assert [f["price"] for f in crwd["fills"]] == [400.0]  # August's closed round trip isn't this holding
+    assert crwd["why"]["claude_rationale"].startswith("Breakout") and crwd["why"]["claude_confidence"] == 0.78
+    assert crwd["idea_at_entry"]["idea_time"] == "Thu Oct 01 10:04 ET"
+    assert crwd["idea_at_entry"]["signals"][0]["strategy"] == "momentum" and "ret_3m" in crwd["idea_at_entry"]["signals"][0]["evidence"]
+    plan = crwd["exit_plan"]
+    assert plan["stop"] == 380.0 and plan["trailing"]["giveback_pct"] == 0.05
+    assert plan["planned_sell_time"] == "Wed Oct 28 15:50 ET" and plan["swings_so_far"] == 2
+    assert crwd["owner"] == "strategy momentum" and "momentum" in crwd["what_the_models_do"]
+    # numbers from the same snapshot as the account
+    assert crwd["price_now"] == 410.0 and crwd["pnl"] == round(0.2 * 10, 2)
+    assert ctx["account"]["market_value"] == pytest.approx(0.2 * 410 + 0.5 * 520)
+    assert ctx["prices_snapshot"]["taken"] == state["market"]["et_time"]
+
+    assert qqq["bought"] == "Tue Sep 15 15:30 ET" and qqq["fills"][0]["tag"] == "trend_core"
+    assert qqq["owner"] == "strategy trend_core" and "no entry context" in qqq["why"]
+    assert qqq["exit_plan"]["planned_sell_time"] is None
+    assert ctx["closed_trades"][0]["symbol"] == "KO" and ctx["closed_trades"][0]["why_bought"] == "Stage 2 uptrend"
+    assert ctx["recent_fills_all_days"][-1]["time"] == "Mon Aug 03 10:00 ET"  # older days too
 
 
 # ---- validation --------------------------------------------------------------------------------
@@ -369,6 +428,81 @@ def test_no_key_and_daily_cap(d, monkeypatch):
     out = a.chat(None, "3", None)
     assert out["error"] == "cap" and len(client.calls) == 2
     assert not (d / "ideas.jsonl").exists()  # trade-review budget untouched
+
+
+def test_backend_chain_apple_first_then_fallback(d):
+    import httpx
+
+    from ctbot.assistant import backends
+
+    calls = []
+
+    def bridge(answer):
+        def handle(req):
+            calls.append(json.loads(req.content))
+            if answer is None:
+                raise httpx.ConnectError("mac asleep", request=req)
+            return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"content": answer}}]})
+        return backends.OpenAICompat("http://127.0.0.1:11535/v1", "", httpx.Client(transport=httpx.MockTransport(handle)))
+
+    s = _settings(d, APPLE_AI_URL="http://127.0.0.1:11535/v1")
+    assert backends.configured(s) == ["apple", "anthropic"]  # no OpenAI key set
+    claude = FakeClient(text("Claude here."), text("Claude again."))
+    a = Assistant(lambda: s, lambda: build_state(s, None, NOW), Proposals(_backend(d, s, [])), d / "u.json",
+                  client=claude, now=lambda: NOW, clients={"apple": bridge("We bought KO on Oct 13.")})
+    out = a.chat(None, "when did we buy KO?", None)
+    assert out["reply"] == "We bought KO on Oct 13." and out["backend"] == "Apple Intelligence" and not claude.calls
+    assert calls[0]["messages"][0]["role"] == "system" and "<bot_data>" in calls[0]["messages"][0]["content"]
+    assert "reply with exactly PASS" in calls[0]["messages"][0]["content"]  # it may hand off
+
+    a._clients["apple"] = a._injected["apple"] = bridge("PASS")  # Apple can't answer -> Claude
+    out = a.chat(None, "why?", None)
+    assert out["reply"] == "Claude here." and out["backend"] == "Claude"
+    assert "PASS" not in json.dumps(claude.calls[0]["system"])  # last in line: answers itself
+
+    a._clients["apple"] = a._injected["apple"] = bridge(None)  # Mac unreachable -> Claude
+    assert a.chat(None, "and now?", None)["backend"] == "Claude"
+    assert FAKE_KEY not in json.dumps(calls)
+
+
+def test_openai_adapter_translates_tool_calls(d, monkeypatch):
+    import httpx
+
+    from ctbot.assistant import backends
+    from ctbot.assistant.chat import TOOLS
+
+    seen = []
+
+    def handle(req):
+        seen.append((req.headers.get("authorization"), json.loads(req.content)))
+        if len(seen) == 1:
+            return httpx.Response(200, json={"choices": [{"finish_reason": "tool_calls", "message": {
+                "content": None, "tool_calls": [{"id": "c1", "type": "function", "function": {
+                    "name": "propose_setting_change",
+                    "arguments": json.dumps({"key": "MAX_OPEN_POSITIONS", "value": 4, "reason": "full", "risk": "more"})}}]}}]})
+        return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"content": "Card's up."}}]})
+
+    s = _settings(d)
+    oa = backends.OpenAICompat(backends.OPENAI_URL, "sk-test-openai", httpx.Client(transport=httpx.MockTransport(handle)))
+    a = Assistant(lambda: s, lambda: build_state(s, None, NOW), Proposals(_backend(d, s, [])), d / "u.json",
+                  now=lambda: NOW, clients={"openai": oa})
+    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-openai-000000000000")
+    out = a.chat(None, "take more trades", None)
+    assert out["backend"] == "OpenAI" and out["reply"] == "Card's up."
+    assert [c["summary"] for c in out["proposals"]] == ["Max open positions 3 → 4"]
+    auth, body = seen[0]
+    assert auth == "Bearer sk-test-openai" and body["model"] == s.openai_model
+    assert {t["function"]["name"] for t in body["tools"]} == {t["name"] for t in TOOLS}
+    second = seen[1][1]["messages"]
+    assert second[-2]["tool_calls"][0]["id"] == "c1" and second[-1]["role"] == "tool"
+    assert second[-1]["tool_call_id"] == "c1" and "Nothing has changed" in second[-1]["content"]
+
+    def boom(req):
+        return httpx.Response(429, json={})
+    a._clients["openai"] = backends.OpenAICompat(backends.OPENAI_URL, "k", httpx.Client(transport=httpx.MockTransport(boom)))
+    out = a.chat(None, "hi", None)
+    assert out["error"] == "rate_limited" and out["proposals"] == []
 
 
 # ---- routes ------------------------------------------------------------------------------------

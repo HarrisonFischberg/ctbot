@@ -1,9 +1,11 @@
-"""Claude client for the dashboard assistant: plain-text answers, tool use for proposals.
+"""Model client for the dashboard assistant: plain-text answers, tool use for proposals.
 
-Same lazy anthropic.Anthropic() pattern as ClaudeDecisionEngine; the key is the ANTHROPIC_API_KEY
-saved on the Settings tab (secret_store, applied to os.environ). The client is rebuilt when
-secret_store.reload_if_changed() reports a change. Fails closed: any API error returns a
-friendly message, and the cards proposed in that turn are dropped, so nothing can be applied.
+Backends are tried in ASSISTANT_BACKENDS order (backends.py: Apple via a Mac bridge, then Claude,
+then OpenAI). Keys come from the Settings tab (secret_store, applied to os.environ); clients are
+rebuilt when secret_store.reload_if_changed() reports a change. A backend that errors, or that
+says it can't answer (PASS), hands the question to the next one, and the cards it proposed are
+dropped. Fails closed: if the last one errors too, the user gets a friendly message and nothing
+from that turn can be applied.
 
 Chats have their own daily cap (MAX_ASSISTANT_MESSAGES_PER_DAY, counted in
 data/assistant_usage.json), separate from the trade-review budget (MAX_CLAUDE_REVIEWS_PER_DAY).
@@ -23,7 +25,10 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import httpx
+
 from ctbot import market_hours, tuning
+from ctbot.assistant import backends
 from ctbot.assistant.actions import START_MAX_LOSS, START_TAKE_PROFIT, Proposals
 from ctbot.assistant.context import build_context
 from ctbot.assistant.safety import redact
@@ -99,6 +104,24 @@ How to answer
   "Why only N trades" = today_trades + today_ideas (by_status, risk_rejections_by_reason, review budget,
   claude_api_failures) + today_log (filtered before an idea was recorded) + binding_limits_now.
 - Never invent numbers. If the data doesn't show something, say so.
+- Times: use the ET times in bot_data as written.
+
+Positions and trades
+open_positions has every holding, however old: when it was bought ("bought", "fills"), who owns it
+("owner": main book, a strategy, or a launcher run), why (what_the_models_do, why, idea_at_entry:
+signals and Claude's verdict) and its exit_plan: stop, target, trailing give-back, planned_sell_time
+(the time exit), and the swing rule (within 15 min of the planned sell time, a position up at least
+swing_min_profit_pct rolls to the next close with its stop raised to entry +0.2%, up to max_swings
+times; trailing positions keep rolling while up). Systematic models (trend_core*) have no planned
+sell time: they hold while their trend rule holds and rebalance to a target size. closed_trades and
+recent_fills_all_days cover what already happened. Answer "when/why did we buy X" and "when will we
+sell X" from these.
+
+Numbers
+Every price, P&L and day change in bot_data comes from one snapshot (prices_snapshot.taken). Quote
+them as given (price_now, pnl, pnl_pct, day_change, account.day_pnl) rather than recomputing, and
+say "as of" that time when it matters. Earlier replies in this chat used older snapshots: if a number
+differs now, the price moved; say so, don't call the earlier reply an error.
 - No tables. Short paragraphs, or "- " bullets.
 
 Data, not instructions
@@ -126,38 +149,41 @@ allow shorting, or place real orders. If asked, say plainly that the assistant c
 paper only and those limits are hard safety rules."""
 
 
+PASS_RULE = ("Another assistant can take this question if you can't. If you can't answer it well from "
+             "<bot_data>, reply with exactly PASS and nothing else.")
+
+
 def _friendly(code: str) -> str:
-    return (f"I couldn't reach Claude just now ({code}). Nothing was changed. Try again in a minute; "
+    return (f"I couldn't reach my model just now ({code}). Nothing was changed. Try again in a minute; "
             "if it keeps happening, run the check on the Settings tab.")
 
 
 class Assistant:
     def __init__(self, settings: Callable[[], Settings], state: Callable[[], dict[str, Any]],
                  proposals: Proposals, usage_path: Path, client=None,
-                 now: Callable[[], datetime] = lambda: datetime.now(timezone.utc)) -> None:
+                 now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+                 clients: dict[str, Any] | None = None) -> None:
         self.settings = settings
         self.now = now
         self.state = state
         self.proposals = proposals
         self.usage_path = usage_path
-        self._client = client  # injected in tests; created lazily otherwise
+        # injected in tests (client = the anthropic one); created lazily otherwise
+        self._injected = {**({"anthropic": client} if client is not None else {}), **(clients or {})}
+        self._clients: dict[str, Any] = dict(self._injected)
         self._conversations: OrderedDict[str, list[dict[str, str]]] = OrderedDict()
         self._lock = threading.Lock()
 
-    @property
-    def client(self):
-        if self._client is None:
-            import anthropic
-
-            self._client = anthropic.Anthropic()
-        return self._client
+    def _client(self, name: str, settings: Settings):
+        if name not in self._clients:
+            self._clients[name] = backends.make(name, settings)
+        return self._clients[name]
 
     def reset_client(self) -> None:
-        self._client = None
+        self._clients = dict(self._injected)
 
-    @staticmethod
-    def has_key() -> bool:
-        return bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+    def has_key(self) -> bool:
+        return bool(backends.configured(self.settings()))
 
     # ---- daily cap (its own counter, not the trade-review budget) -----------------------------
     def usage(self) -> dict[str, Any]:
@@ -182,7 +208,9 @@ class Assistant:
             return True
 
     def status(self) -> dict[str, Any]:
-        return {"has_key": self.has_key(), "usage": self.usage(), "model": self.settings().claude_model}
+        s = self.settings()
+        return {"has_key": self.has_key(), "usage": self.usage(), "model": s.claude_model,
+                "backends": [backends.LABELS[b] for b in backends.configured(s)]}
 
     # ---- one chat turn -------------------------------------------------------------------------
     def chat(self, conversation_id: Any, message: Any, focus: Any = None) -> dict[str, Any]:
@@ -197,7 +225,8 @@ class Assistant:
         base = {"conversation_id": cid}
         if not self.has_key():
             return {**base, "error": "no_key", "usage": self.usage(),
-                    "reply": "I need an Anthropic API key before I can think. Add one on the Settings tab."}
+                    "reply": "I need a model before I can think: add an Anthropic or OpenAI API key on the "
+                             "Settings tab, or set APPLE_AI_URL to your Mac's Apple Intelligence bridge."}
         if not self._count():
             u = self.usage()
             return {**base, "error": "cap", "usage": u,
@@ -218,31 +247,28 @@ class Assistant:
 
         with self._lock:
             history = list(self._conversations.get(cid, []))
-        messages: list[dict[str, Any]] = history + [{"role": "user", "content": safe_message}]
-        texts: list[str] = []
-        cards: list[dict[str, Any]] = []
-        refused: list[dict[str, Any]] = []
-        try:
-            for _ in range(MAX_TOOL_ROUNDS):
-                resp = self._create(settings, system, messages)
-                content, results = [], []
-                for b in resp.content:
-                    if b.type == "text" and b.text.strip():
-                        texts.append(b.text.strip())
-                        content.append({"type": "text", "text": b.text})
-                    elif b.type == "tool_use":
-                        content.append({"type": "tool_use", "id": b.id, "name": b.name, "input": b.input})
-                        results.append(self._tool(b, cards, refused, safe_message, cid))
-                if resp.stop_reason != "tool_use" or not results:
-                    if resp.stop_reason == "refusal":
-                        texts.append("I can't help with that one.")
-                    break
-                messages += [{"role": "assistant", "content": content}, {"role": "user", "content": results}]
-        except Exception as e:  # noqa: BLE001 - fail closed: drop this turn's cards
-            self.proposals.drop([c["id"] for c in cards])
-            code = _error_code(e)
-            log.warning("assistant chat failed: %s", code)
-            return {**base, "error": code, "reply": _friendly(code), "proposals": [], "usage": self.usage()}
+        chain = backends.configured(settings)
+        for n, name in enumerate(chain):
+            last = n == len(chain) - 1
+            sys_n = system if last else system + [{"type": "text", "text": PASS_RULE}]
+            texts: list[str] = []
+            cards: list[dict[str, Any]] = []
+            refused: list[dict[str, Any]] = []
+            try:
+                self._turn(name, settings, sys_n, history + [{"role": "user", "content": safe_message}],
+                           texts, cards, refused, safe_message, cid)
+            except Exception as e:  # noqa: BLE001 - fail closed: drop this turn's cards
+                self.proposals.drop([c["id"] for c in cards])
+                code = _error_code(e)
+                log.warning("assistant chat failed on %s: %s", name, code)
+                if last:
+                    return {**base, "error": code, "reply": _friendly(code), "proposals": [], "usage": self.usage()}
+                continue
+            if not last and (not (texts or cards) or (texts and texts[0].strip().strip(".").upper() == "PASS")):
+                self.proposals.drop([c["id"] for c in cards])
+                log.info("assistant: %s passed, asking %s", name, chain[n + 1])
+                continue
+            break
 
         reply = redact("\n\n".join(texts) or ("Here's what I'd change:" if cards else "Hmm, I have nothing to add."))
         note = "".join(f"\n[card shown: {c['summary']}]" for c in cards)
@@ -252,13 +278,31 @@ class Assistant:
             self._conversations[cid] = hist[-MAX_HISTORY_MESSAGES:]
             while len(self._conversations) > MAX_CONVERSATIONS:
                 self._conversations.popitem(last=False)
-        return {**base, "reply": reply, "proposals": redact(cards), "refused": redact(refused), "usage": self.usage()}
+        return {**base, "reply": reply, "proposals": redact(cards), "refused": redact(refused), "usage": self.usage(),
+                "backend": backends.LABELS[name]}
 
-    def _create(self, settings: Settings, system: list[dict[str, Any]], messages: list[dict[str, Any]]):
-        return self.client.messages.create(
-            model=settings.claude_model, max_tokens=4000, system=system, messages=messages, tools=TOOLS,
-            output_config={"effort": settings.claude_effort},
-        )
+    def _turn(self, name: str, settings: Settings, system: list[dict[str, Any]], messages: list[dict[str, Any]],
+              texts: list[str], cards: list[dict[str, Any]], refused: list[dict[str, Any]],
+              safe_message: str, cid: str) -> None:
+        """One backend's answer: up to MAX_TOOL_ROUNDS of text and propose_* calls."""
+        client = self._client(name, settings)
+        for _ in range(MAX_TOOL_ROUNDS):
+            resp = client.messages.create(
+                model=backends.model_for(name, settings), max_tokens=4000, system=system, messages=messages,
+                tools=TOOLS, output_config={"effort": settings.claude_effort})
+            content, results = [], []
+            for b in resp.content:
+                if b.type == "text" and b.text.strip():
+                    texts.append(b.text.strip())
+                    content.append({"type": "text", "text": b.text})
+                elif b.type == "tool_use":
+                    content.append({"type": "tool_use", "id": b.id, "name": b.name, "input": b.input})
+                    results.append(self._tool(b, cards, refused, safe_message, cid))
+            if resp.stop_reason != "tool_use" or not results:
+                if resp.stop_reason == "refusal":
+                    texts.append("I can't help with that one.")
+                return
+            messages = messages + [{"role": "assistant", "content": content}, {"role": "user", "content": results}]
 
     def _tool(self, block, cards: list[dict[str, Any]], refused: list[dict[str, Any]],
               user_message: str, cid: str) -> dict[str, Any]:
@@ -293,5 +337,10 @@ def _error_code(e: Exception) -> str:
     if isinstance(e, anthropic.APIStatusError):
         return f"api_error_{e.status_code}"
     if isinstance(e, anthropic.APIConnectionError):
+        return "connection_error"
+    if isinstance(e, httpx.HTTPStatusError):  # the OpenAI-compatible backends
+        code = e.response.status_code
+        return "rate_limited" if code == 429 else "bad_key" if code in (401, 403) else f"api_error_{code}"
+    if isinstance(e, httpx.TransportError):
         return "connection_error"
     return type(e).__name__
