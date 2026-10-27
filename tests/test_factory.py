@@ -54,7 +54,8 @@ def test_luck_is_rejected_and_a_real_edge_passes(monkeypatch):
     cands = [c for c in fy.candidates() if c["universe"] == "etfs" and c["filter"] == "any"]
     rep = fy.run({"etfs": {s: p[s] for s in ("AAA", "BBB", "CCC")}}, p["SPY"], cands)
     assert rep["n_candidates"] == 18 and rep["pbo"] is not None
-    assert rep["passed"] and all(n.startswith("fx_oracle_") for n in rep["passed"])
+    # 9 exit variants of each rule are one trial: only each group's best variant can pass
+    assert rep["gates"]["groups"] == 2 and len(rep["passed"]) == 1 and rep["passed"][0].startswith("fx_oracle_")
     coin = [r for n, r in rep["candidates"].items() if n.startswith("fx_coin_")]
     assert not any(r["passed"] for r in coin)
     assert all("survives_3x_costs" in rep["candidates"][n]["checks"] for n in rep["passed"])
@@ -77,3 +78,10 @@ def test_backfill_fetches_only_short_histories(tmp_path, monkeypatch):
     monkeypatch.setattr(bars, "fetch", lambda syms, *a: fetched.extend(syms))
     monkeypatch.setattr(robinhood_mcp_client, "ReadOnlyRobinhoodClient", lambda **k: type("C", (), {"call_many": None})())
     assert fy.backfill(["DEEP", "NEW", "NEW"]) == ["NEW"] and fetched == ["NEW"]
+
+
+def test_selection_years_start_at_the_first_position():
+    idx = pd.bdate_range("2009-12-28", periods=10)
+    r = pd.Series([0.0, 0.0, 0.0, 0.01, 0.0, -0.02, 0.0, 0.0, 0.0, 0.0], idx)
+    assert list(fy._selection(r)) == [0.01, 0.0, -0.02, 0.0, 0.0, 0.0, 0.0]
+    assert fy._selection(pd.Series(0.0, idx)).eq(0).all()
