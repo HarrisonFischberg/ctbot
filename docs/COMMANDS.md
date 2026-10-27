@@ -126,7 +126,7 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
 | Score the locked holdout once, after choosing | `.venv/bin/ctbot-rank-research --holdout` |
 | Write the shadow model file for the bot (retrain monthly) | `.venv/bin/ctbot-rank-research --write-model` |
 | Strategy library backtest: which `lib_*` entries the autopilot may trade | `.venv/bin/ctbot-library-research` |
-| Strategy factory: 864 candidates backtested, kept only past PBO, BH, Deflated Sharpe and 3x costs (research only, nothing trades them) | `.venv/bin/ctbot-factory` (`--universe etfs` for a quick run) |
+| Strategy factory: 864 candidates backtested, kept only past PBO, BH, Deflated Sharpe and 3x costs; the `factory` paper book trades the live list (runs nightly after the close) | `.venv/bin/ctbot-factory` (`--universe etfs` for a quick run) |
 | Compare the side-by-side paper books | `.venv/bin/ctbot-variants` |
 | Tests | `.venv/bin/pytest -q` |
 | Known-vulnerability scan of installed packages | `.venv/bin/pip-audit --skip-editable` |

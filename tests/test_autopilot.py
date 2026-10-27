@@ -55,6 +55,15 @@ def test_systematic_models_keep_their_own_exits():
     assert "trail" not in st.brackets["QQQ"] and st.brackets["QQQ"]["stop"] == 90.0  # global 10% cap, not 5%
 
 
+def test_factory_rule_trails_by_its_own_giveback():
+    rm, st = _rm(giveback=0.08), AccountState(10_000, 10_000, 10_000, 10_000, 0)
+    rm.set_bracket(st, "XLK", 100.0, None, {"stop": 95.0, "target": None, "exit_at": "2026-11-20T15:50:00-04:00",
+                                            "model": "fx_x", "systematic": True, "giveback": 0.05})
+    b = st.brackets["XLK"]
+    assert b["stop"] == 95.0 and b["trail"] == 0.05  # its backtested 5%, not the book's 8%
+    assert rm.trail(st, "XLK", 110.0) and b["stop"] == 104.5
+
+
 def test_fixed_brackets_without_autopilot():
     rm, st = RiskManager(RiskLimits()), AccountState(10_000, 10_000, 10_000, 10_000, 0)
     rm.set_bracket(st, "KO", 100.0, Decision(True, 0.9, "", 1000, stop_loss_pct=0.04, take_profit_pct=0.10))

@@ -137,6 +137,17 @@ def _fmt(x: float | None, spec: str) -> str:
     return "-" if x is None else spec.format(x)
 
 
+def _factory_line() -> str:
+    from ctbot.library import factory
+
+    rep = factory.load_report()
+    if not rep:
+        return "Strategy factory: no run yet."
+    pbo = f"PBO {rep['pbo']['pbo']:.2f}" if rep.get("pbo") else "PBO n/a"
+    return (f"Strategy factory ({rep['generated'][:10]}): {len(rep['passed'])} of {rep['n_candidates']} passed "
+            f"({pbo}); factory book trades {', '.join(rep.get('live', [])) or 'none'}.")
+
+
 def build(settings: Any, day: date) -> str:
     """The Markdown readout for `day`."""
     from ctbot.config import Settings
@@ -172,7 +183,8 @@ def build(settings: Any, day: date) -> str:
                    f"{len(r['closes'])} ({wins}/{len(r['closes']) - wins}) | {len(r['buys'])} | {r['positions']} | "
                    f"{r['usd']:.2f} | {_fmt(t.get('return'), '{:+.1%}')} | "
                    f"{vs['verdict'] + ' (' + str(vs['days']) + 'd)' if vs else '-'} |")
-    out += ["", f"Claude spend today, all books: ${sum(r['usd'] for r in rows):.2f}", "", "## Books", ""]
+    out += ["", f"Claude spend today, all books: ${sum(r['usd'] for r in rows):.2f}", _factory_line(), "",
+            "## Books", ""]
     for r in rows:
         eq = "no cycle today" if r["end"] is None else f"equity ${r['end']:,.2f}"
         out.append(f"**{r['name']}** ({r['title']}): {eq}")

@@ -1,5 +1,6 @@
 """Side-by-side paper books: config validation, shared data and reviews, independent ledgers."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,31 @@ def test_load_validates_names_settings_and_ranges(tmp_path):
                 '[a]\nenv = { ANTHROPIC_API_KEY = "x" }\n', '["A b"]\n', '[a]\nautopilot = { giveback_pct = 0.9 }\n'):
         with pytest.raises(ValueError):
             variants.load(_write(tmp_path, bad))
+
+
+def test_factory_book_loads_and_reloads_its_models(tmp_path, monkeypatch):
+    from ctbot.library import factory
+
+    (v,) = variants.load(_write(tmp_path, '[f]\nstrategies = "factory"\n'))
+    assert v.strategies == "factory"
+    with pytest.raises(ValueError):
+        variants.load(_write(tmp_path, '[f]\nstrategies = "everything"\n'))
+    report = tmp_path / "factory_report.json"
+    monkeypatch.setattr(factory, "REPORT", report)
+    c = Components(settings=None, market_data=None, providers=[], strategies=[], engine=None,
+                   risk=None, executor=None, universe=[])
+    c.configured, c.launched = [], ("autopilot", frozenset())
+    b = variants.Book(v, c, None, None, None)
+    variants._reload_factory(b)
+    assert c.strategies == [] and c.launched is not None  # no report yet: nothing changes
+    cand = {"name": "fx_rsi2_any_g5_h5_etfs", "family": "rsi2", "filter": "any", "giveback": 0.05,
+            "max_hold": 5, "universe": "etfs"}
+    report.write_text(json.dumps({"live": [cand["name"]], "candidates": {cand["name"]: cand}}))
+    variants._reload_factory(b)
+    (ws,) = c.strategies
+    assert ws.strategy.name == cand["name"] and ws.standalone and ws.mode == "trade"
+    assert ws.strategy.family.max_hold == 5 and ws.strategy.evidence == {"systematic": True, "giveback": 0.05}
+    assert c.configured is None and c.launched is None  # the autopilot re-launches from the new list
 
 
 def test_book_env_is_always_paper_in_its_own_folder():

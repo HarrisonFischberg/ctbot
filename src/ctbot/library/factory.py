@@ -13,9 +13,11 @@ A candidate passes only if every gate holds, all on dev (to 2017) and validation
 * dev Sharpe above 0 and 20+ validation trades (the library's own admission rules);
 * it still makes money in validation at 3x the normal costs.
 
-The holdout (2023 on) is never scored here; a person scores a finalist once with the trial
-registry. Nothing reads the report to trade: the autopilot still trades only `lib_*` entries that
-`ctbot-library-research` admits. Writes data/research/factory_report.json.
+Finalists then get one look at the holdout (2023 on), recorded once per candidate in the trial
+registry. It is a sanity check after selection, never used to rank. The "live" list holds
+finalists that also made money in the holdout, one per rule and universe. Only the `factory`
+paper book (config/variants.toml) trades them, as systematic rules with their own give-back and
+longest hold. Runs after the close from scripts/c2_track_weekly.sh. Writes data/research/factory_report.json.
 """
 
 from __future__ import annotations
@@ -39,6 +41,7 @@ REPORT = Path("data/research/factory_report.json")
 GIVEBACKS = (0.05, 0.08, 0.12)
 HOLD_MULTS = (0.5, 1.0, 2.0)
 COST_STRESS = 3.0
+EXPERIMENT = "strategy_factory"
 MIN_DSR = 0.95
 FDR_Q = 0.10
 
@@ -83,7 +86,7 @@ def _split(r: pd.Series, k: str) -> pd.Series:
 
 
 def run(panels: dict[str, dict[str, pd.DataFrame]], spy: pd.DataFrame,
-        cands: list[dict[str, Any]] | None = None, progress: bool = False) -> dict[str, Any]:
+        cands: list[dict[str, Any]] | None = None, progress: bool = False, registry=None) -> dict[str, Any]:
     from ctbot.research.lab import deflated_sharpe
     from ctbot.research.validation import benjamini_hochberg, pbo, sharpe_pvalue
 
@@ -123,12 +126,56 @@ def run(panels: dict[str, dict[str, pd.DataFrame]], spy: pd.DataFrame,
                  passed=all(checks.values()))
         if c["passed"]:
             c["fires_today"] = _fires_today(c, panels[c["universe"]], spy)
+            # a sanity check after selection, never a ranking input
+            c["holdout"] = lbt.metrics(daily[name], trades_of[name], *lbt.SPLITS["holdout"])
+            if registry is not None:
+                _record_holdout(registry, c)
             passed.append(name)
     passed.sort(key=lambda n: -rows[n]["validation"].get("sharpe", 0))
+    live, seen = [], set()
+    for n in passed:  # one version per rule and universe: the variants of one rule move together
+        key = (rows[n]["family"], rows[n]["universe"])
+        if rows[n]["holdout"].get("cagr", -1) > 0 and key not in seen:
+            seen.add(key)
+            live.append(n)
     return {"generated": datetime.now(UTC).isoformat(timespec="seconds"), "n_candidates": len(rows),
             "pbo": run_pbo, "splits": {k: lbt.SPLITS[k] for k in ("dev", "validation")},
             "gates": {"fdr_q": FDR_Q, "min_dsr": MIN_DSR, "cost_stress": COST_STRESS},
-            "passed": passed, "candidates": rows}
+            "passed": passed, "live": live, "candidates": rows}
+
+
+def _record_holdout(registry, c: dict[str, Any]) -> None:
+    from ctbot.research.registry import HoldoutLocked
+
+    params = {k: c[k] for k in ("family", "filter", "giveback", "max_hold", "universe")}
+    try:
+        registry.record(experiment=EXPERIMENT, strategy=c["name"], split="holdout", params=params,
+                        periods=dict(zip(("from", "to"), lbt.SPLITS["holdout"])), metrics=c["holdout"],
+                        data_fingerprint="factory")
+    except HoldoutLocked:
+        pass  # scored on an earlier night; the registry keeps the first result
+
+
+def load_report(path: Path | None = None) -> dict[str, Any] | None:
+    try:
+        return json.loads((path or REPORT).read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def live_strategies(report: dict[str, Any] | None) -> list:
+    """The factory book's models: one systematic rule per candidate in report["live"], each with
+    its own backtested give-back and longest hold (no Claude review)."""
+    from ctbot.strategies.registry import WeightedStrategy
+    from ctbot.strategies.rule import RuleStrategy
+
+    out = []
+    for name in (report or {}).get("live", []):
+        c = report["candidates"][name]
+        rs = RuleStrategy(c["family"], c["universe"], name, fam=family_of(c),
+                          evidence={"systematic": True, "giveback": c["giveback"]})
+        out.append(WeightedStrategy(rs, 1.0, standalone=True, mode="trade"))
+    return out
 
 
 def _fires_today(c: dict[str, Any], panel: dict[str, pd.DataFrame], spy: pd.DataFrame) -> list[str]:
@@ -152,7 +199,9 @@ def main() -> None:
     panels = {u: fx.load_panel(sg.universe(u)) for u in unis}
     cands = [c for c in candidates() if c["universe"] in unis][: args.limit]
     print(f"backtesting {len(cands)} candidates ...", flush=True)
-    rep = run(panels, spy, cands, progress=True)
+    from ctbot.research.registry import Registry
+
+    rep = run(panels, spy, cands, progress=True, registry=Registry())
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(rep, indent=2, default=str))
     p = rep["pbo"]
@@ -165,6 +214,8 @@ def main() -> None:
               f"{v.get('trades', 0):>6}  {', '.join(r['fires_today']) or '-'}")
     print(f"passed {len(rep['passed'])} of {rep['n_candidates']} (PBO < 0.5, BH q=10%, DSR >= 0.95, "
           f"dev Sharpe > 0, 20+ trades, profitable at 3x costs)")
+    print(f"factory book trades {len(rep['live'])}: {', '.join(rep['live']) or 'none'} "
+          "(passed, profitable 2023-now, one per rule and universe)")
     print(f"written: {REPORT}")
 
 

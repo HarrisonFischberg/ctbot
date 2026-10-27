@@ -44,7 +44,7 @@ def test_cost_multiplier_costs_more():
 
 
 def test_luck_is_rejected_and_a_real_edge_passes(monkeypatch):
-    p = _panel(5900, ("AAA", "BBB", "CCC", "SPY"), start="2000-01-03", seed=11)
+    p = _panel(6400, ("AAA", "BBB", "CCC", "SPY"), start="2000-01-03", seed=11)
     noise = np.random.default_rng(5)
     monkeypatch.setattr(sg, "FAMILIES", {
         # peeks at the next week: an edge no honest rule has, so the gates must let it through
@@ -58,3 +58,6 @@ def test_luck_is_rejected_and_a_real_edge_passes(monkeypatch):
     coin = [r for n, r in rep["candidates"].items() if n.startswith("fx_coin_")]
     assert not any(r["passed"] for r in coin)
     assert all("survives_3x_costs" in rep["candidates"][n]["checks"] for n in rep["passed"])
+    # the book trades one oracle version per rule and universe, and only if it made money 2023-now
+    assert len(rep["live"]) == 1 and rep["live"][0] in rep["passed"]
+    assert rep["candidates"][rep["live"][0]]["holdout"]["cagr"] > 0
