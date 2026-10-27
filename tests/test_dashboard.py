@@ -106,6 +106,10 @@ def test_server_is_read_only_and_rejects_foreign_hosts():
 
             evil = urllib.request.Request(base + "/api/state", headers={"Host": "evil.test"})
             assert status(evil) == 403
+            # Bundled fonts are served by exact name only.
+            assert status(base + "/fonts/barlow-latin-400-normal.woff2") == 200
+            assert status(base + "/fonts/nope.woff2") == 404
+            assert status(base + "/fonts/..%2Fserver.py") == 404
             # Without the page's token, nothing can be queued.
             post = urllib.request.Request(base + "/api/paper/order", data=b'{"side":"buy","symbol":"KO"}',
                                           headers={"Content-Type": "application/json"}, method="POST")
@@ -218,4 +222,4 @@ def test_server_accepts_its_tailnet_name_and_still_rejects_others(monkeypatch):
 
 def test_what_you_own_shows_on_home_and_autopilot():
     html = (ROOT / "src" / "ctbot" / "dashboard" / "index.html").read_text()
-    assert '<div data-tab="home trading" class="card span-12 own">' in html
+    assert '<div data-tab="home trading" data-sub="overview" class="card span-12 own">' in html
