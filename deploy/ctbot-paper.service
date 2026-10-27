@@ -8,9 +8,8 @@ After=network-online.target
 [Service]
 User=ctbot
 WorkingDirectory=/home/ctbot/ctbot
-Environment=CTBOT_MODE=paper LIVE_TRADING_ENABLED=false PYTHONUNBUFFERED=1
-# log times in ET, as the dashboard shows them (a server clock is usually UTC)
-Environment=TZ=America/New_York
+# TZ: log times in ET, as the dashboard shows them (a server clock is usually UTC)
+Environment=CTBOT_MODE=paper LIVE_TRADING_ENABLED=false PYTHONUNBUFFERED=1 TZ=America/New_York
 ExecStart=/home/ctbot/ctbot/.venv/bin/ctbot-paper --loop --interval 300
 Restart=always
 RestartSec=15
