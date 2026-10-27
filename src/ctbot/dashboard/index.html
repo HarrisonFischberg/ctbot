@@ -1226,7 +1226,7 @@ main:focus { outline: none; }
       ["Down from its best", `<div class="value ${a.drawdown_pct < -1e-9 ? "down" : "flat"}">${sgnPct(a.drawdown_pct)}</div>
         <div class="sub">best was ${usd(a.peak_equity)} · the bot stops buying at −${pct(L.max_total_drawdown_pct, 0)}</div>${meter(ddUsed, ddUsed >= 1 ? "crit" : ddUsed > .6 ? "warn" : "")}`, "Down from high"],
       ["Cash", `<div class="value">${usd(M.cash)}</div>
-        <div class="sub">free to trade now${M.cash - M.free > 1 ? ` · ${usd(M.cash - M.free, 0)} is over your ${usd(L.max_trading_capital, 0)} limit` : ""}${a.unsettled ? " · " + usd(a.unsettled) + " settling" : ""}${L.paper_margin > 1 ? ` · can borrow up to ${L.paper_margin}x: ${usd(a.buying_power, 0)} available to buy with${a.borrowed ? `, ${usd(a.borrowed, 0)} borrowed now` : ""}` : ""}</div>`, "Buying power"],
+        <div class="sub">free to trade now${M.cash - M.free > 1 ? ` · ${usd(M.cash - M.free, 0)} is over your ${usd(L.max_trading_capital, 0)} limit` : ""}${a.unsettled ? " · " + usd(a.unsettled) + " settling" : ""}${L.paper_margin > 1 ? ` · can borrow up to ${L.paper_margin}x: ${usd(a.buying_power, 0)} available to buy with${a.borrowed ? `, ${usd(a.borrowed, 0)} borrowed now` : ""}, but your ${usd(L.max_trading_capital, 0)} limit leaves the bot ${usd(Math.max(0, L.max_trading_capital - M.invested), 0)} of it` : ""}</div>`, "Buying power"],
       ["Invested", `<div class="value">${usd(M.invested)}</div>
         <div class="sub">${inv}</div>${meter(a.equity ? M.invested / a.equity : 0)}`],
       ["What you hold", `<div class="value">${nRuns + M.loose}</div>
