@@ -1,0 +1,20 @@
+# What each strategy's backtest promised, per closed trade, for the dashboard's "vs backtest"
+# column. avg_ret is the mean return per trade AFTER costs (0.001 = +0.1%), out-of-sample
+# where there was one. A strategy missing here shows "no backtest". Add a line when you
+# backtest a strategy; never edit one to match the live results.
+
+[intraday_momentum]
+avg_ret = -0.00062
+win_rate = 0.28
+trades = 270
+source = "Hey Astral, SPY 5m bars, 2024-11-08 to 2026-10-26, 1 bp commission + 2 bp slippage per side"
+
+[rsi2_etf]
+avg_ret = 0.00168
+win_rate = 0.69
+trades = 1872
+source = "ctbot research backtest, 14 ETFs, out-of-sample 2020-2026"
+
+[turn_of_month]
+avg_ret = 0.00407
+source = "ctbot research backtest, out-of-sample 2020-2026: SPY +34.3 bps, QQQ +47.1 bps (mean of the two)"

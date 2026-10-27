@@ -37,6 +37,8 @@ src/ctbot/
     context.py                 review context + earnings guard (Robinhood, then public extras)
     tradingview.py             public TradingView scanner: earnings dates, technical rating
     news.py                    Marketaux news sentiment (optional key; numbers only)
+    astral_client.py           Hey Astral MCP (OAuth, ctbot-astral-login): research-read allowlist only
+    astral_news.py             Astral news labels for reviews: counts per event type, no headlines
     sec_edgar.py               SEC EDGAR (SEC_USER_AGENT): 8-K item codes + last reported quarter for
                                reviews; bankruptcy / delisting / non-reliance 8-Ks block entries
   providers/                   alt data, normalized to AltDataEvent
@@ -49,6 +51,7 @@ src/ctbot/
     cboe_options.py            free Cboe delayed chains -> unusual-volume OPTIONS_FLOW events
     tradingflow_options.py     TradingFlow trade-level flow (ask/bid side) -> OPTIONS_FLOW events
     house_clerk.py             free House PTRs (pdftotext) -> CONGRESS_TRADE events
+    astral.py                  Hey Astral Form 4 open-market trades -> INSIDER_TRADE events
   strategies/
     base.py                    Strategy protocol + StrategyContext
     registry.py                load strategies.toml, build enabled strategies
@@ -77,6 +80,7 @@ src/ctbot/
   variants.py                  side-by-side paper books (config/variants.toml), run in the paper process
                                after the main book with shared market data and Claude verdicts
   track_record.py              size multiplier per strategy from its last 30 days of paper results
+  backtest_check.py            live average per trade vs config/backtests.toml ("Vs backtest" column)
   risk_mode.py                 pull back after losses: no borrowing on a bad day, drawdown or QQQ downtrend
   trade_log.py                 per-trade post-mortems (data/trade_log.jsonl)
   library/                     12 published rule families x 2 universes (lib_*), traded only if
@@ -156,6 +160,7 @@ ctbot-paper            # one cycle; --loop to repeat
 
 ```
 .venv/bin/ctbot-robinhood-login     # once: browser sign-in for read-only market data
+.venv/bin/ctbot-astral-login        # once, optional: Hey Astral sign-in (needs ASTRAL_MCP_URL)
 ./run_ctbot.sh                       # dashboard + paper bot (5-min cycles), Ctrl+C stops both
 ```
 

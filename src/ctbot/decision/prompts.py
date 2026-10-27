@@ -23,7 +23,10 @@ hard rule enforces it).
 
 market_context may also carry: chart_setups (daily-close rules the chart matches today:
 breakout_20d, bull_flag, reclaim_ma20, oversold, oversold_bounce, with RSI 14 and the distance
-from the 20-day high and average); sec_8k (the company's 8-K item codes of the last two weeks
+from the 20-day high and average); news_catalysts (Hey Astral's labels for the last two days of
+company news: article count, count per event type such as earnings, partnership, financing or
+legal, and the highest importance score; labels only, no headlines); sec_8k (the company's 8-K
+item codes of the last two weeks
 from SEC EDGAR, e.g. 2.02 earnings results, 5.02 an officer change); and reported_numbers (the
 latest quarter the company filed: revenue, net income and EPS against a year earlier, margins).
 A matched setup is a rule, not a forecast. Filed numbers describe the past quarter.

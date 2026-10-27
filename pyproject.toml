@@ -31,6 +31,8 @@ ctbot-paper = "ctbot.paper.main:main"
 ctbot-live = "ctbot.live.main:main"
 # One-time interactive Robinhood sign-in for read-only market data.
 ctbot-robinhood-login = "ctbot.market_data.robinhood_mcp_client:login_main"
+# One-time interactive Hey Astral sign-in (insider trades, news labels); needs ASTRAL_MCP_URL.
+ctbot-astral-login = "ctbot.market_data.astral_client:login_main"
 # Read-only local dashboard at http://127.0.0.1:8787.
 ctbot-dashboard = "ctbot.dashboard.server:main"
 # Research (read-only data, offline backtests).

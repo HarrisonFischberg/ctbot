@@ -56,8 +56,8 @@ class ToolNotAllowed(PermissionError):
     pass
 
 
-def check_allowed(tool: str) -> None:
-    if tool not in READ_ONLY_TOOLS:
+def check_allowed(tool: str, allowed: frozenset[str] = READ_ONLY_TOOLS) -> None:
+    if tool not in allowed:
         raise ToolNotAllowed(f"{tool!r} is not a read-only tool; refusing to call it")
 
 
@@ -101,7 +101,8 @@ class _FileTokenStorage:
         self._write("client_info", client_info.model_dump(mode="json", exclude_none=True))
 
 
-def _wait_for_callback(timeout_s: float = 300.0) -> tuple[str, str | None, str | None]:
+def _wait_for_callback(timeout_s: float = 300.0,
+                       error: type[Exception] = RobinhoodLoginRequired) -> tuple[str, str | None, str | None]:
     """Serve one request on localhost and return (code, state, iss) from the OAuth redirect.
 
     `iss` (RFC 9207) must be passed on: Robinhood advertises it, and the SDK rejects a
@@ -141,12 +142,23 @@ def _wait_for_callback(timeout_s: float = 300.0) -> tuple[str, str | None, str |
         for server in servers:
             server.server_close()
     if result.get("error") or not result.get("code"):
-        raise RobinhoodLoginRequired(f"sign-in failed: {result.get('error') or 'no code received'}")
+        raise error(f"sign-in failed: {result.get('error') or 'no code received'}")
     return result["code"], result.get("state"), result.get("iss")  # type: ignore[return-value]
 
 
 class ReadOnlyRobinhoodClient:
-    """Synchronous facade. Each call() / call_many() opens one MCP session."""
+    """Synchronous facade. Each call() / call_many() opens one MCP session.
+
+    Subclasses point it at another OAuth MCP server (see astral_client.py) by overriding the
+    class attributes below; the allowlist check and token storage stay the same.
+    """
+
+    server_url = SERVER_URL
+    allowed = READ_ONLY_TOOLS
+    login_error: type[Exception] = RobinhoodLoginRequired
+    login_hint = ("Robinhood sign-in needed: run `.venv/bin/ctbot-robinhood-login` from the "
+                  "claude_robinhood folder in a terminal")
+    client_name = "ctbot read-only market data"
 
     def __init__(self, token_path: Path = TOKEN_PATH, interactive: bool = False) -> None:
         self.token_path = token_path
@@ -158,26 +170,24 @@ class ReadOnlyRobinhoodClient:
 
         async def redirect_handler(url: str) -> None:
             if not self.interactive:
-                raise RobinhoodLoginRequired(
-                    "Robinhood sign-in needed: run `.venv/bin/ctbot-robinhood-login` from the claude_robinhood folder in a terminal"
-                )
-            print("Opening your browser to sign in to Robinhood. If it does not open, visit:")
+                raise self.login_error(self.login_hint)
+            print("Opening your browser to sign in. If it does not open, visit:")
             print(url)
             webbrowser.open(url)
 
         async def callback_handler() -> AuthorizationCodeResult:
-            code, state, iss = await asyncio.to_thread(_wait_for_callback)
+            code, state, iss = await asyncio.to_thread(_wait_for_callback, 300.0, self.login_error)
             return AuthorizationCodeResult(code=code, state=state, iss=iss)
 
         metadata = OAuthClientMetadata(
-            client_name="ctbot read-only market data",
+            client_name=self.client_name,
             redirect_uris=[REDIRECT_URI],
             grant_types=["authorization_code", "refresh_token"],
             response_types=["code"],
             token_endpoint_auth_method="none",
         )
         return OAuthClientProvider(
-            server_url=SERVER_URL,
+            server_url=self.server_url,
             client_metadata=metadata,
             storage=_FileTokenStorage(self.token_path),
             redirect_handler=redirect_handler,
@@ -192,12 +202,12 @@ class ReadOnlyRobinhoodClient:
         out: list[dict[str, Any]] = []
         async with create_mcp_http_client(auth=self._auth()) as http:
             async with streamable_http_client(
-                SERVER_URL, http_client=http, max_sse_event_size=MAX_RESPONSE_BYTES
+                self.server_url, http_client=http, max_sse_event_size=MAX_RESPONSE_BYTES
             ) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     for tool, args in calls:
-                        check_allowed(tool)  # re-checked right before sending
+                        check_allowed(tool, self.allowed)  # re-checked right before sending
                         result = await session.call_tool(tool, args)
                         out.append(parse_tool_result(tool, result))
         return out
@@ -205,13 +215,13 @@ class ReadOnlyRobinhoodClient:
     def call_many(self, calls: Iterable[tuple[str, dict[str, Any]]]) -> list[dict[str, Any]]:
         calls = list(calls)
         for tool, _ in calls:
-            check_allowed(tool)
+            check_allowed(tool, self.allowed)
         if not calls:
             return []
         try:
             return asyncio.run(self._call_many(calls))
         except BaseExceptionGroup as eg:  # anyio task groups wrap errors; surface ours plainly
-            for kind in (RobinhoodLoginRequired, ToolNotAllowed):
+            for kind in (self.login_error, ToolNotAllowed):
                 match, _ = eg.split(kind)
                 if match:
                     raise match.exceptions[0] from None

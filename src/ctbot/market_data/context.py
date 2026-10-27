@@ -35,12 +35,13 @@ def report_datetime(d: date, timing: str | None) -> datetime:
 class MarketContext:
     def __init__(self, call_many: CallMany, market_data=None,
                  clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
-                 snapshot=None, news=None, sec=None, replay=None) -> None:
+                 snapshot=None, news=None, sec=None, replay=None, catalysts=None) -> None:
         self._call_many = call_many
         self.md = market_data
         self.clock = clock
         self.snapshot = snapshot  # TradingViewSnapshot | None
         self.news = news  # MarketauxSentiment | None
+        self.catalysts = catalysts  # AstralNews | None
         self.sec = sec  # SecEdgar | None
         self.replay = replay  # ReplayOdds | None
         self._day: date | None = None
@@ -159,6 +160,8 @@ class MarketContext:
             out["technicals"] = self._extra("TradingView technicals", lambda: self.snapshot.technicals(sym))
         if self.news is not None:
             out["news_sentiment"] = self._extra("news sentiment", lambda: self.news.for_symbol(sym))
+        if self.catalysts is not None:
+            out["news_catalysts"] = self._extra("Astral news", lambda: self.catalysts.for_symbol(sym))
         if self.md is not None:
             out["chart_setups"] = self._extra("chart setups", lambda: setups.for_symbol(self.md, sym))
         if self.sec is not None:

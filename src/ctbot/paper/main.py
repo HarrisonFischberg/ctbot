@@ -57,6 +57,18 @@ def _sec():
     return SecEdgar(ua) if valid_user_agent(ua) else None
 
 
+def _astral_news():
+    """Hey Astral news labels when ASTRAL_MCP_URL is set (sign in once with ctbot-astral-login)."""
+    from ctbot.market_data.astral_client import URL_ENV, AstralClient
+
+    url = os.environ.get(URL_ENV, "").strip()
+    if not url:
+        return None
+    from ctbot.market_data.astral_news import AstralNews
+
+    return AstralNews(AstralClient(url).call_many)
+
+
 def _market_context(settings: Settings, call_many, md):
     """Robinhood context plus the optional public sources (TradingView, Marketaux, SEC)."""
     from ctbot.market_data.context import MarketContext
@@ -69,7 +81,8 @@ def _market_context(settings: Settings, call_many, md):
     from ctbot.research.timemachine import ReplayOdds
 
     return MarketContext(call_many, md, snapshot=snapshot, news=_news(), sec=_sec(),
-                         replay=ReplayOdds(md) if settings.review_replay_odds else None)
+                         replay=ReplayOdds(md) if settings.review_replay_odds else None,
+                         catalysts=_astral_news())
 
 
 def main() -> None:

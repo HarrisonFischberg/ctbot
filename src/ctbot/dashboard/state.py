@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from ctbot import manual_queue, market_hours, thoughts, track_record, trade_log
+from ctbot import backtest_check, manual_queue, market_hours, thoughts, track_record, trade_log
 from ctbot.config import Settings, load_universe
 from ctbot.models import Quote
 from ctbot.paper.simulator import buying_power, margin_call
@@ -403,6 +403,8 @@ def build_state(
     day_trades = [d for d in risk_state.get("day_trade_dates", [])
                   if (today - datetime.fromisoformat(d).date()).days < 7]
     acct = settings.robinhood_account_number
+    vs_backtest = backtest_check.by_model(
+        ledger.get("fills", []), backtest_check.load(settings.strategies_file.with_name("backtests.toml")))
     mults = {m: v["mult"] for m, v in track_record.size_multipliers(
         ledger.get("fills", []), now, L.track_record_prior_trades, L.track_record_min_mult,
         L.track_record_max_mult).items()} if L.track_record_sizing else {}
@@ -445,7 +447,8 @@ def build_state(
         "models": [
             {**m, "losing_streak": risk_state.get("model_losing_streak", {}).get(m["model"], 0),
              "paused": 0 < L.model_max_losing_streak <= risk_state.get("model_losing_streak", {}).get(m["model"], 0),
-             "size_mult": track_record.for_candidate(mults, m["model"].split(","))}
+             "size_mult": track_record.for_candidate(mults, m["model"].split(",")),
+             "backtest": vs_backtest.get(m["model"])}
             for m in model_stats(ledger.get("fills", []), {p["symbol"]: p["last"] for p in pos_out if p["last"]})
         ],
         "account_summary": {
