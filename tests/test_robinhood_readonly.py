@@ -112,24 +112,40 @@ def test_token_file_is_private():
         assert asyncio.run(storage.get_tokens()).refresh_token == "y"
 
 
-def test_expired_stored_token_is_refreshed_not_signed_in_again(tmp_path):
+def test_expired_stored_token_is_refreshed_not_signed_in_again(tmp_path, monkeypatch):
     import json
     import os
 
-    import httpx
+    import httpx2
+    from mcp.shared import _httpx_utils
 
+    def server(req):  # metadata as Hey Astral serves it: the token endpoint is not <server>/token
+        if "oauth-protected-resource" in req.url.path:
+            return httpx2.Response(200, json={"resource": "https://example.test/mcp",
+                                              "authorization_servers": ["https://auth.example.test"]})
+        if "oauth-authorization-server" in req.url.path:
+            return httpx2.Response(200, json={"issuer": "https://auth.example.test",
+                                              "authorization_endpoint": "https://auth.example.test/authorize",
+                                              "token_endpoint": "https://auth.example.test/oauth/token",
+                                              "response_types_supported": ["code"]})
+        return httpx2.Response(404)
+
+    monkeypatch.setattr(_httpx_utils, "create_mcp_http_client",
+                        lambda *a, **k: httpx2.AsyncClient(transport=httpx2.MockTransport(server)))
     path = tmp_path / "tok.json"
     path.write_text(json.dumps({  # written before saved_at existed: the file's write time counts
         "tokens": {"access_token": "old", "token_type": "Bearer", "expires_in": 3600, "refresh_token": "r"},
         "client_info": {"client_id": "c", "redirect_uris": ["http://localhost:8765/callback"]}}))
     os.utime(path, (time.time() - 7200, time.time() - 7200))  # saved two hours ago: expired
     provider = ReadOnlyRobinhoodClient(token_path=path)._auth()
+    provider.context.server_url = "https://example.test/mcp"
 
     async def first_request():
-        flow = provider.async_auth_flow(httpx.Request("POST", "https://example.test/mcp"))
+        flow = provider.async_auth_flow(httpx2.Request("POST", "https://example.test/mcp"))
         return await flow.__anext__()
 
     req = asyncio.run(first_request())
+    assert str(req.url) == "https://auth.example.test/oauth/token"
     assert b"grant_type=refresh_token" in req.content and b"refresh_token=r" in req.content
     path.write_text(json.dumps({"tokens": {"access_token": "new", "token_type": "Bearer", "expires_in": 3600}}))
     assert _FileTokenStorage(path).expires_at() > time.time()  # fresh file: valid for about an hour
