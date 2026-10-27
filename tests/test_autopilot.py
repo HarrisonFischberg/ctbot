@@ -155,5 +155,5 @@ def test_autopilot_replaces_the_confidence_bar_and_restores_it_when_off():
     assert any(r.startswith("confidence_") for r in reasons(0.42))
     rm.min_confidence = autopilot.MIN_CONFIDENCE
     assert not any(r.startswith("confidence_") for r in reasons(0.42))
-    assert any(r.startswith("confidence_") for r in reasons(0.25))
+    assert any(r.startswith("confidence_") for r in reasons(0.15))
     assert "claude_rejected" in reasons(0.42, approve=False)  # a no is still a no

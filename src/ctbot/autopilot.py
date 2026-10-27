@@ -33,8 +33,8 @@ BENCH_WINDOW_DAYS = 30
 # With a capped loss and a trailing exit, a trade pays when its expected value is positive, not when it
 # is more likely than not to win (trend entries win ~40% of the time). While the autopilot is on,
 # Claude's approval is the gate and its win probability only has to clear this floor instead of
-# MIN_CLAUDE_CONFIDENCE (Harold's choice, 2026-10-20). Settable per book in autopilot.json.
-MIN_CONFIDENCE = 0.30
+# MIN_CLAUDE_CONFIDENCE (Harold's choice: 30% on 2026-10-20, 20% on 2026-10-27). Settable per book in autopilot.json.
+MIN_CONFIDENCE = 0.20
 LIMITS = {"max_loss_pct": (0.01, 0.25), "giveback_pct": (0.01, 0.30), "min_confidence": (0.10, 0.90)}
 
 
