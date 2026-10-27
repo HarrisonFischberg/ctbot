@@ -49,6 +49,7 @@ from ctbot.dashboard.last_quotes import SessionQuotes
 from ctbot.dashboard.state import _read_history, build_state
 
 INDEX = Path(__file__).with_name("index.html")
+PAGES = {"/": INDEX, "/observatory": INDEX.with_name("observatory.html")}  # classic view, and the new one to flip to
 log = logging.getLogger(__name__)
 
 
@@ -287,6 +288,19 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
         log.info("top up requested: paper equity to $%.0f", settings.risk.max_trading_capital)
         return 202, {"to": settings.risk.max_trading_capital}
 
+    def pause_all(body: dict) -> tuple[int, dict]:
+        """Pause all strategies: the HALT file stops new buys; stops, targets and sells keep running."""
+        halt = settings.halt_path
+        if body.get("paused") is True:
+            halt.parent.mkdir(parents=True, exist_ok=True)
+            halt.write_text("paused from the dashboard\n")
+        elif body.get("paused") is False:
+            halt.unlink(missing_ok=True)
+        else:
+            return 400, {"error": "paused must be true or false"}
+        log.info("all strategies %s (paper)", "paused: no new buys" if halt.exists() else "resumed")
+        return 200, {"paused": halt.exists()}
+
     def launch_stop(body: dict) -> tuple[int, dict]:
         try:
             allocations.stop(settings.allocations_path, str(body.get("strategy")))
@@ -372,6 +386,7 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
         "/api/robinhood/disconnect": disconnect_robinhood,
         "/api/launch": launch,
         "/api/launch/stop": launch_stop,
+        "/api/pause": pause_all,
         "/api/launch/auto": launch_auto,
         "/api/launch/auto/off": launch_auto_off,
         "/api/paper/topup": paper_topup,
@@ -398,9 +413,15 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
             if self.headers.get("Host") not in allowed_hosts:
                 return self._send(403, b"forbidden", "text/plain")
             path = self.path.split("?", 1)[0]
-            if path == "/":
-                page = INDEX.read_text().replace("__CTBOT_TOKEN__", token)
+            if path in PAGES:
+                page = PAGES[path].read_text().replace("__CTBOT_TOKEN__", token)
                 return self._send(200, page.encode(), "text/html; charset=utf-8")
+            m = re.fullmatch(r"/fonts/([a-z0-9-]+\.woff2)", path)
+            if m:  # the dashboard's bundled fonts (SIL OFL), so the page needs no font CDN
+                f = INDEX.with_name("fonts") / m.group(1)
+                if f.is_file():
+                    return self._send(200, f.read_bytes(), "font/woff2")
+                return self._send(404, b"not found", "text/plain")
             m = re.fullmatch(r"/reports/([A-Za-z0-9_.-]+\.html)", path)
             if m:  # quantstats tearsheets, served only from data/reports
                 f = Path("data/reports") / m.group(1)

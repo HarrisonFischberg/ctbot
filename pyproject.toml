@@ -57,7 +57,7 @@ ctbot-watchdog = "ctbot.watchdog:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-ctbot = ["dashboard/index.html"]
+ctbot = ["dashboard/index.html", "dashboard/observatory.html", "dashboard/fonts/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]
