@@ -44,10 +44,11 @@ EXPERIMENT = "strategy_library"
 
 
 def simulate(panel: dict[str, pd.DataFrame], spy: pd.DataFrame, family: sg.Family, etf: bool,
-             giveback: float = GIVEBACK) -> tuple[pd.Series, list[dict[str, Any]]]:
-    """Daily returns (on SPY's calendar) and the trade list for one entry."""
+             giveback: float = GIVEBACK, cost_mult: float = 1.0) -> tuple[pd.Series, list[dict[str, Any]]]:
+    """Daily returns (on SPY's calendar) and the trade list for one entry. cost_mult scales the
+    per-side cost (the strategy factory's cost stress test)."""
     dates = spy.index
-    cost = ETF_COST if etf else STOCK_COST
+    cost = (ETF_COST if etf else STOCK_COST) * cost_mult
     cols = {}
     for s, df in panel.items():
         d = df.reindex(dates)

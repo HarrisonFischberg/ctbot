@@ -49,6 +49,8 @@ ctbot-sweep = "ctbot.research.sweep:main"
 ctbot-perf = "ctbot.research.perf:main"
 ctbot-rank-research = "ctbot.research.ranker:main"
 ctbot-library-research = "ctbot.library.backtest:main"
+# 864 strategy candidates (library rule x filter x exits x universe), backtested and gated; research only.
+ctbot-factory = "ctbot.library.factory:main"
 ctbot-variants = "ctbot.variants:main"
 ctbot-dayplan = "ctbot.dayplan:plan_main"
 ctbot-reconcile = "ctbot.dayplan:reconcile_main"
