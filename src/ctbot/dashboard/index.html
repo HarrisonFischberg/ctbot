@@ -795,7 +795,7 @@ main:focus { outline: none; }
       <div class="strats" id="strategies"></div>
     </div>
     <div data-tab="activity" class="card span-12">
-      <h2>What the bot did <span class="count">step by step, this Mac's time · hover a line for the raw log</span><span class="spacer"></span>
+      <h2>What the bot did <span class="count">step by step, the bot computer's clock · hover a line for the raw log</span><span class="spacer"></span>
         <span class="seg" role="group" aria-label="Log filter">
           <button data-log="all" class="on">All</button><button data-log="fill">Trades</button>
           <button data-log="reject">Turned down</button><button data-log="warn">Problems</button>
@@ -1225,8 +1225,8 @@ main:focus { outline: none; }
         <div class="sub">${sgnPct(a.day_pnl_pct)} today · the bot stops buying for the day at −${pct(L.max_daily_loss_pct, 0)}</div>${meter(lossUsed, lossUsed >= 1 ? "crit" : lossUsed > .6 ? "warn" : "")}`, "Today's return"],
       ["Down from its best", `<div class="value ${a.drawdown_pct < -1e-9 ? "down" : "flat"}">${sgnPct(a.drawdown_pct)}</div>
         <div class="sub">best was ${usd(a.peak_equity)} · the bot stops buying at −${pct(L.max_total_drawdown_pct, 0)}</div>${meter(ddUsed, ddUsed >= 1 ? "crit" : ddUsed > .6 ? "warn" : "")}`, "Down from high"],
-      ["Cash", `<div class="value">${usd(M.cash)}</div>
-        <div class="sub">free to trade now${M.cash - M.free > 1 ? ` · ${usd(M.cash - M.free, 0)} is over your ${usd(L.max_trading_capital, 0)} limit` : ""}${a.unsettled ? " · " + usd(a.unsettled) + " settling" : ""}${L.paper_margin > 1 ? ` · can borrow up to ${L.paper_margin}x: ${usd(a.buying_power, 0)} available to buy with${a.borrowed ? `, ${usd(a.borrowed, 0)} borrowed now` : ""}, but your ${usd(L.max_trading_capital, 0)} limit leaves the bot ${usd(Math.max(0, L.max_trading_capital - M.invested), 0)} of it` : ""}</div>`, "Buying power"],
+      ["Cash", `<div class="value">${usd(Math.max(0, M.cash))}</div>
+        <div class="sub">free to trade now${M.cash - M.free > 1 ? ` · ${usd(M.cash - M.free, 0)} is over your ${usd(L.max_trading_capital, 0)} limit` : ""}${a.unsettled ? " · " + usd(a.unsettled) + " settling" : ""}${L.paper_margin > 1 ? ` · can borrow up to ${L.paper_margin}x: ${usd(a.buying_power, 0)} available to buy with${a.borrowed ? `, ${usd(a.borrowed, 0)} borrowed now` : ""}, but your ${usd(L.max_trading_capital, 0)} limit leaves the bot ${usd(Math.max(0, L.max_trading_capital - a.deployed - M.held), 0)} of it` : ""}</div>`, "Buying power"],
       ["Invested", `<div class="value">${usd(M.invested)}</div>
         <div class="sub">${inv}</div>${meter(a.equity ? M.invested / a.equity : 0)}`],
       ["What you hold", `<div class="value">${nRuns + M.loose}</div>
@@ -1248,7 +1248,10 @@ main:focus { outline: none; }
 
   // ---- equity chart ----------------------------------------------------------
   function historyInRange() {
-    const h = S.equity_history.map((p) => ({ t: new Date(p.ts).getTime(), v: p.equity, cash: p.cash }));
+    // v adds back cash deposited later, so a top-up isn't drawn as a gain; real/base are what the account had then
+    const H = S.equity_history, dNow = H.length ? H[H.length - 1].deposits || 0 : 0, s0 = S.account_summary.starting_capital - dNow;
+    const h = H.map((p) => ({ t: new Date(p.ts).getTime(), v: p.equity + dNow - (p.deposits || 0), real: p.equity,
+                              base: s0 + (p.deposits || 0), cash: p.cash }));
     if (range === "all" || !h.length) return h;
     const cut = Date.now() - (range === "1d" ? 864e5 : 7 * 864e5);
     return h.filter((p) => p.t >= cut);
@@ -1264,7 +1267,7 @@ main:focus { outline: none; }
     $("eqCount").textContent = pts.length ? `${pts.length} points` : "";
     if (view === "table") {
       el.innerHTML = pts.length ? `<div class="scroll" style="max-height:280px"><table class="tbl"><thead><tr><th>Time</th><th class="r">Account value</th><th class="r">Cash</th></tr></thead><tbody>${
-        pts.slice().reverse().map((p) => `<tr><td>${fmtTime(p.t)}</td><td class="r">${usd(p.v)}</td><td class="r">${usd(p.cash)}</td></tr>`).join("")
+        pts.slice().reverse().map((p) => `<tr><td>${fmtTime(p.t)}</td><td class="r">${usd(p.real)}</td><td class="r">${usd(p.cash)}</td></tr>`).join("")
       }</tbody></table></div>` : `<div class="empty">No history yet.<br>The bot adds a point every few minutes while it runs.</div>`;
       return;
     }
@@ -1313,8 +1316,8 @@ main:focus { outline: none; }
       const bx = x(best.t), by = y(best.v);
       $("xhl").setAttribute("x1", bx); $("xhl").setAttribute("x2", bx);
       $("xhc").setAttribute("cx", bx); $("xhc").setAttribute("cy", by); xh.setAttribute("opacity", 1);
-      const d = best.v - base;
-      tip.innerHTML = `<div class="t">${fmtTime(best.t)}</div><div>${usd(best.v)} <span class="${dir(d)}">${sgnPct(d / base)}</span></div>`;
+      const d = best.real - best.base;
+      tip.innerHTML = `<div class="t">${fmtTime(best.t)}</div><div>${usd(best.real)} <span class="${dir(d)}">${sgnPct(d / best.base)}</span></div>`;
       const px = bx * (r.width / W), py = by * (r.height / H);
       tip.style.left = Math.min(px + 12, r.width - 150) + "px"; tip.style.top = Math.max(py - 50, 0) + "px"; tip.style.opacity = 1;
     });
@@ -1447,7 +1450,7 @@ main:focus { outline: none; }
     $("ownSum").innerHTML = `<div><span class="lm">Stocks &amp; funds</span><b>${usd(total)}</b></div>
       <div><span class="lm">Profit / loss on them</span><b class="${dir(gain)}">${sgnUsd(gain)}</b></div>
       ${M.held > 1 ? `<div><span class="lm">Waiting inside strategies</span><b>${usd(M.held)}</b></div>` : ""}
-      <div><span class="lm">Cash</span><b>${usd(M.cash)}</b></div>
+      <div><span class="lm">${M.cash < 0 ? "Borrowed" : "Cash"}</span><b>${usd(Math.abs(M.cash))}</b></div>
       <div><span class="lm">Account value</span><b>${usd(S.account_summary.equity)}</b></div>`;
     if (!P.length) { $("positions").innerHTML = `<div class="empty-row"><p>You don't own any stocks right now: it's all cash. Invest in a strategy and the bot buys for you.</p><button class="btn" type="button" data-goto="trading">Open Autopilot</button></div>`; return; }
     $("positions").innerHTML = `<table class="tbl"><thead><tr>

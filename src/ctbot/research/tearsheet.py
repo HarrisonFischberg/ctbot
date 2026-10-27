@@ -9,7 +9,6 @@ Reports go to data/reports/; the dashboard links them.
 from __future__ import annotations
 
 import argparse
-import json
 import re
 from datetime import date
 from pathlib import Path
@@ -26,14 +25,11 @@ def _series(points):
 
 
 def book_returns(history: Path):
-    pts = []
-    for ln in history.read_text().splitlines():
-        try:
-            r = json.loads(ln)
-            pts.append((r["ts"][:10], r["equity"]))
-        except (json.JSONDecodeError, KeyError):
-            continue
-    return _series(pts)
+    import pandas as pd
+
+    from ctbot.variants import _daily_returns  # leaves paper top-ups out of the returns
+
+    return pd.Series({pd.Timestamp(d): r for d, r in _daily_returns(history).items()}, dtype=float).sort_index()
 
 
 def lab_returns(name: str, cash_apy: float):
