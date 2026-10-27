@@ -17,6 +17,7 @@ STORE_PATH = Path.home() / ".ctbot" / "settings.json"
 # Only these names can be saved, each with the shape its value must have.
 KEYS: dict[str, tuple[str, re.Pattern[str]]] = {
     "ANTHROPIC_API_KEY": ("Anthropic API key", re.compile(r"[A-Za-z0-9_\-]{20,200}")),
+    "OPENAI_API_KEY": ("OpenAI API key (optional, Bub's fallback)", re.compile(r"[A-Za-z0-9_\-]{20,300}")),
     "C2_API_KEY": ("Collective2 API key", re.compile(r"[A-Za-z0-9_\-]{8,200}")),
     "MARKETAUX_API_TOKEN": ("Marketaux news API token (optional)", re.compile(r"[A-Za-z0-9_\-]{16,200}")),
     "TRADINGFLOW_API_KEY": ("TradingFlow API key (optional)", re.compile(r"[A-Za-z0-9_\-.]{16,300}")),

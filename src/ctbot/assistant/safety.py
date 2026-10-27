@@ -6,8 +6,8 @@ import os
 import re
 from typing import Any
 
-# Anthropic-style keys and long opaque tokens pasted into a chat, whatever env holds.
-_PATTERNS = (re.compile(r"sk-ant-[A-Za-z0-9_\-]{8,}"),)
+# Anthropic/OpenAI-style keys and long opaque tokens pasted into a chat, whatever env holds.
+_PATTERNS = (re.compile(r"sk-ant-[A-Za-z0-9_\-]{8,}"), re.compile(r"sk-proj-[A-Za-z0-9_\-]{8,}"))  # Anthropic, OpenAI
 REDACTED = "[redacted]"
 
 

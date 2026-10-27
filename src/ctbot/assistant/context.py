@@ -2,8 +2,11 @@
 
 Starts from build_state() (what the dashboard shows) and adds what the dashboard trims: every idea
 recorded today (not just the last 100), pre-counted by outcome and reason, and today's paper log
-(not just the last 300 lines), pre-counted by what was filtered before an idea was recorded. The
-model gets summary tables, not raw JSONL, and the whole thing is capped at MAX_CONTEXT_CHARS.
+(not just the last 300 lines), pre-counted by what was filtered before an idea was recorded. Every
+open position, however old, gets its full story: when and at what price it was bought, which book
+or launcher run owns it, why (strategies, signals, Claude's verdict), and its exit plan. Prices
+and P&L all come from the one build_state() snapshot of this turn, so numbers agree with each
+other. The model gets summary tables, not raw JSONL, and the whole thing is capped at MAX_CONTEXT_CHARS.
 
 Never reads .env or ~/.ctbot/: build_state omits keys and keeps only the account's last 4
 digits, and everything returned passes through safety.redact as a second line of defence.
@@ -14,16 +17,16 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from ctbot import market_hours
+from ctbot import market_hours, trade_log
 from ctbot.assistant.safety import redact
 from ctbot.config import Settings
 from ctbot.dashboard.state import _parse_log, _read_json
 
-MAX_CONTEXT_CHARS = 30_000
+MAX_CONTEXT_CHARS = 40_000
 MAX_LOG_BYTES = 4_000_000  # today's log is read from the end, at most this much
 TEXT = 220  # longest free-text field kept (rationales, log lines, descriptions)
 # Rationales the decision engine writes when the Claude call itself failed (decision/engine.py).
@@ -41,6 +44,20 @@ def _day(ts: str | None) -> date | None:
         return market_hours.trading_date(datetime.fromisoformat(ts))
     except (TypeError, ValueError):
         return None
+
+
+def _dt(ts: str | None) -> datetime | None:
+    try:
+        t = datetime.fromisoformat(ts)
+    except (TypeError, ValueError):
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+
+
+def _et(ts: str | None) -> str | None:
+    """'Mon Oct 26 09:30 ET' for an ISO time, so the model never has to convert zones."""
+    t = _dt(ts)
+    return t.astimezone(market_hours.ET).strftime("%a %b %d %H:%M ET") if t else None
 
 
 def ideas_on(path: Path, day: date) -> list[dict[str, Any]]:
@@ -182,9 +199,123 @@ def summarize_log(path: Path, local_day: date) -> dict[str, Any]:
 def fills_on(ledger_path: Path, day: date) -> dict[str, Any]:
     fills = [f for f in _read_json(ledger_path).get("fills", []) if _day(f.get("ts")) == day]
     return {"buys": sum(f.get("side") == "buy" for f in fills), "sells": sum(f.get("side") == "sell" for f in fills),
-            "list": [{"ts": f.get("ts", "")[11:16] + "Z", "side": f.get("side"), "symbol": f.get("symbol"),
+            "list": [{"time": _et(f.get("ts")), "side": f.get("side"), "symbol": f.get("symbol"),
                       "price": f.get("price"), "quantity": f.get("quantity"), "tag": f.get("tag")}
                      for f in fills[-12:]]}
+
+
+ENTRY_STATUSES = ("auto_submitted", "recommended")  # an idea that became (or could become) a buy
+
+
+def entry_ideas(path: Path, symbols: set[str]) -> dict[str, list[dict[str, Any]]]:
+    """symbol -> its approved ideas (any day), oldest first, for explaining why it was bought."""
+    out: dict[str, list[dict[str, Any]]] = {}
+    try:
+        with path.open() as fh:
+            for line in fh:
+                try:
+                    i = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(i, dict) and i.get("symbol") in symbols and i.get("status") in ENTRY_STATUSES:
+                    out.setdefault(i["symbol"], []).append(i)
+    except FileNotFoundError:
+        pass
+    return out
+
+
+def _why_from_idea(i: dict[str, Any]) -> dict[str, Any]:
+    d = i.get("decision") or {}
+    return {"idea_time": _et(i.get("ts")), "status": i.get("status"), "score": i.get("score"),
+            "strategies": i.get("strategies"),
+            "signals": [{"strategy": s.get("strategy"), "strength": s.get("strength"), "horizon_days": s.get("horizon_days"),
+                         "evidence": _short(json.dumps(s.get("evidence"), default=str), 240)}
+                        for s in i.get("signals") or []][:4],
+            "claude": {"approve": d.get("approve"), "confidence": d.get("confidence"),
+                       "rationale": _short(d.get("rationale"), 300),
+                       "stop_loss_pct": d.get("stop_loss_pct"), "take_profit_pct": d.get("take_profit_pct")} if d else None}
+
+
+def holdings(settings: Settings, state: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every open position with its whole story, from the ledger, the risk state's brackets
+    (exit plan + entry context saved at the buy) and the ideas file. Prices from this snapshot."""
+    ledger = _read_json(settings.paper_ledger_path)
+    brackets = _read_json(settings.paper_risk_state_path).get("brackets", {})
+    fills = ledger.get("fills", [])
+    runs = {r["strategy"]: r for r in state["launcher"]["runs"]}
+    plain = {s["name"]: _short(s.get("plain") or s.get("description"), 200) for s in state["strategies"]}
+    ideas = entry_ideas(settings.ideas_path, {p["symbol"] for p in state["positions"]})
+    L = state["limits"]
+    out = []
+    for p in state["positions"]:
+        sym, b = p["symbol"], brackets.get(p["symbol"], {})
+        ctx = b.get("ctx") or {}
+        opened = _dt(p.get("opened_at") or ctx.get("opened_at"))
+        # this holding's buys and partial sells: everything since it was opened (an older closed
+        # round trip in the same symbol is not part of it); a minute's slack for the fill's own stamp
+        sym_fills = [f for f in fills if f.get("symbol") == sym and _dt(f.get("ts"))]
+        mine = [f for f in sym_fills if not opened or _dt(f["ts"]) >= opened - timedelta(minutes=1)]
+        if not mine:  # opened_at missing or rewritten: fall back to this symbol's recent fills
+            mine = sym_fills[-6:]
+        first = next((f for f in mine if f.get("side") == "buy"), None)
+        opened = opened or _dt((first or {}).get("ts"))
+        model = b.get("model")
+        tags = sorted({m for f in mine if f.get("side") == "buy" for m in str(f.get("tag") or "").split(",") if m})
+        models = ctx.get("models") or ([model] if model else tags)
+        # the approved idea closest before the first buy (10 min slack for the order round trip)
+        idea = next((i for i in reversed(ideas.get(sym, [])) if opened is None
+                     or (_dt(i.get("ts")) and _dt(i["ts"]) <= opened + timedelta(minutes=10))), None)
+        now = _dt(state["generated_at"])
+        held_days = (now - opened).total_seconds() / 86400 if now and opened else None
+        out.append({
+            "symbol": sym, "quantity": round(p["quantity"], 4), "avg_cost": round(p["avg_cost"], 4),
+            "price_now": p.get("last"), "market_value": round(p["market_value"], 2), "pnl": round(p["pnl"], 2),
+            "pnl_pct": round(p["pnl_pct"], 4),
+            "day_change": round(p["day_change"], 2) if p.get("day_change") is not None else None,
+            "day_change_pct": round(p["day_change_pct"], 4) if p.get("day_change_pct") is not None else None,
+            "bought": _et(opened.isoformat()) if opened else None, "held_days": round(held_days, 1) if held_days is not None else None,
+            "fills": [{"time": _et(f.get("ts")), "side": f.get("side"), "quantity": round(float(f.get("quantity") or 0), 4),
+                       "price": f.get("price"), "tag": f.get("tag")} for f in mine][-6:],
+            "owner": f"launcher run {model} ({runs[model].get('status')})" if model in runs
+            else (f"strategy {model}" if model else "main book"),
+            "models": models,
+            "what_the_models_do": {m: plain[m] for m in models if m in plain},
+            "why": {"claude_confidence": ctx.get("confidence"), "claude_rationale": _short(ctx.get("rationale"), 300) or None,
+                    "size_mult": ctx.get("size_mult"), "sector": ctx.get("sector"),
+                    "stock_day_move_at_entry": ctx.get("stock_day_move"), "market_day_move_at_entry": ctx.get("market_day_move"),
+                    "market_vs_trend_at_entry": ctx.get("market_vs_trend"), "account_pulled_back": ctx.get("pulled_back")}
+            if ctx else "no entry context saved (bought before the trade log existed, or a systematic rebalance)",
+            "idea_at_entry": _why_from_idea(idea) if idea else None,
+            "exit_plan": {
+                "stop": b.get("stop"), "target": b.get("target"),
+                "trailing": {"giveback_pct": b["trail"], "peak": b.get("peak"), "entry": b.get("entry")} if b.get("trail") else None,
+                "planned_sell_time": _et(b.get("exit_at")), "swings_so_far": b.get("swings", 0),
+                "max_swings": L.get("swing_max_days"), "swing_min_profit_pct": L.get("swing_min_profit_pct"),
+                "partial_profit_taken": b.get("partial_done", False),
+                "risk_per_share_at_entry": b.get("r0") or ctx.get("r0"),
+            } if b else "no bracket yet: the bot gives it the default stop at its next check",
+        })
+    return out
+
+
+def closed_trades(path: Path, n: int = 12) -> list[dict[str, Any]]:
+    """The last n finished round trips (trade_log.jsonl), newest first."""
+    out = []
+    for r in trade_log.read(path, n):
+        ctx = r.get("context") or {}
+        out.append({"symbol": r.get("symbol"), "models": r.get("models"), "bought": _et(r.get("opened_at")),
+                    "sold": _et(r.get("closed_at")), "hold_hours": r.get("hold_hours"), "entry": r.get("entry"),
+                    "exit": r.get("exit"), "pnl": r.get("pnl"), "ret": r.get("ret"), "exit_reason": r.get("exit_reason"),
+                    "r_multiple": r.get("r_multiple"), "max_up": r.get("max_up"), "max_down": r.get("max_down"),
+                    "why_bought": _short(ctx.get("rationale"), 160) or None, "note": r.get("note")})
+    return out
+
+
+def recent_fills(ledger_path: Path, n: int = 30) -> list[dict[str, Any]]:
+    """The last n fills across all days, newest first."""
+    return [{"time": _et(f.get("ts")), "side": f.get("side"), "symbol": f.get("symbol"), "price": f.get("price"),
+             "quantity": round(float(f.get("quantity") or 0), 4), "tag": f.get("tag")}
+            for f in reversed(_read_json(ledger_path).get("fills", [])[-n:])]
 
 
 def binding_limits(state: dict[str, Any], settings: Settings, ideas: dict[str, Any]) -> list[str]:
@@ -276,6 +407,8 @@ def build_context(settings: Settings, state: dict[str, Any], now: datetime | Non
     ctx: dict[str, Any] = {
         "now": {"utc": now.isoformat(timespec="minutes"), "new_york": state["market"]["et_time"],
                 "trading_day": today.isoformat()},
+        "prices_snapshot": {"taken": state["market"]["et_time"], "saved_prices_from": state["market"].get("prices_as_of"),
+                            "note": "every price, P&L and day change below is from this one snapshot"},
         "user_is_looking_at": fdata,
         "today_trades": fills_on(settings.paper_ledger_path, today),
         "today_ideas": summary,
@@ -291,8 +424,9 @@ def build_context(settings: Settings, state: dict[str, Any], now: datetime | Non
         "claude_reviews": {**state["claude"], "max_reviews_per_model_per_day": settings.max_reviews_per_model_per_day},
         "account": {k: a[k] for k in ("starting_capital", "equity", "cash", "unsettled", "market_value", "total_pnl",
                                       "day_pnl", "day_pnl_pct", "drawdown_pct", "kill_switch", "day_trades_5d", "deployed")},
-        "positions": [{k: p.get(k) for k in ("symbol", "quantity", "avg_cost", "last", "pnl", "pnl_pct", "stop",
-                                             "target", "model", "exit_at", "swings")} for p in state["positions"]],
+        "open_positions": holdings(settings, state),
+        "recent_fills_all_days": recent_fills(settings.paper_ledger_path),
+        "closed_trades": closed_trades(settings.trade_log_path),
         "models": [{k: m.get(k) for k in ("model", "closed", "wins", "win_rate", "pnl", "open", "open_pnl",
                                           "losing_streak", "paused", "exits")} for m in state["models"]],
         "strategies": _strategies(state),
@@ -320,6 +454,9 @@ def build_context(settings: Settings, state: dict[str, Any], now: datetime | Non
     text = dump(ctx)
     # Over the cap: shed the least useful detail first, then cut.
     for trim in (lambda c: c.update(recent_ideas_today=c["recent_ideas_today"][:5]),
+                 lambda c: c.update(recent_fills_all_days=c["recent_fills_all_days"][:10]),
+                 lambda c: c.update(closed_trades=c["closed_trades"][:5]),
+                 lambda c: [p.pop("idea_at_entry", None) for p in c["open_positions"]],
                  lambda c: c.update(strategies=[{k: s[k] for k in ("name", "enabled", "mode", "weight")} for s in c["strategies"]]),
                  lambda c: c["today_log"].update(warnings_and_errors=c["today_log"]["warnings_and_errors"][:4]),
                  lambda c: c["today_trades"].update(list=c["today_trades"]["list"][-4:]),

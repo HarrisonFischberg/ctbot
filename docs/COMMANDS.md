@@ -90,9 +90,11 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
   Knob changes are saved in `~/.ctbot/tuning.json` and reach the running bot within seconds;
   strategy shadow/trade switches edit `config/strategies.toml` and also apply without a restart.
   Every proposal and outcome is in `data/assistant_audit.jsonl`; Settings → *Assistant changes*
-  has a Revert for each. Uses the Settings-tab Anthropic key, capped by
-  `MAX_ASSISTANT_MESSAGES_PER_DAY` (default 100). To undo everything at once, delete
-  `~/.ctbot/tuning.json`.
+  has a Revert for each. Bub sees every open position however old (when and why it was bought,
+  its stop, trailing stop and planned sell time), recent closed trades, and one price snapshot per
+  answer. Uses the Settings-tab Anthropic key; an OpenAI key (also on Settings, model `OPENAI_MODEL`)
+  takes over when Claude errors or says it can't answer. Capped by `MAX_ASSISTANT_MESSAGES_PER_DAY` (default 100). To
+  undo everything at once, delete `~/.ctbot/tuning.json`.
 - Discover's numbers come from `.venv/bin/ctbot-perf` (cached prices only; the scheduled job
   refreshes them twice a day).
 
