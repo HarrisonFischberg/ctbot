@@ -184,18 +184,41 @@ def _fires_today(c: dict[str, Any], panel: dict[str, pd.DataFrame], spy: pd.Data
     return sorted(s for s, df in panel.items() if len(df) and bool(fam.rule(df, spy).fillna(False).iloc[-1]))
 
 
+MIN_HISTORY = 1000  # daily bars; fewer means only the nightly 30-day refresh ever reached this symbol
+
+
+def backfill(symbols: list[str]) -> list[str]:
+    """Fetch daily bars since 2000 for symbols whose cache is short; the dev split starts in 2000.
+    A symbol listed later (META, ABBV...) has all of its history after one fetch and is skipped after."""
+    from datetime import date
+
+    from ctbot.research import bars
+
+    short = sorted({s for s in symbols if len(bars.load("day", s)) < MIN_HISTORY})
+    if short:
+        from ctbot.market_data.robinhood_mcp_client import ReadOnlyRobinhoodClient
+
+        bars.fetch(short, "day", date(2000, 1, 1), date.today(), ReadOnlyRobinhoodClient(interactive=False).call_many)
+        print(f"backfilled daily history for {len(short)} symbols: {', '.join(short)}", flush=True)
+    return short
+
+
 def main() -> None:
     from ctbot.research import factors as fx
 
     ap = argparse.ArgumentParser(description="Generate and backtest strategy candidates; keep the confirmed ones")
     ap.add_argument("--universe", choices=sorted(sg.UNIVERSES), help="only this universe (faster)")
     ap.add_argument("--limit", type=int, help="only the first N candidates (a quick smoke run)")
+    ap.add_argument("--backfill", action="store_true", help="first fetch full daily history (since 2000) for "
+                    "symbols with a short cache, from Robinhood (read-only)")
     args = ap.parse_args()
+    unis = [args.universe] if args.universe else list(sg.UNIVERSES)
+    if args.backfill:
+        backfill(["SPY", *(s for u in unis for s in sg.universe(u))])
     spy = fx.load_panel(["SPY"]).get("SPY")
     if spy is None:
         raise SystemExit("no SPY daily bars in data/bars_cache/day: run ctbot-fetch-bars --interval day first")
     spy = spy[spy.index >= "1999-01-01"]
-    unis = [args.universe] if args.universe else list(sg.UNIVERSES)
     panels = {u: fx.load_panel(sg.universe(u)) for u in unis}
     cands = [c for c in candidates() if c["universe"] in unis][: args.limit]
     print(f"backtesting {len(cands)} candidates ...", flush=True)

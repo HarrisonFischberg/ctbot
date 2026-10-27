@@ -35,6 +35,7 @@ from ctbot import market_hours
 
 HEARTBEAT_MAX_AGE_S = 90
 LOGIN_NEEDED = "Robinhood sign-in needed"
+ASTRAL_LOGIN_NEEDED = "AstralLoginRequired"  # logged by the Astral insider/news feeds when the token is gone
 
 
 def _last_line(path: Path, max_bytes: int = 8192) -> str:
@@ -83,6 +84,8 @@ def check(heartbeat_path: Path, equity_path: Path, log_path: Path,
 
     if any(LOGIN_NEEDED in line for line in _tail(log_path)):
         return False, "Robinhood sign-in needed: run ctbot-robinhood-login on the server"
+    if any(ASTRAL_LOGIN_NEEDED in line for line in _tail(log_path)):
+        return False, "Hey Astral sign-in needed: run ctbot-astral-login on the server (insider/news data is off)"
 
     if market_hours.session_open(now):
         interval = int(hb.get("interval") or 300)

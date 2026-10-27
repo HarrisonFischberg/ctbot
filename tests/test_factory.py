@@ -61,3 +61,19 @@ def test_luck_is_rejected_and_a_real_edge_passes(monkeypatch):
     # the book trades one oracle version per rule and universe, and only if it made money 2023-now
     assert len(rep["live"]) == 1 and rep["live"][0] in rep["passed"]
     assert rep["candidates"][rep["live"][0]]["holdout"]["cagr"] > 0
+
+
+def test_backfill_fetches_only_short_histories(tmp_path, monkeypatch):
+    from ctbot.market_data import robinhood_mcp_client
+    from ctbot.models import Bar
+    from ctbot.research import bars
+
+    monkeypatch.setattr(bars, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(bars.load, "__defaults__", (tmp_path,))
+    monkeypatch.setattr(bars.save, "__defaults__", (tmp_path,))
+    idx = pd.bdate_range("2000-01-03", periods=fy.MIN_HISTORY)
+    bars.save("day", "DEEP", [Bar("DEEP", t.to_pydatetime(), 1, 1, 1, 1, 1) for t in idx])
+    fetched = []
+    monkeypatch.setattr(bars, "fetch", lambda syms, *a: fetched.extend(syms))
+    monkeypatch.setattr(robinhood_mcp_client, "ReadOnlyRobinhoodClient", lambda **k: type("C", (), {"call_many": None})())
+    assert fy.backfill(["DEEP", "NEW", "NEW"]) == ["NEW"] and fetched == ["NEW"]

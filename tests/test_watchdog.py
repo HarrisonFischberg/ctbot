@@ -64,3 +64,9 @@ def test_ping_hits_the_url_or_its_fail_endpoint(monkeypatch):
     watchdog.ping("https://hc-ping.com/abc", False, "paper bot not running")
     assert calls == [("GET", "https://hc-ping.com/abc", None),
                      ("POST", "https://hc-ping.com/abc/fail", b"paper bot not running")]
+
+
+def test_astral_sign_in_needed_in_the_log_fails(tmp_path):
+    lines = ["2026-10-21 10:59:00 INFO astral insiders unavailable (AstralLoginRequired); retrying in 30 min"]
+    ok, reason = watchdog.check(*_files(tmp_path, SATURDAY, log_lines=lines), now=SATURDAY)
+    assert not ok and "Hey Astral sign-in" in reason

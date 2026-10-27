@@ -7,7 +7,8 @@
 # 4) score the day's reviewed trade ideas (approved vs rejected) from the fresh bar cache
 # 5) daily bars for the ranking model's stock list, the premarket plan and the end-of-day
 #    reconciliation (data/day_plan/, data/eod/; read-only)
-# 6) after the close only: the strategy factory (ctbot-factory), whose live list the factory book trades
+# 6) after the close only: the strategy factory (ctbot-factory), whose live list the factory book trades;
+#    it first fetches full daily history once for any symbol whose cache is short
 set -u -o pipefail
 cd "$(dirname "$0")/.." || exit 1
 LOG=logs/c2-track.log
@@ -30,6 +31,6 @@ days_ago() { .venv/bin/python -c "import datetime, sys; print(datetime.date.toda
   .venv/bin/ctbot-dayplan 2>&1 || echo "day plan failed"
   .venv/bin/ctbot-reconcile 2>&1 || echo "RECONCILIATION MISMATCH (see data/eod/)"
   if [ "$(TZ=America/New_York date +%H)" -ge 12 ]; then
-    nice -n 10 .venv/bin/ctbot-factory 2>&1 | tail -4 || echo "strategy factory failed"
+    nice -n 10 .venv/bin/ctbot-factory --backfill 2>&1 | grep -v '^  ' | tail -6 || echo "strategy factory failed"
   fi
 } >> "$LOG" 2>&1
