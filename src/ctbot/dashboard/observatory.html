@@ -1036,7 +1036,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
       <div class="strats" id="strategies"></div>
     </div>
     <div data-tab="activity" class="card span-12">
-      <h2>What the bot did <span class="count">step by step, this Mac's time · hover a line for the raw log</span><span class="spacer"></span>
+      <h2>What the bot did <span class="count">step by step, the bot computer's clock · hover a line for the raw log</span><span class="spacer"></span>
         <span class="seg" role="group" aria-label="Log filter">
           <button data-log="all" class="on">All</button><button data-log="fill">Trades</button>
           <button data-log="reject">Turned down</button><button data-log="warn">Problems</button>
@@ -1477,7 +1477,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
   function renderAlloc() {
     const a = S.account_summary, L = S.limits, M = money(), tot = Math.max(1e-9, M.stocks + M.held + Math.max(0, M.cash));
     const cashNote = ["free to trade now", M.cash - M.free > 1 ? `${usd(M.cash - M.free, 0)} is over your ${usd(L.max_trading_capital, 0)} limit` : "",
-      a.unsettled ? usd(a.unsettled) + " settling" : "", L.paper_margin > 1 ? `can borrow up to ${L.paper_margin}x: ${usd(a.buying_power, 0)} to buy with${a.borrowed ? `, ${usd(a.borrowed, 0)} borrowed now` : ""}` : ""].filter(Boolean).join(" · ");
+      a.unsettled ? usd(a.unsettled) + " settling" : "", L.paper_margin > 1 ? `can borrow up to ${L.paper_margin}x: ${usd(a.buying_power, 0)} to buy with${a.borrowed ? `, ${usd(a.borrowed, 0)} borrowed now` : ""}, but your ${usd(L.max_trading_capital, 0)} limit leaves the bot ${usd(Math.max(0, L.max_trading_capital - a.deployed - M.held), 0)} of it` : ""].filter(Boolean).join(" · ");
     const parts = [["var(--fill)", M.stocks, "Stocks", "in stocks and funds now"], ["var(--blue)", M.held, "Strategy reserves", "Waiting inside strategies"],
       ["var(--crit)", Math.max(0, M.cash), "Cash", cashNote.replace(/^free to trade now( · )?/, "")]];
     const C = 2 * Math.PI * 40;
@@ -1495,7 +1495,10 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
 
   // ---- equity chart ----------------------------------------------------------
   function historyInRange() {
-    const h = S.equity_history.map((p) => ({ t: new Date(p.ts).getTime(), v: p.equity, cash: p.cash }));
+    // v adds back cash deposited later, so a top-up isn't drawn as a gain; real/base are what the account had then
+    const H = S.equity_history, dNow = H.length ? H[H.length - 1].deposits || 0 : 0, s0 = S.account_summary.starting_capital - dNow;
+    const h = H.map((p) => ({ t: new Date(p.ts).getTime(), v: p.equity + dNow - (p.deposits || 0), real: p.equity,
+                              base: s0 + (p.deposits || 0), cash: p.cash }));
     if (range === "all" || !h.length) return h;
     const cut = Date.now() - (range === "1d" ? 864e5 : 7 * 864e5);
     return h.filter((p) => p.t >= cut);
@@ -1516,7 +1519,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
     $("eqCount").textContent = "";
     if (view === "table") {
       put(el, pts.length ? `<div class="scroll" style="max-height:280px"><table class="tbl"><thead><tr><th>Time</th><th class="r">Account value</th><th class="r">Cash</th></tr></thead><tbody>${
-        pts.slice().reverse().map((p) => `<tr><td>${fmtTime(p.t)}</td><td class="r">${usd(p.v)}</td><td class="r">${usd(p.cash)}</td></tr>`).join("")
+        pts.slice().reverse().map((p) => `<tr><td>${fmtTime(p.t)}</td><td class="r">${usd(p.real)}</td><td class="r">${usd(p.cash)}</td></tr>`).join("")
       }</tbody></table></div>` : `<div class="empty">No history yet.<br>The bot adds a point every few minutes while it runs.</div>`);
       return;
     }
@@ -1568,8 +1571,8 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
       const bx = x(best.t), by = y(best.v);
       $("xhl").setAttribute("x1", bx); $("xhl").setAttribute("x2", bx);
       $("xhc").setAttribute("cx", bx); $("xhc").setAttribute("cy", by); xh.setAttribute("opacity", 1);
-      const d = best.v - base;
-      tip.innerHTML = `<div class="t">${fmtTime(best.t)}</div><div>${usd(best.v)} <span class="${dir(d)}">${sgnPct(d / base)}</span></div>`;
+      const d = best.real - best.base;
+      tip.innerHTML = `<div class="t">${fmtTime(best.t)}</div><div>${usd(best.real)} <span class="${dir(d)}">${sgnPct(d / best.base)}</span></div>`;
       const px = bx * (r.width / W), py = by * (r.height / H);
       tip.style.left = Math.min(px + 12, r.width - 150) + "px"; tip.style.top = Math.max(py - 50, 0) + "px"; tip.style.opacity = 1;
     });

@@ -214,3 +214,13 @@ def test_book_is_only_called_better_once_the_edge_is_steady(tmp_path):
     assert v["steady"]["verdict"] == "better" and v["steady"]["days"] == 29
     assert v["lucky"]["verdict"] == "too early"
     assert v["new"] == {"days": 4, "edge": v["new"]["edge"], "verdict": "too early"}
+
+
+def test_tearsheet_book_returns_leave_paper_top_ups_out(tmp_path):
+    pytest.importorskip("pandas")
+    from ctbot.research.tearsheet import book_returns
+
+    h = tmp_path / "equity_history.jsonl"
+    rows = [("2026-10-20", 250, 0), ("2026-10-21", 255, 0), ("2026-10-22", 20255, 20000), ("2026-10-23", 20457.55, 20000)]
+    h.write_text("\n".join(json.dumps({"ts": f"{d}T20:00:00+00:00", "equity": e, "deposits": dep}) for d, e, dep in rows))
+    assert [round(r, 4) for r in book_returns(h)] == [0.02, 0.0, 0.01]  # the $20,000 top-up is not a +7843% day
