@@ -111,6 +111,10 @@ once `ntfy.sh` is in that environment's allowed domains. `python -m ctbot.readou
    through the tunnel and the token is saved at `/home/ctbot/.ctbot/robinhood_oauth.json` (0600).
    It refreshes itself; if Robinhood ever revokes it, the watchdog alerts with "sign-in needed"
    and you repeat this step.
+   **Hey Astral** (optional) signs in the same way through the same tunnel:
+   `.venv/bin/ctbot-astral-login`, with `ASTRAL_MCP_URL` set in `.env`. Its token is saved at
+   `/home/ctbot/.ctbot/astral_oauth.json`. If it expires, the bot keeps running without Astral
+   and logs "Hey Astral sign-in needed".
 6. **Move the paper books (optional)**: to keep the Mac's history, stop the Mac bot
    (`scripts/autostart.sh uninstall`) and copy `data/` and `config/strategies.toml` to the server
    before starting. Don't run both bots afterwards: they'd keep two diverging ledgers.

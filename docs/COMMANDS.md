@@ -25,6 +25,7 @@ cd path/to/ctbot
 | Premarket plan: trade or no-trade today, and why | `.venv/bin/ctbot-dayplan` |
 | Stop all new entries now (exits still run) / resume | `touch data/HALT` / `rm data/HALT` |
 | Robinhood sign-in (when preflight says it expired) | `.venv/bin/ctbot-robinhood-login` |
+| Hey Astral sign-in (insider trades, news labels; needs `ASTRAL_MCP_URL`) | `.venv/bin/ctbot-astral-login` |
 
 Only one paper bot can run at a time (a lock refuses a second). Start it before 9:30 ET;
 the scanner model needs it running from 9:36 ET, the trend core trades 15:30-15:44 ET.

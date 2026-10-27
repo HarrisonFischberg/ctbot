@@ -1674,19 +1674,30 @@ main:focus { outline: none; }
       `Updated ${C.tracked_at ? fmtTime(C.tracked_at) : "never"} · run ctbot-c2-track to refresh. These are the traders' own reported results, not real accounts we hold.`;
   }
 
+  // Live average per trade vs the backtest's (ctbot.backtest_check): two standard errors either side is "in line".
+  function btBadge(b) {
+    if (!b || b.status === "none") return `<span style="color:var(--muted);font-size:11px">no backtest</span>`;
+    const tip = esc(`Backtest ${sgnPct(b.bt_avg, 2)} per trade${b.live_avg == null ? "" : `, live ${sgnPct(b.live_avg, 2)} over ${b.n}`} · ${b.source || ""}`);
+    if (b.status === "too_early") return `<span class="tag off" title="${tip}">too early (${b.n}/10)</span>`;
+    const [cls, word] = { below: ["rej", "below backtest"], above: ["on", "above backtest"], in_line: ["on", "in line"] }[b.status];
+    return `<span class="tag ${cls}" title="${tip}">${word}</span>`;
+  }
+
   function renderModels() {
     const M = S.models || [];
     $("modelCount").textContent = M.length ? `${M.reduce((a, m) => a + m.closed, 0)} closed trades` : "";
     $("models").innerHTML = M.length ? `<table class="tbl"><thead><tr><th>Strategy</th><th class="r">Trades closed</th><th class="r">Won</th>
       <th class="r" title="Average gain or loss per closed trade">Avg per trade</th><th class="r" title="Profit or loss from stocks already sold">Profit (sold)</th>
       <th class="r">Still holding</th><th class="r" title="Profit or loss so far on stocks still held">Profit (holding)</th>
-      <th class="r" title="Next buy size compared with usual, from this strategy's last 30 days of closed trades">Next size</th><th>Why it sold</th></tr></thead><tbody>${
+      <th class="r" title="Next buy size compared with usual, from this strategy's last 30 days of closed trades">Next size</th>
+      <th title="Average per trade so far against what the strategy's backtest promised (config/backtests.toml)">Vs backtest</th><th>Why it sold</th></tr></thead><tbody>${
       M.map((m) => `<tr><td class="sym">${esc(stratNames(m.model))} ${m.paused ? `<span class="tag rej">paused today</span>` : m.losing_streak ? `<span style="color:var(--muted);font-size:11px">${m.losing_streak} loss${m.losing_streak > 1 ? "es" : ""} in a row</span>` : ""}</td><td class="r">${m.closed}</td>
         <td class="r">${m.win_rate == null ? "—" : pct(m.win_rate, 0)}</td>
         <td class="r ${dir(m.avg_ret ?? 0)}">${m.avg_ret == null ? "—" : sgnPct(m.avg_ret, 2)}</td>
         <td class="r ${dir(m.pnl)}">${sgnUsd(m.pnl)}</td><td class="r">${m.open}</td>
         <td class="r ${dir(m.open_pnl)}">${m.open ? sgnUsd(m.open_pnl) : "—"}</td>
         <td class="r ${m.size_mult < 1 ? "down" : m.size_mult > 1 ? "up" : ""}">${m.size_mult == null ? "—" : (+m.size_mult).toFixed(2) + "x"}</td>
+        <td>${btBadge(m.backtest)}</td>
         <td style="color:var(--muted)">${esc(Object.entries(m.exits).map(([k, v]) => `${exitWord(k)} ×${v}`).join(" · "))}</td></tr>`).join("")
       }</tbody></table>` : `<div class="empty" style="height:80px">No trades yet. Each practice trade is labeled with the strategy that picked it.</div>`;
   }

@@ -85,6 +85,20 @@ def _house_clerk(env: dict[str, str]) -> AltDataProvider:
     return HouseClerkProvider(Path(env.get("HOUSE_PTR_DIR", "data/house_ptr")))
 
 
+def _astral(env: dict[str, str]) -> AltDataProvider:
+    from pathlib import Path
+
+    from ctbot.config import load_universe
+    from ctbot.market_data.astral_client import URL_ENV, AstralClient
+    from ctbot.providers.astral import AstralInsiderProvider
+
+    url = env.get(URL_ENV, "").strip()
+    if not url:
+        raise ProviderNotConfigured(f"{URL_ENV} is not set")
+    symbols = load_universe(Path(env.get("UNIVERSE_FILE", "config/universe.txt")))
+    return AstralInsiderProvider(symbols, AstralClient(url).call_many, Path(env.get("ASTRAL_DIR", "data/astral")))
+
+
 PROVIDER_FACTORIES: dict[str, Callable[[dict[str, str]], AltDataProvider]] = {
     "json_file": _json_file,
     "quiver": _quiver,
@@ -94,6 +108,7 @@ PROVIDER_FACTORIES: dict[str, Callable[[dict[str, str]], AltDataProvider]] = {
     "cboe_options": _cboe_options,
     "tradingflow_options": _tradingflow_options,
     "house_clerk": _house_clerk,
+    "astral": _astral,
 }
 
 

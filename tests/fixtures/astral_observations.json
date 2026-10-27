@@ -1,0 +1,113 @@
+{
+ "insiders": {
+  "type": "dataset",
+  "row_count": 3,
+  "rows": [
+   {
+    "observation_id": "f7b1cdf1",
+    "symbol": "TSLA",
+    "family": "insider_transactions",
+    "feature_id": "transaction_value",
+    "value_numeric": 999959042.37,
+    "event_type": "open_market_purchase",
+    "available_at": "2025-09-15T23:59:59+00:00",
+    "source_url": "https://api.fiscal.ai/v1/company/ownership/filing/0001104659-25-089693/pdf?companyKey=NASDAQ_TSLA",
+    "payload": {
+     "title": "CEO",
+     "shares": 2568732,
+     "holder_name": "Elon Musk",
+     "transaction_date": "2025-09-12",
+     "filing_date": "2025-09-15",
+     "transaction_value": 999959042.37,
+     "price_low": 389.28,
+     "price_high": 389.28,
+     "transaction_type": "Open Market Purchase"
+    }
+   },
+   {
+    "observation_id": "8db50d82",
+    "symbol": "AAPL",
+    "family": "insider_transactions",
+    "feature_id": "transaction_value",
+    "value_numeric": 814748.38,
+    "event_type": "open_market_sale",
+    "available_at": "2026-10-22T23:59:59+00:00",
+    "source_url": "https://api.fiscal.ai/v1/company/ownership/filing/0001140361-26-040540/pdf?companyKey=NASDAQ_AAPL",
+    "payload": {
+     "title": "SVP, GC and Government Affairs",
+     "shares": 2399,
+     "holder_name": "Newstead Jennifer",
+     "transaction_date": "2026-10-20",
+     "filing_date": "2026-10-22",
+     "transaction_value": 814748.38,
+     "price_low": 339.62,
+     "price_high": 339.62,
+     "transaction_type": "Open Market Sale"
+    }
+   },
+   {
+    "observation_id": "c1b14d03",
+    "symbol": "AAPL",
+    "family": "insider_transactions",
+    "feature_id": "transaction_value",
+    "value_numeric": 1833462,
+    "event_type": "tax_withholding",
+    "available_at": "2026-10-19T23:59:59+00:00",
+    "source_url": "https://api.fiscal.ai/v1/company/ownership/filing/0001140361-26-040126/pdf?companyKey=NASDAQ_AAPL",
+    "payload": {
+     "title": "Senior Vice President,  CFO",
+     "shares": 5361,
+     "holder_name": "Kevan Parekh",
+     "transaction_date": "2026-10-15",
+     "filing_date": "2026-10-19",
+     "transaction_value": 1833462,
+     "price_low": 342.0,
+     "price_high": 342.0,
+     "transaction_type": "Tax Withholding"
+    }
+   }
+  ]
+ },
+ "news": {
+  "type": "dataset",
+  "row_count": 3,
+  "rows": [
+   {
+    "symbol": "NVDA",
+    "family": "company_news",
+    "feature_id": "importance",
+    "value_numeric": 3,
+    "event_type": "product_launch",
+    "published_at": "2026-10-26T23:59:59+00:00",
+    "payload": {
+     "title": "Honeywell Launches Forge Plant Cognition Platform Powered by NVIDIA AI",
+     "summary": "text that must not reach Claude"
+    }
+   },
+   {
+    "symbol": "NVDA",
+    "family": "company_news",
+    "feature_id": "importance",
+    "value_numeric": 3,
+    "event_type": "partnership",
+    "published_at": "2026-10-26T23:59:59+00:00",
+    "payload": {
+     "title": "SWI Compute Launches to Build NVIDIA AI Factories",
+     "summary": "text that must not reach Claude"
+    }
+   },
+   {
+    "symbol": "NVDA",
+    "family": "company_news",
+    "feature_id": "importance",
+    "value_numeric": 3,
+    "event_type": "partnership",
+    "published_at": "2026-10-25T23:59:59+00:00",
+    "payload": {
+     "title": "NVIDIA Proposes Physical AI Hub in Kazakhstan",
+     "summary": "text that must not reach Claude"
+    }
+   }
+  ]
+ }
+}
