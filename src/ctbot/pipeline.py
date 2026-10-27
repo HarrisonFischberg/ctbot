@@ -370,12 +370,13 @@ def _maybe_top_up(c: Components, state: AccountState, cand: Candidate, pos, quot
     if not buys_ok or state.kill_switch or state.margin_call or state.equity <= state.day_start_equity * (1 - L.max_daily_loss_pct):
         return
     spendable = state.cash if state.buying_power is None or state.risk_off else state.buying_power
-    cash = spendable - sum(v for k, v in state.sleeve_reserve.items() if k != owner)  # others' money stays theirs
-    cash = min(cash, L.max_trading_capital - max(0.0, state.equity - state.cash))  # never past the capital cap
-    if gap <= band or cash < 1:
+    others = sum(v for k, v in state.sleeve_reserve.items() if k != owner)  # others' money stays theirs
+    cash = spendable - others
+    room = L.max_trading_capital - max(0.0, state.equity - state.cash) - others  # same cap as RiskManager entries
+    if gap <= band or min(cash, room) < 1:
         return
 
-    order = OrderRequest(cand.symbol, Side.BUY, round(min(gap, cash), 2), limit_price=quote.ask,
+    order = OrderRequest(cand.symbol, Side.BUY, round(min(gap, cash, room), 2), limit_price=quote.ask,
                          candidate_ref=sig.strategy)
     fill = c.executor.submit(order)
     if fill:

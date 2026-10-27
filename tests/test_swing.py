@@ -232,3 +232,35 @@ def test_config_can_reuse_a_model_class_under_its_own_name():
         "trend_core_qld": {"enabled": True, "class": "trend_core", "params": {"hold": "QLD", "vol_cap": 0.3}},
     })
     assert [(w.strategy.name, w.strategy.hold) for w in ws] == [("trend_core", "QQQ"), ("trend_core_qld", "QLD")]
+
+
+def test_core_top_up_never_lifts_the_account_past_max_trading_capital():
+    import tempfile
+    from pathlib import Path
+
+    from ctbot.config import Settings
+    from ctbot.models import Position
+    from ctbot.paper.simulator import PaperBroker
+    from ctbot.pipeline import Components, run_cycle
+    from ctbot.risk.manager import AccountState, RiskManager
+    from ctbot.strategies.registry import WeightedStrategy
+    from ctbot.strategies.swing import TrendCore
+
+    up = [400 + i for i in range(200)]
+    md = _MD(up, 650.0)
+    md.daily_bars = lambda sym, n: [Bar(sym, datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(days=i), c, c, c, c, 1e9)
+                                    for i, c in enumerate(up[-n:])]
+    with tempfile.TemporaryDirectory() as d:
+        broker = PaperBroker(md, 5000.0, Path(d) / "l.json", slippage_bps=0, clock=lambda: NOW)
+        broker._cash = 2400.0
+        broker._positions["QQQ"] = Position("QQQ", 2.0, 650.0)  # $1,300 of a $2,400 target
+        broker._positions["XYZ"] = Position("XYZ", 2.0, 650.0)  # another $1,300 already invested
+        s = Settings.from_env({"ENTRY_MODE": "auto", "MAX_TRADING_CAPITAL": "3000", "MAX_CORE_PCT": "0.8",
+                               "PAPER_LEDGER_PATH": str(Path(d) / "l.json")})
+        c = Components(s, md, [], [WeightedStrategy(TrendCore(size_pct=0.8), 1.0, standalone=True)], None,
+                       RiskManager(s.risk), broker, ["QQQ"])
+        st = AccountState(5000, 2400, 5000, 5000, 2, brackets={"QQQ": {"stop": 500, "target": None,
+                          "exit_at": "2027-10-01T15:50:00-04:00", "model": "trend_core"}})
+        run_cycle(c, st, NOW)
+        # $2,600 invested under a $3,000 cap: it tops up $400, not the $1,100 gap to target
+        assert round(sum(p.quantity * 650 for p in broker.positions())) == 3000

@@ -1,6 +1,7 @@
 """Dashboard: state snapshot from local files, no secrets, loopback-only read-only server."""
 
 import json
+import re
 import tempfile
 import threading
 import urllib.error
@@ -236,6 +237,17 @@ def test_what_you_own_shows_on_home_and_autopilot():
     assert '<div data-tab="home trading" data-sub="overview" class="card span-12 own">' in new
 
 
+
+def test_hidden_topup_row_stays_hidden():
+    """A display rule on the row must not beat [hidden], or "Add -$236 paper cash" shows above the limit."""
+    html = (ROOT / "src" / "ctbot" / "dashboard" / "index.html").read_text()
+    assert 'class="empty-row" id="topup" hidden' in html and ".empty-row[hidden] { display: none; }" in html
+    new = (ROOT / "src" / "ctbot" / "dashboard" / "observatory.html").read_text()
+    assert 'class="ap-side" id="topup" hidden' in new and "[hidden], .tab-off, .sub-off { display: none !important; }" in new
+    for page in (html, new):
+        assert '$("topup").hidden = !(short >= 1);' in page
+
+
 def test_prev_closes_needs_the_exact_previous_session(tmp_path):
     from ctbot.dashboard.state import prev_closes
     from ctbot.models import Bar
@@ -256,3 +268,10 @@ def test_tail_reads_only_the_end_of_a_long_file(tmp_path):
     assert _tail(p, 3) == ['{"i": 49998}', '{"i": 49999}', "not json"]
     assert [r["i"] for r in _read_history(p, 3)] == [49998, 49999]
     assert _tail(tmp_path / "missing", 3) == [] and _tail(p, 10**6)[0] == '{"i": 0}'
+
+
+def test_observatory_refresh_only_rewrites_changed_cards():
+    # The 10s refresh used to rebuild every card, which froze the page and reset scroll and hover.
+    html = (ROOT / "src" / "ctbot" / "dashboard" / "observatory.html").read_text()
+    assert not re.search(r'\$\("\w+"\)\.innerHTML = ', html), "write card HTML with put()"
+    assert "setInterval(() => document.hidden || load(), 10000)" in html

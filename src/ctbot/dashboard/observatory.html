@@ -1039,7 +1039,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
       <div class="strats" id="strategies"></div>
     </div>
     <div data-tab="activity" class="card span-12">
-      <h2>What the bot did <span class="count">step by step, this Mac's time · hover a line for the raw log</span><span class="spacer"></span>
+      <h2>What the bot did <span class="count">step by step, the bot computer's clock · hover a line for the raw log</span><span class="spacer"></span>
         <span class="seg" role="group" aria-label="Log filter">
           <button data-log="all" class="on">All</button><button data-log="fill">Trades</button>
           <button data-log="reject">Turned down</button><button data-log="warn">Problems</button>
@@ -1110,6 +1110,15 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
+  // Write HTML only when it changed: the 10s refresh then leaves untouched cards alone (no relayout,
+  // scroll, hover or typing lost). Returns true when it wrote, so callers re-bind listeners only then.
+  function put(el, h) {
+    if (el._h === h) return false;
+    const tops = [...el.querySelectorAll(".scroll")].map((s) => s.scrollTop);  // a changed table keeps its scroll
+    el._h = h; el.innerHTML = h;
+    el.querySelectorAll(".scroll").forEach((s, i) => (s.scrollTop = tops[i] || 0));
+    return true;
+  }
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const usd = (v, d = 2) => v == null ? "—" : (v < 0 ? "-$" : "$") + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
   const sgnUsd = (v) => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "±") + usd(Math.abs(v)).replace("$", "$");
@@ -1230,7 +1239,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
   function applyTheme(t) {
     theme = THEMES[t] ? t : "auto";
     if (theme !== "auto") document.documentElement.dataset.theme = theme; else delete document.documentElement.dataset.theme;
-    $("theme").innerHTML = ico(THEMES[theme][0]);
+    put($("theme"), ico(THEMES[theme][0]));
     $("theme").setAttribute("aria-label", `Theme: ${THEMES[theme][1]}. Click to change.`); $("theme").title = `Theme: ${THEMES[theme][1]}`;
     try { localStorage.setItem("ctbot.theme", theme); } catch (e) {}
   }
@@ -1298,7 +1307,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
   }
   function renderSettings(st) {
     const src = { settings: ["on", "Saved"], ".env": ["q", "From .env"] };
-    $("keys").innerHTML = Object.entries(st.keys).map(([k, v]) => {
+    put($("keys"), Object.entries(st.keys).map(([k, v]) => {
       const [cls, label] = src[v.source] || ["off", "Not set"];
       return `<form class="krow" data-key="${esc(k)}">
         <div class="kl"><b>${esc(v.label)}</b> <span class="tag ${cls}">${label}</span></div>
@@ -1306,9 +1315,9 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
           placeholder="${v.set ? "Paste a new value to replace it" : "Paste it here"}" aria-label="${esc(v.label)}">
           <button class="btn solid" type="submit">Save</button>
           ${v.source === "settings" ? `<button class="btn" type="button" data-remove>Remove</button>` : ""}</div></form>`;
-    }).join("");
+    }).join(""));
     const rh = st.robinhood;
-    $("rh").innerHTML = (rh.connecting
+    put($("rh"), (rh.connecting
       ? `<p><span class="dot on" style="display:inline-block"></span> Waiting for you to finish signing in, in the browser tab that just opened…</p>`
       : rh.signed_in
         ? `<p><span class="tag on">Connected</span> Sign-in saved on this Mac (<code>~/.ctbot</code>).</p>`
@@ -1316,7 +1325,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
       (rh.last_exit ? `<p class="note" style="color:var(--crit)">The last sign-in didn't finish. Details: <code>logs/robinhood-login.log</code>.</p>` : "") +
       `<p class="note">Signing in opens Robinhood in your browser. ctbot only uses read-only tools (quotes, history, positions, scans). It never places real orders.</p>
        <button class="btn ${rh.signed_in ? "" : "solid"}" id="rhConnect" type="button" ${rh.connecting ? "disabled" : ""}>${rh.signed_in ? "Sign in again" : "Connect Robinhood"}</button>
-       ${rh.signed_in ? `<button class="btn sell" id="rhDisconnect" type="button">Disconnect</button>` : ""}`;
+       ${rh.signed_in ? `<button class="btn sell" id="rhDisconnect" type="button">Disconnect</button>` : ""}`);
     clearTimeout(rhPoll);
     if (rh.connecting) rhPoll = setTimeout(loadSettings, 2000);
     renderWebull(st.webull || {});
@@ -1340,9 +1349,9 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
         `<button class="btn ${w.checked ? "" : "solid"}" id="wbConnect" type="button">${w.checked || w.token === "NORMAL" ? "Check again" : "Connect Webull"}</button>
          ${w.token ? `<button class="btn sell" id="wbDisconnect" type="button">Disconnect</button>` : ""}`;
     }
-    $("wb").innerHTML = h + `<p class="note">Read-only: CTbot uses Webull only for price candles (the stock chart, and a backup for daily prices).
+    put($("wb"), h + `<p class="note">Read-only: CTbot uses Webull only for price candles (the stock chart, and a backup for daily prices).
       It never places Webull orders. US stock prices need Webull's OpenAPI market-data subscription (Nasdaq Basic, non-display);
-      one bought in the Webull app doesn't carry over.</p>`;
+      one bought in the Webull app doesn't carry over.</p>`);
     clearTimeout(wbPoll);
     if (w.token === "PENDING") wbPoll = setTimeout(async () => {
       const [ok, j] = await api("/api/webull/check");
@@ -1396,12 +1405,12 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
       toast("Robinhood sign-in opened in your browser."); renderSettings(j); return;
     }
     if (e.target.closest("#runChecks")) {
-      $("checks").innerHTML = `<div class="note">Checking…</div>`;
+      put($("checks"), `<div class="note">Checking…</div>`);
       const [ok, j] = await api("/api/settings/test");
-      if (!ok) { $("checks").innerHTML = `<div class="note" style="color:var(--crit)">${esc(j.error || "check failed")}</div>`; return; }
-      $("checks").innerHTML = `<table class="tbl"><tbody>${j.checks.map((c) => `<tr>
+      if (!ok) { put($("checks"), `<div class="note" style="color:var(--crit)">${esc(j.error || "check failed")}</div>`); return; }
+      put($("checks"), `<table class="tbl"><tbody>${j.checks.map((c) => `<tr>
         <td style="width:28px">${c.ok ? '<span class="up">✓</span>' : '<span class="down">✕</span>'}</td>
-        <td><b>${esc(c.check)}</b></td><td style="white-space:normal;color:var(--ink-2)">${esc(c.detail)}</td></tr>`).join("")}</tbody></table>`;
+        <td><b>${esc(c.check)}</b></td><td style="white-space:normal;color:var(--ink-2)">${esc(c.detail)}</td></tr>`).join("")}</tbody></table>`);
     }
   });
 
@@ -1439,7 +1448,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
       : S.bot.running ? `bot on · ${S.entry_mode === "auto" ? "trades on its own" : "asks before buying"}` : "bot off · start ./run_ctbot.sh";
     $("mkt").title = [m.et_time, m.open ? "" : `opens ${m.next_open}`, prices, bot, ai].filter(Boolean).join("\n");
     const nick = String(S.account.nickname || "");
-    $("acctName").innerHTML = `Robinhood ${esc(nick)} <span class="last4">••••${esc(S.account.last4 ?? "????")}</span>`;
+    put($("acctName"), `Robinhood ${esc(nick)} <span class="last4">••••${esc(S.account.last4 ?? "????")}</span>`);
     $("avatar").textContent = (nick.split(/\s+/).filter(Boolean).map((w) => w[0]).join("") + nick.slice(1, 2)).slice(0, 2).toUpperCase() || "CT";
     $("avatar").title = `${nick || "Account"} · Settings`;
 
@@ -1457,21 +1466,21 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
     if ((a.pulled_back || []).length) alerts.push(["warn", "△", `Playing it safe: ${a.pulled_back.join(", ")}. New buys use only cash on hand, no borrowing, until that clears.`]);
     if (a.margin_call) alerts.push(["crit", "!", "Borrowed too much: your account value is under 25% of what you hold, so buying is paused until it recovers."]);
     if (S.limits.pdt_rule && a.day_trades_5d >= S.limits.max_day_trades_5d) alerts.push(["warn", "△", `Day-trade limit reached (${a.day_trades_5d} of ${S.limits.max_day_trades_5d} in 5 days): the bot can't buy and sell the same stock on the same day.`]);
-    $("alerts").innerHTML = alerts.map(([k, ic, t]) => `<div class="alert ${k}"><span class="ic">${ic}</span><span>${esc(t)}</span></div>`).join("");
+    put($("alerts"), alerts.map(([k, ic, t]) => `<div class="alert ${k}"><span class="ic">${ic}</span><span>${esc(t)}</span></div>`).join(""));
   }
 
   // ---- Home: portfolio value and where the money is ------------------------------
   function renderPortfolio() {
     const a = S.account_summary, L = S.limits;
-    $("pvBig").innerHTML = `<div class="val">${usd(a.equity)}</div><div class="pv-sub">
+    put($("pvBig"), `<div class="val">${usd(a.equity)}</div><div class="pv-sub">
       <div title="The bot stops buying for the day at −${pct(L.max_daily_loss_pct, 0)}"><b class="${dir(a.day_pnl)}">${sgnUsd(a.day_pnl)} (${sgnPct(a.day_pnl_pct)})</b><span>Today</span></div>
       <div title="Down from its best of ${usd(a.peak_equity)}. The bot stops buying at −${pct(L.max_total_drawdown_pct, 0)}"><b class="${a.drawdown_pct < -1e-9 ? "down" : "flat"}">${sgnPct(a.drawdown_pct)}</b><span>Drawdown</span></div>
-      <div title="Since you started with ${usd(a.starting_capital, 0)}"><b class="${dir(a.total_pnl)}">${sgnUsd(a.total_pnl)} (${sgnPct(a.total_pnl / a.starting_capital)})</b><span>Since you started</span></div></div>`;
+      <div title="Since you started with ${usd(a.starting_capital, 0)}"><b class="${dir(a.total_pnl)}">${sgnUsd(a.total_pnl)} (${sgnPct(a.total_pnl / a.starting_capital)})</b><span>Since you started</span></div></div>`);
   }
   function renderAlloc() {
     const a = S.account_summary, L = S.limits, M = money(), tot = Math.max(1e-9, M.stocks + M.held + Math.max(0, M.cash));
     const cashNote = ["free to trade now", M.cash - M.free > 1 ? `${usd(M.cash - M.free, 0)} is over your ${usd(L.max_trading_capital, 0)} limit` : "",
-      a.unsettled ? usd(a.unsettled) + " settling" : "", L.paper_margin > 1 ? `can borrow up to ${L.paper_margin}x: ${usd(a.buying_power, 0)} to buy with${a.borrowed ? `, ${usd(a.borrowed, 0)} borrowed now` : ""}` : ""].filter(Boolean).join(" · ");
+      a.unsettled ? usd(a.unsettled) + " settling" : "", L.paper_margin > 1 ? `can borrow up to ${L.paper_margin}x: ${usd(a.buying_power, 0)} to buy with${a.borrowed ? `, ${usd(a.borrowed, 0)} borrowed now` : ""}, but your ${usd(L.max_trading_capital, 0)} limit leaves the bot ${usd(Math.max(0, L.max_trading_capital - a.deployed - M.held), 0)} of it` : ""].filter(Boolean).join(" · ");
     const parts = [["var(--fill)", M.stocks, "Stocks", "in stocks and funds now"], ["var(--blue)", M.held, "Strategy reserves", "Waiting inside strategies"],
       ["var(--crit)", Math.max(0, M.cash), "Cash", cashNote.replace(/^free to trade now( · )?/, "")]];
     const C = 2 * Math.PI * 40;
@@ -1481,15 +1490,18 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
       const arc = `<circle cx="50" cy="50" r="40" fill="none" stroke="${col}" stroke-width="10" stroke-dasharray="${(len - gap).toFixed(2)} ${(C - len + gap).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 50 50)"/>`;
       off += len; return arc;
     }).join("");
-    $("alloc").innerHTML = `<svg class="donut" viewBox="0 0 100 100" role="img" aria-label="Stocks ${pct(M.stocks / tot, 1)}, strategy reserves ${pct(M.held / tot, 1)}, cash ${pct(Math.max(0, M.cash) / tot, 1)}">
+    put($("alloc"), `<svg class="donut" viewBox="0 0 100 100" role="img" aria-label="Stocks ${pct(M.stocks / tot, 1)}, strategy reserves ${pct(M.held / tot, 1)}, cash ${pct(Math.max(0, M.cash) / tot, 1)}">
       <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(var(--tint), .1)" stroke-width="10"/>${arcs}</svg>
       <ul class="alist">${parts.map(([col, v, label, note]) => `<li><i style="background:${col}"></i><b>${usd(v)}</b><span class="p">${pct(v / tot, 1)}</span>
-        <small>${label}${note && label !== "Stocks" ? `<em>${esc(note)}</em>` : ""}</small></li>`).join("")}</ul>`;
+        <small>${label}${note && label !== "Stocks" ? `<em>${esc(note)}</em>` : ""}</small></li>`).join("")}</ul>`);
   }
 
   // ---- equity chart ----------------------------------------------------------
   function historyInRange() {
-    const h = S.equity_history.map((p) => ({ t: new Date(p.ts).getTime(), v: p.equity, cash: p.cash }));
+    // v adds back cash deposited later, so a top-up isn't drawn as a gain; real/base are what the account had then
+    const H = S.equity_history, dNow = H.length ? H[H.length - 1].deposits || 0 : 0, s0 = S.account_summary.starting_capital - dNow;
+    const h = H.map((p) => ({ t: new Date(p.ts).getTime(), v: p.equity + dNow - (p.deposits || 0), real: p.equity,
+                              base: s0 + (p.deposits || 0), cash: p.cash }));
     if (range === "all" || !h.length) return h;
     const cut = Date.now() - (range === "1d" ? 864e5 : 7 * 864e5);
     return h.filter((p) => p.t >= cut);
@@ -1509,13 +1521,13 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
     const el = $("chart"), pts = historyInRange();
     $("eqCount").textContent = "";
     if (view === "table") {
-      el.innerHTML = pts.length ? `<div class="scroll" style="max-height:280px"><table class="tbl"><thead><tr><th>Time</th><th class="r">Account value</th><th class="r">Cash</th></tr></thead><tbody>${
-        pts.slice().reverse().map((p) => `<tr><td>${fmtTime(p.t)}</td><td class="r">${usd(p.v)}</td><td class="r">${usd(p.cash)}</td></tr>`).join("")
-      }</tbody></table></div>` : `<div class="empty">No history yet.<br>The bot adds a point every few minutes while it runs.</div>`;
+      put(el, pts.length ? `<div class="scroll" style="max-height:280px"><table class="tbl"><thead><tr><th>Time</th><th class="r">Account value</th><th class="r">Cash</th></tr></thead><tbody>${
+        pts.slice().reverse().map((p) => `<tr><td>${fmtTime(p.t)}</td><td class="r">${usd(p.real)}</td><td class="r">${usd(p.cash)}</td></tr>`).join("")
+      }</tbody></table></div>` : `<div class="empty">No history yet.<br>The bot adds a point every few minutes while it runs.</div>`);
       return;
     }
     if (pts.length < 2) {
-      el.innerHTML = `<div class="empty">No history yet.<br>The bot adds a point every few minutes while the market is open. Start it with ./run_ctbot.sh.</div>`;
+      put(el, `<div class="empty">No history yet.<br>The bot adds a point every few minutes while the market is open. Start it with ./run_ctbot.sh.</div>`);
       return;
     }
     const base = S.account_summary.starting_capital;
@@ -1537,7 +1549,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
     const line = pts.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join("");
     const area = `${line}L${x(t1).toFixed(1)},${(H - pb).toFixed(1)}L${x(t0).toFixed(1)},${(H - pb).toFixed(1)}Z`;
     const last = pts[pts.length - 1];
-    el.innerHTML = `
+    if (!put(el, `
       <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Equity over time, latest ${usd(last.v)}">
         <defs><linearGradient id="eqfill" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0" stop-color="var(--neon)" stop-opacity=".34"/><stop offset="1" stop-color="var(--neon)" stop-opacity=".02"/></linearGradient></defs>
@@ -1554,7 +1566,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
         ${endTag(x(last.t) + 12, y(last.v), usd(last.v), "var(--line-2)", "var(--ink)", 82)}
         <g id="xh" opacity="0"><line id="xhl" y1="${pt}" y2="${H - pb}" stroke="var(--neon-dim)"/><circle id="xhc" r="5" fill="var(--neon)" stroke="var(--bg)" stroke-width="2"/></g>
         <rect x="${pl}" y="${pt}" width="${W - pl - pr}" height="${H - pt - pb}" fill="transparent" id="hit"/>
-      </svg><div class="tip" id="tip"></div>`;
+      </svg><div class="tip" id="tip"></div>`)) return;
     const hit = $("hit"), xh = $("xh"), tip = $("tip");
     hit.addEventListener("mousemove", (ev) => {
       const r = el.getBoundingClientRect(), mx = (ev.clientX - r.left) * (W / r.width);
@@ -1562,8 +1574,8 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
       const bx = x(best.t), by = y(best.v);
       $("xhl").setAttribute("x1", bx); $("xhl").setAttribute("x2", bx);
       $("xhc").setAttribute("cx", bx); $("xhc").setAttribute("cy", by); xh.setAttribute("opacity", 1);
-      const d = best.v - base;
-      tip.innerHTML = `<div class="t">${fmtTime(best.t)}</div><div>${usd(best.v)} <span class="${dir(d)}">${sgnPct(d / base)}</span></div>`;
+      const d = best.real - best.base;
+      tip.innerHTML = `<div class="t">${fmtTime(best.t)}</div><div>${usd(best.real)} <span class="${dir(d)}">${sgnPct(d / best.base)}</span></div>`;
       const px = bx * (r.width / W), py = by * (r.height / H);
       tip.style.left = Math.min(px + 12, r.width - 150) + "px"; tip.style.top = Math.max(py - 50, 0) + "px"; tip.style.opacity = 1;
     });
@@ -1614,7 +1626,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
         `<rect x="${left}" y="${f(top)}" width="${f(bw)}" height="${f(h)}" fill="${col}"/>` +
         (vh ? `<rect x="${left}" y="${f(vy0 - vh)}" width="${f(bw)}" height="${f(vh)}" fill="${col}" opacity=".3"/>` : "");
     }).join("");
-    el.innerHTML = `
+    if (!put(el, `
       <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria)}">
         ${niceTicks(lo, hi).map((v) => `<line x1="${pl}" x2="${W - pr}" y1="${f(y(v))}" y2="${f(y(v))}" stroke="var(--grid)"/>
           <text x="${pl - 10}" y="${f(y(v) + 4)}" text-anchor="end" fill="var(--muted)" font-family="var(--mono)" font-size="11">${usd(v, v % 1 ? 2 : dec)}</text>`).join("")}
@@ -1624,7 +1636,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
         ${marks}
         <line class="xh" y1="${pt}" y2="${H - pb}" stroke="var(--neon-dim)" opacity="0"/>
         <rect x="${pl}" y="${pt}" width="${W - pl - pr}" height="${H - pt - pb}" fill="transparent" class="hit"/>
-      </svg><div class="tip"></div>`;
+      </svg><div class="tip"></div>`)) return;
     const hit = el.querySelector(".hit"), xh = el.querySelector(".xh"), tip = el.querySelector(".tip");
     hit.addEventListener("mousemove", (ev) => {
       const r = el.getBoundingClientRect(), mx = (ev.clientX - r.left) * (W / r.width);
@@ -1662,18 +1674,18 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
   }
   function renderPx() {
     const el = $("pxChart"), inp = $("pxSym"), sym = pxSym || (S ? pxSymbols()[0] : "");
-    if (S) $("pxList").innerHTML = pxSymbols().map((v) => `<option value="${esc(v)}">`).join("");
+    if (S) put($("pxList"), pxSymbols().map((v) => `<option value="${esc(v)}">`).join(""));
     if (document.activeElement !== inp) inp.value = sym;
     document.querySelectorAll("[data-px]").forEach((b) => b.classList.toggle("on", b.dataset.px === pxSpan));
-    if (!PX) { $("pxMeta").textContent = ""; el.innerHTML = `<div class="empty">Loading ${esc(sym)} candles…</div>`; return; }
+    if (!PX) { $("pxMeta").textContent = ""; put(el, `<div class="empty">Loading ${esc(sym)} candles…</div>`); return; }
     const B = PX.bars || [];
     if (B.length < 2) {
       $("pxMeta").textContent = "";
-      el.innerHTML = `<div class="empty">No candles for ${esc(PX.symbol)} yet.<br>${esc((PX.notes || []).join(" · ") || "Connect Robinhood or Webull on the Settings tab.")}</div>`;
+      put(el, `<div class="empty">No candles for ${esc(PX.symbol)} yet.<br>${esc((PX.notes || []).join(" · ") || "Connect Robinhood or Webull on the Settings tab.")}</div>`);
       return;
     }
     const first = B[0], last = B[B.length - 1], chg = last.c - first.o;
-    $("pxMeta").innerHTML = `${STOCKS[PX.symbol] ? esc(STOCKS[PX.symbol]) + " · " : ""}${usd(last.c)} <span class="${dir(chg)}">${sgnPct(chg / first.o)}</span> · one bar per ${esc(PX.interval)} · prices from ${esc(PX.source)}`;
+    put($("pxMeta"), `${STOCKS[PX.symbol] ? esc(STOCKS[PX.symbol]) + " · " : ""}${usd(last.c)} <span class="${dir(chg)}">${sgnPct(chg / first.o)}</span> · one bar per ${esc(PX.interval)} · prices from ${esc(PX.source)}`);
     drawCandles(el, B, { vol: true, fmtT: PX.span === "1d" || PX.span === "1w" ? fmtTime : fmtDay,
       aria: `${PX.symbol} price in ${PX.interval} candles, last ${usd(last.c)}` });
   }
@@ -1697,10 +1709,10 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
     const total = P.reduce((t, p) => t + p.market_value, 0), gain = P.reduce((t, p) => t + p.pnl, 0), a = S.account_summary, L = S.limits;
     $("posCount").textContent = `${P.length} position${P.length === 1 ? "" : "s"}`;
     $("posCount").title = `${P.length} of ${L.max_open_positions} allowed at once`;
-    $("ownSum").innerHTML = P.length ? `· ${usd(total)} in stocks · <span class="${dir(gain)}">${sgnUsd(gain)}</span> on them` +
-      (L.pdt_rule ? ` · same-day buy-and-sells ${a.day_trades_5d} of ${L.max_day_trades_5d} in 5 days` : "") : "";
-    if (!P.length) { $("positions").innerHTML = `<div class="empty-row"><p>You don't own any stocks right now: it's all cash. Invest in a strategy and the bot buys for you.</p><button class="btn" type="button" data-goto="trading">Open Autopilot</button></div>`; return; }
-    $("positions").innerHTML = `<table class="tbl"><thead><tr>
+    put($("ownSum"), P.length ? `· ${usd(total)} in stocks · <span class="${dir(gain)}">${sgnUsd(gain)}</span> on them` +
+      (L.pdt_rule ? ` · same-day buy-and-sells ${a.day_trades_5d} of ${L.max_day_trades_5d} in 5 days` : "") : "");
+    if (!P.length) { put($("positions"), `<div class="empty-row"><p>You don't own any stocks right now: it's all cash. Invest in a strategy and the bot buys for you.</p><button class="btn" type="button" data-goto="trading">Open Autopilot</button></div>`); return; }
+    if (put($("positions"), `<table class="tbl"><thead><tr>
       <th>Symbol</th><th>Name</th><th title="The strategy that chose it. Click its name to see how it works.">Strategy</th><th class="r">Shares</th><th class="r">Current Price</th><th class="r">Value</th>
       <th class="r" title="Change since yesterday's close (since you bought, if that was today). A dash means yesterday's close isn't saved yet.">Day Change</th><th class="r" title="The price where the bot sells to limit the loss">Stop</th><th><span class="sr">Details</span></th></tr></thead><tbody>${P.map((p) => {
         const px = p.last ?? p.avg_cost, stop = p.stop, tgt = p.target ?? p.avg_cost * 1.1, open = openPos.has(p.symbol);
@@ -1726,7 +1738,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
             ${why ? `<div style="max-width:420px"><span class="lm">Why it was bought</span><span>${esc(why)}</span></div>` : ""}
             <div class="act"><button class="btn cbt" type="button" data-px-go="${esc(p.symbol)}">${ico("line")}Chart</button>
               <button class="btn sell" data-close="${esc(p.symbol)}" ${canTrade() ? "" : "disabled"}>Sell</button></div></div></td></tr>` : ""}`;
-      }).join("")}</tbody></table>`;
+      }).join("")}</tbody></table>`))
     $("positions").querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", () =>
       sendOrder({ side: "sell", symbol: b.dataset.close }, `sell all of ${b.dataset.close}`)));
   }
@@ -1738,23 +1750,23 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
   function renderWatchlist() {
     const W = S.watchlist;
     $("wlSrc").textContent = S.market.data_source === "robinhood" ? "live prices from Robinhood" : "prices from " + S.market.data_source;
-    $("watchlist").innerHTML = `<table class="tbl"><thead><tr><th>Stock</th><th class="r" title="The most a buyer will pay now (bid): roughly what you'd get if you sold">Sell price</th><th class="r" title="The least a seller will take now (ask): roughly what you'd pay">Buy price</th><th class="r">Last trade</th><th class="r" title="Gap between the buy and sell price. The bot skips stocks where it's too wide.">Gap</th></tr></thead><tbody>${
+    put($("watchlist"), `<table class="tbl"><thead><tr><th>Stock</th><th class="r" title="The most a buyer will pay now (bid): roughly what you'd get if you sold">Sell price</th><th class="r" title="The least a seller will take now (ask): roughly what you'd pay">Buy price</th><th class="r">Last trade</th><th class="r" title="Gap between the buy and sell price. The bot skips stocks where it's too wide.">Gap</th></tr></thead><tbody>${
       W.map((q) => {
         const sp = q.spread_pct, wide = sp != null && sp > S.limits.max_spread_pct;
         return `<tr><td class="sym">${stockCell(q.symbol)}</td><td class="r">${q.bid == null ? "—" : usd(q.bid)}</td><td class="r">${q.ask == null ? "—" : usd(q.ask)}</td>
           <td class="r">${q.last == null ? "—" : usd(q.last)}</td>
           <td class="r" style="color:${wide ? "var(--warn)" : "var(--ink-2)"}">${sp == null ? "—" : (wide ? "△ " : "") + pct(sp, 3)}</td></tr>`;
-      }).join("")}</tbody></table>`;
+      }).join("")}</tbody></table>`);
   }
   function renderFills() {
     const F = S.fills;
     $("fillCount").textContent = F.length ? `last ${F.length}` : "";
-    if (!F.length) { $("fills").innerHTML = `<div class="empty" style="height:80px">No trades yet.</div>`; return; }
-    $("fills").innerHTML = `<table class="tbl"><thead><tr><th>When</th><th></th><th>Stock</th><th class="r">Shares</th><th class="r">Price</th><th class="r">Total</th><th>Why</th><th class="r" title="For a sale: what it made or lost against the price paid">Profit / loss</th></tr></thead><tbody>${
+    if (!F.length) { put($("fills"), `<div class="empty" style="height:80px">No trades yet.</div>`); return; }
+    put($("fills"), `<table class="tbl"><thead><tr><th>When</th><th></th><th>Stock</th><th class="r">Shares</th><th class="r">Price</th><th class="r">Total</th><th>Why</th><th class="r" title="For a sale: what it made or lost against the price paid">Profit / loss</th></tr></thead><tbody>${
       F.map((f) => `<tr><td>${fmtTime(f.ts)}</td><td><span class="tag ${f.side}">${f.side === "buy" ? "Bought" : f.side === "sell" ? "Sold" : esc(f.side)}</span></td>
         <td class="sym">${stockCell(f.symbol)}</td><td class="r">${qty(f.quantity)}</td><td class="r">${usd(f.price)}</td>
         <td class="r">${usd(f.quantity * f.price)}</td><td class="why" style="white-space:normal">${esc(whyFill(f))}</td>
-        <td class="r ${f.pnl == null ? "" : dir(f.pnl)}">${f.pnl == null ? "—" : `${sgnUsd(f.pnl)} <span style="opacity:.75">${sgnPct(f.pnl_pct, 1)}</span>`}</td></tr>`).join("")}</tbody></table>`;
+        <td class="r ${f.pnl == null ? "" : dir(f.pnl)}">${f.pnl == null ? "—" : `${sgnUsd(f.pnl)} <span style="opacity:.75">${sgnPct(f.pnl_pct, 1)}</span>`}</td></tr>`).join("")}</tbody></table>`);
   }
 
   // ---- limits / strategies / log ---------------------------------------------
@@ -1775,11 +1787,11 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
       ["Stops borrowing when", L.risk_off_trend_days ? `${L.risk_off_trend_symbol} is under its ${L.risk_off_trend_days}-day average` : "never"],
       ["Most in any one sector", L.max_sector_pct ? pct(L.max_sector_pct, 0) + " of your money (Claude-picked buys)" : "No limit"],
     ];
-    $("limits").innerHTML = rows.map((r) => r ? `<dt>${r[0]}</dt><dd>${esc(r[1])}</dd>` : `<div class="divider"></div>`).join("");
+    put($("limits"), rows.map((r) => r ? `<dt>${r[0]}</dt><dd>${esc(r[1])}</dd>` : `<div class="divider"></div>`).join(""));
   }
   function renderStrategies() {
     const maxW = Math.max(1, ...S.strategies.map((s) => s.weight));
-    $("strategies").innerHTML = S.strategies.map((s) => {
+    put($("strategies"), S.strategies.map((s) => {
       const extra = [s.standalone ? "standalone" : null,
         Object.keys(s.risk || {}).length ? "relaxed liquidity" : null,
         s.name === "copy_trading" ? `${(s.params.tracked_actors || []).length} tracked` : null].filter(Boolean).join(" · ");
@@ -1787,7 +1799,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
         <span class="tag ${s.enabled ? "on" : "off"}">${s.enabled ? "● ON" : "○ OFF"}</span>
         <span class="meta">${s.enabled ? esc(s.mode || "trade") + " · " : ""}weight ${s.weight}${extra ? " · " + esc(extra) : ""}</span>
         <span class="w"><i style="width:${(s.weight / maxW) * 100}%"></i></span></div>`;
-    }).join("");
+    }).join(""));
   }
   function renderLog() {
     let rows = S.log.slice().reverse();
@@ -1795,9 +1807,9 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
     else if (logFilter === "reject") rows = rows.filter((r) => r.kind === "reject");
     else if (logFilter === "warn") rows = rows.filter((r) => r.level !== "INFO" && r.level !== "DEBUG");
     const LV = { INFO: "info", DEBUG: "detail", WARNING: "warning", ERROR: "error", CRITICAL: "error" };
-    $("log").innerHTML = rows.length ? rows.map((r) => `<div class="row ${r.kind}" title="${esc(r.msg)}"><span class="ts">${esc(r.ts.slice(11, 19))}</span>
+    put($("log"), rows.length ? rows.map((r) => `<div class="row ${r.kind}" title="${esc(r.msg)}"><span class="ts">${esc(r.ts.slice(11, 19))}</span>
       <span class="lv ${esc(r.level)}">${esc(LV[r.level] || r.level)}</span><span class="msg">${esc(logWords(r.msg))}</span></div>`).join("")
-      : `<div class="empty" style="height:80px">Nothing yet. Lines appear once the bot is running.</div>`;
+      : `<div class="empty" style="height:80px">Nothing yet. Lines appear once the bot is running.</div>`);
   }
 
   function ideaStatus(i) {
@@ -1846,18 +1858,18 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
     const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.amt : null;
     const all = S.ideas, groups = { all: all.length };
     all.forEach((i) => { const g = ideaOutcome(i)[0]; groups[g] = (groups[g] || 0) + 1; });
-    $("ideaSeg").innerHTML = IDEA_GROUPS.map(([k, label]) => `<button data-ideas="${k}" class="${ideaFilter === k ? "on" : ""}">${label} <span class="n">${groups[k] || 0}</span></button>`).join("");
+    put($("ideaSeg"), IDEA_GROUPS.map(([k, label]) => `<button data-ideas="${k}" class="${ideaFilter === k ? "on" : ""}">${label} <span class="n">${groups[k] || 0}</span></button>`).join(""));
     const rows = ideaFilter === "all" ? all : all.filter((i) => ideaOutcome(i)[0] === ideaFilter);
     $("ideaCount").textContent = `${all.length} ideas`;
-    $("ideaSum").innerHTML = all.length ? `The bot looked at <b>${all.length}</b> ideas: <b>${groups.bought || 0}</b> bought, <b>${groups.rec || 0}</b> recommended to you,
+    put($("ideaSum"), all.length ? `The bot looked at <b>${all.length}</b> ideas: <b>${groups.bought || 0}</b> bought, <b>${groups.rec || 0}</b> recommended to you,
       <b>${groups.no || 0}</b> turned down by Claude, <b>${groups.blocked || 0}</b> stopped by a safety rule, and <b>${groups.watch || 0}</b> from strategies you're only watching.
-      Click a row to see why.` : "";
+      Click a row to see why.` : "");
     if (!rows.length) {
-      $("ideas").innerHTML = `<div class="empty" style="height:90px">${ideaFilter === "rec"
+      put($("ideas"), `<div class="empty" style="height:90px">${ideaFilter === "rec"
         ? "No recommended trades right now. They appear here when strategies agree, Claude approves and every risk check passes."
-        : all.length ? "Nothing in this group. Try All." : "No trade ideas yet. They appear after the paper bot runs a cycle during market hours."}</div>`;
+        : all.length ? "Nothing in this group. Try All." : "No trade ideas yet. They appear after the paper bot runs a cycle during market hours."}</div>`);
     } else {
-      $("ideas").innerHTML = `<table class="tbl"><thead><tr><th>When</th><th>Stock</th><th>Idea</th><th>Strategy</th><th>What happened</th>
+      if (put($("ideas"), `<table class="tbl"><thead><tr><th>When</th><th>Stock</th><th>Idea</th><th>Strategy</th><th>What happened</th>
         <th title="Claude's answer and how sure it was">Claude said</th><th class="r" title="Dollars of practice money to buy, filled in with the bot's suggested size. Change it, then press Buy.">Buy with practice $</th></tr></thead><tbody>${rows.map((i) => {
         const d = i.decision, rk = i.risk, open = openIdeas.has(i.id), long = i.direction === "long";
         const [g, label, why] = ideaOutcome(i);
@@ -1884,26 +1896,27 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
             ${i.click && i.click.reasons.length ? `<div>Your click: ${esc(i.click.reasons.map(reasonWords).join("; "))}.</div>` : ""}
             <div><b>Why it came up:</b></div><ul class="dl">${sig}</ul>
             <div class="lm">Agreement score ${i.score.toFixed(2)} (how strongly the strategies agreed, from −1 = sell to 1 = buy).</div></td></tr>` : ""}`;
-      }).join("")}</tbody></table>`;
-      $("ideas").querySelectorAll("[data-amt]").forEach((el) => {
-        if (typed[el.dataset.amt] !== undefined) el.value = typed[el.dataset.amt];
-        if (el.dataset.amt === focused) el.focus();
-      });
-      $("ideas").querySelectorAll("tr.idea").forEach((tr) => tr.addEventListener("click", (ev) => {
-        if (ev.target.closest("input,button")) return;
-        const id = tr.dataset.idea; openIdeas.has(id) ? openIdeas.delete(id) : (openIdeas.add(id), focusIdea = id); renderIdeas();
-      }));
-      $("ideas").querySelectorAll("[data-buy]").forEach((b) => b.addEventListener("click", () => {
-        const amt = parseFloat($("ideas").querySelector(`[data-amt="${b.dataset.buy}"]`).value);
-        if (!(amt >= 1 && amt <= S.limits.max_trading_capital)) return toast(`Amount must be $1–$${S.limits.max_trading_capital}`, true);
-        sendOrder({ side: "buy", symbol: b.dataset.sym, notional: amt, idea_id: b.dataset.buy }, `buy ${usd(amt)} of ${b.dataset.sym}`);
-      }));
+      }).join("")}</tbody></table>`)) {
+        $("ideas").querySelectorAll("[data-amt]").forEach((el) => {
+          if (typed[el.dataset.amt] !== undefined) el.value = typed[el.dataset.amt];
+          if (el.dataset.amt === focused) el.focus();
+        });
+        $("ideas").querySelectorAll("tr.idea").forEach((tr) => tr.addEventListener("click", (ev) => {
+          if (ev.target.closest("input,button")) return;
+          const id = tr.dataset.idea; openIdeas.has(id) ? openIdeas.delete(id) : (openIdeas.add(id), focusIdea = id); renderIdeas();
+        }));
+        $("ideas").querySelectorAll("[data-buy]").forEach((b) => b.addEventListener("click", () => {
+          const amt = parseFloat($("ideas").querySelector(`[data-amt="${b.dataset.buy}"]`).value);
+          if (!(amt >= 1 && amt <= S.limits.max_trading_capital)) return toast(`Amount must be $1–$${S.limits.max_trading_capital}`, true);
+          sendOrder({ side: "buy", symbol: b.dataset.sym, notional: amt, idea_id: b.dataset.buy }, `buy ${usd(amt)} of ${b.dataset.sym}`);
+        }));
+      }
     }
     const C = S.manual_orders.slice(0, 6);
-    $("clicks").innerHTML = C.length ? `<div style="color:var(--muted);font-size:11px;">Your recent Buy and Sell clicks</div>` +
+    put($("clicks"), C.length ? `<div style="color:var(--muted);font-size:11px;">Your recent Buy and Sell clicks</div>` +
       C.map((o) => `<div class="c"><span>${fmtTime(o.ts)}</span><span class="tag ${o.side}">${esc(o.side[0].toUpperCase() + o.side.slice(1))}</span>
         <span class="sym" style="color:var(--ink)">${esc(o.symbol)}</span><span>${o.notional ? usd(o.notional) : "all"}</span>
-        <span>${ideaStatus({ click: o })} ${o.reasons.length ? esc(o.reasons.map(reasonWords).join("; ")) : ""}</span></div>`).join("") : "";
+        <span>${ideaStatus({ click: o })} ${o.reasons.length ? esc(o.reasons.map(reasonWords).join("; ")) : ""}</span></div>`).join("") : "");
   }
 
   function renderC2() {
@@ -1913,12 +1926,12 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
       : "";
     const rows = c2View === "watch" ? C.watchlist || [] : C.runners_up || [];
     if (!C.ranked_at) {
-      $("c2").innerHTML = `<div class="empty" style="height:90px">No Collective2 ranking yet. Run ctbot-c2-rank, then ctbot-c2-track, in Terminal.</div>`;
+      put($("c2"), `<div class="empty" style="height:90px">No Collective2 ranking yet. Run ctbot-c2-rank, then ctbot-c2-track, in Terminal.</div>`);
       $("c2Note").textContent = ""; return;
     }
     const p0 = (v) => v == null ? "—" : sgnPct(v, 0);
     const fwdCols = c2View === "watch";
-    $("c2").innerHTML = rows.length ? `<table class="tbl"><thead><tr><th>Trader</th><th class="r">Cost / month</th><th class="r">3 mo</th><th class="r">6 mo</th>
+    put($("c2"), rows.length ? `<table class="tbl"><thead><tr><th>Trader</th><th class="r">Cost / month</th><th class="r">3 mo</th><th class="r">6 mo</th>
       <th class="r">12 mo</th><th class="r">Worst drop</th><th class="r" title="Sharpe: above 1 is smooth">Smoothness</th><th class="r">Trades / yr</th><th class="r" title="Share of trades that are buys (not short sales)">Buys</th><th class="r">Typical hold</th>
       ${fwdCols ? `<th class="r">Since added</th><th class="r">S&amp;P 500 same time</th><th class="r" title="Subscription paid so far, as a share of a $250 account">Fee cost</th><th class="r" title="Since added, minus fees, minus the S&P 500">Beat the S&amp;P after fees?</th>` : ""}</tr></thead><tbody>${
       rows.map((r) => `<tr><td><span class="sym">${esc(r.name)}</span> <span style="color:var(--muted);font-size:11px">${esc(r.strategy_id)}</span></td>
@@ -1931,18 +1944,18 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
           <td class="r ${dir(r.spy_return)}">${r.spy_return == null ? "—" : sgnPct(r.spy_return, 1)}</td>
           <td class="r">${r.fee_drag_on_250 == null ? "—" : "−" + pct(r.fee_drag_on_250, 1)}</td>
           <td class="r ${dir(r.edge_after_fees)}">${r.edge_after_fees == null ? "—" : arrow(r.edge_after_fees) + " " + sgnPct(r.edge_after_fees, 1)}</td>` : ""}</tr>`).join("")
-      }</tbody></table>` : `<div class="empty" style="height:80px">${c2View === "watch" ? "Watchlist is empty." : "No other strategies passed the filters."}</div>`;
+      }</tbody></table>` : `<div class="empty" style="height:80px">${c2View === "watch" ? "Watchlist is empty." : "No other strategies passed the filters."}</div>`);
     const since = (C.watchlist || []).map((r) => r.added).filter(Boolean).sort()[0];
-    $("c2Note").innerHTML = `Watching only: seeing their open trades needs a paid subscription, so the bot can't copy their buys. ` +
+    put($("c2Note"), `Watching only: seeing their open trades needs a paid subscription, so the bot can't copy their buys. ` +
       `"Since added" only counts the time after we started watching${since ? " (from " + esc(since) + ")" : ""}, so it isn't hindsight. ` +
       `Fee cost = the subscription paid so far, as a share of a $250 account. "Beat the S&P after fees?" = since added, minus fee cost, minus the S&P 500. ` +
-      `Updated ${C.tracked_at ? fmtTime(C.tracked_at) : "never"} · run ctbot-c2-track to refresh. These are the traders' own reported results, not real accounts we hold.`;
+      `Updated ${C.tracked_at ? fmtTime(C.tracked_at) : "never"} · run ctbot-c2-track to refresh. These are the traders' own reported results, not real accounts we hold.`);
   }
 
   function renderModels() {
     const M = S.models || [];
     $("modelCount").textContent = M.length ? `${M.reduce((a, m) => a + m.closed, 0)} closed trades` : "";
-    $("models").innerHTML = M.length ? `<table class="tbl"><thead><tr><th>Strategy</th><th class="r">Trades closed</th><th class="r">Won</th>
+    put($("models"), M.length ? `<table class="tbl"><thead><tr><th>Strategy</th><th class="r">Trades closed</th><th class="r">Won</th>
       <th class="r" title="Average gain or loss per closed trade">Avg per trade</th><th class="r" title="Profit or loss from stocks already sold">Profit (sold)</th>
       <th class="r">Still holding</th><th class="r" title="Profit or loss so far on stocks still held">Profit (holding)</th>
       <th class="r" title="Next buy size compared with usual, from this strategy's last 30 days of closed trades">Next size</th><th>Why it sold</th></tr></thead><tbody>${
@@ -1953,7 +1966,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
         <td class="r ${dir(m.open_pnl)}">${m.open ? sgnUsd(m.open_pnl) : "—"}</td>
         <td class="r ${m.size_mult < 1 ? "down" : m.size_mult > 1 ? "up" : ""}">${m.size_mult == null ? "—" : (+m.size_mult).toFixed(2) + "x"}</td>
         <td style="color:var(--muted)">${esc(Object.entries(m.exits).map(([k, v]) => `${exitWord(k)} ×${v}`).join(" · "))}</td></tr>`).join("")
-      }</tbody></table>` : `<div class="empty" style="height:80px">No trades yet. Each practice trade is labeled with the strategy that picked it.</div>`;
+      }</tbody></table>` : `<div class="empty" style="height:80px">No trades yet. Each practice trade is labeled with the strategy that picked it.</div>`);
   }
 
   const ago = (iso, short) => { const m = Math.round((Date.now() - new Date(iso)) / 60000);
@@ -1966,12 +1979,12 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
     $("takeText").textContent = T.length ? String(T[0].text || "").replace("{models}", stratNames((T[0].models || []).join(",")))
       : "Nothing worth saying yet. Bub speaks up when the market turns, a limit gets close, or right before a buy.";
     $("takeAgo").textContent = T.length ? ago(T[0].ts) : "";
-    $("thoughts").innerHTML = T.length ? T.map((t, i) => {
+    put($("thoughts"), T.length ? T.map((t, i) => {
       const [cls, word] = KIND[t.kind] || ["", "Thought"];
       const text = String(t.text || "").replace("{models}", stratNames((t.models || []).join(",")));
       const fresh = i === 0 && Date.now() - new Date(t.ts) < 3600e3;
       return `<li class="thought${fresh ? " new" : ""}"><span class="tag ${cls}">${esc(word)}</span><span>${esc(text)}</span><time datetime="${esc(t.ts)}" title="${esc(fmtTime(t.ts))}">${esc(ago(t.ts))}</time></li>`;
-    }).join("") : `<li class="empty" style="height:64px">Nothing worth saying yet. Bub speaks up when the market turns, a limit gets close, or right before a buy.</li>`;
+    }).join("") : `<li class="empty" style="height:64px">Nothing worth saying yet. Bub speaks up when the market turns, a limit gets close, or right before a buy.</li>`);
   }
 
   function renderPostmortems() {
@@ -1984,38 +1997,38 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
       c.market_vs_trend != null ? `market ${c.market_vs_trend < 0 ? "under" : "over"} its trend` : null,
       (c.pulled_back || []).length ? "bought while playing it safe" : null,
     ].filter(Boolean).join(" · ");
-    $("postmortems").innerHTML = T.length ? `<table class="tbl"><thead><tr><th>Sold</th><th>Stock</th><th>Strategy</th><th class="r">Result</th>
+    put($("postmortems"), T.length ? `<table class="tbl"><thead><tr><th>Sold</th><th>Stock</th><th>Strategy</th><th class="r">Result</th>
       <th class="r" title="Most it was up while held">Best</th><th class="r" title="Most it was down while held">Worst</th><th>How it ended</th><th>Why it was bought</th></tr></thead><tbody>${
       T.map((t) => `<tr><td>${fmtTime(t.closed_at)}</td><td class="sym">${esc(t.symbol)}</td><td>${esc(stratNames((t.models || []).join(",")))}</td>
         <td class="r ${dir(t.pnl)}">${sgnUsd(t.pnl)} <span style="color:var(--muted)">${sgnPct(t.ret, 1)}</span></td>
         <td class="r">${sgnPct(t.max_up, 1)}</td><td class="r">${sgnPct(t.max_down, 1)}</td>
         <td>${esc(exitWord(t.exit_reason || "?"))}${t.note ? ` <span class="tag rej">${esc(t.note)}</span>` : ""}</td>
         <td style="color:var(--muted)">${esc(why(t.context))}</td></tr>`).join("")
-      }</tbody></table>` : `<div class="empty" style="height:80px">No sold trades logged yet. From now on each sale is written here with why it was bought.</div>`;
+      }</tbody></table>` : `<div class="empty" style="height:80px">No sold trades logged yet. From now on each sale is written here with why it was bought.</div>`);
   }
 
   function renderFilterScore() {
     const I = S.idea_scores || {}, sm = I.summary || {};
     const models = Object.keys(sm).filter((m) => m !== "all").sort();
     if (!I.generated_at || !models.length) {
-      $("filterScore").innerHTML = `<div style="color:var(--muted);font-size:12px">Did Claude choose well? After the market closes, every idea Claude said yes or no to is checked against what the price really did. Nothing checked yet.</div>`;
+      put($("filterScore"), `<div style="color:var(--muted);font-size:12px">Did Claude choose well? After the market closes, every idea Claude said yes or no to is checked against what the price really did. Nothing checked yet.</div>`);
       return;
     }
     // avg_bps is basis points: 100 bps = 1%
     const cell = (x) => !x || x.avg_bps == null ? "—" : `<span class="${dir(x.avg_bps)}">${x.avg_bps >= 0 ? "+" : "−"}${Math.abs(x.avg_bps / 100).toFixed(2)}% avg</span> <span style="color:var(--muted)">${x.n} idea${x.n === 1 ? "" : "s"} · ${pct(x.win_rate, 0)} made money</span>`;
-    $("filterScore").innerHTML = `<div style="color:var(--muted);font-size:12.5px"><b style="color:var(--ink-2)">Did Claude choose well?</b> · each idea Claude said yes or no to, checked against what the price really did · ${I.scored} checked, ${I.pending} waiting for prices</div>
+    put($("filterScore"), `<div style="color:var(--muted);font-size:12.5px"><b style="color:var(--ink-2)">Did Claude choose well?</b> · each idea Claude said yes or no to, checked against what the price really did · ${I.scored} checked, ${I.pending} waiting for prices</div>
       <table class="tbl"><thead><tr><th>Strategy</th><th>Ideas Claude said yes to</th><th>Ideas Claude said no to</th></tr></thead><tbody>${
       ["all", ...models].map((m) => `<tr><td class="sym">${esc(m === "all" ? "All strategies" : stratNames(m))}</td><td>${cell(sm[m].approved)}</td><td>${cell(sm[m].rejected)}</td></tr>`).join("")
-    }</tbody></table>`;
+    }</tbody></table>`);
   }
 
   function renderLab() {
     const R = S.research || {}, L = R.lab || {}, rows = L.rows || [];
     $("labMeta").textContent = L.generated_at ? `smoothest 2020-26 results first · cash earns ${pct(L.cash_apy || 0, 1)} a year · ${fmtTime(L.generated_at)}` : "";
-    if (!rows.length) { $("lab").innerHTML = `<div class="empty" style="height:80px">No test results yet. Run ctbot-lab --cash-apy 0.035 in Terminal.</div>`; return; }
+    if (!rows.length) { put($("lab"), `<div class="empty" style="height:80px">No test results yet. Run ctbot-lab --cash-apy 0.035 in Terminal.</div>`); return; }
     const reports = new Set(R.reports || []);
     const p0 = (v) => v == null ? "—" : sgnPct(v, 1);
-    $("lab").innerHTML = `<table class="tbl"><thead><tr><th title="Show on the growth chart">Chart</th><th>Idea</th><th>2010-26</th>
+    put($("lab"), `<table class="tbl"><thead><tr><th title="Show on the growth chart">Chart</th><th>Idea</th><th>2010-26</th>
       <th class="r" title="Average yearly return, 2020-26 (the unseen years)">Yearly return</th><th class="r" title="Biggest fall from a high, 2020-26">Worst drop</th>
       <th class="r" title="Worst calendar year, 2020-26">Worst year</th>
       <th class="r" title="Sharpe ratio: return per unit of bumpiness. Above 1 is smooth, under 0.5 is rough">Smoothness</th>
@@ -2027,11 +2040,11 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
         <td class="r ${dir(o.cagr)}">${p0(o.cagr)}</td><td class="r down">${p0(o.max_dd)}</td><td class="r ${dir(o.worst_year)}">${p0(o.worst_year)}</td>
         <td class="r">${(o.sharpe ?? 0).toFixed(2)}</td><td class="r">${pct(o.exposure, 0)}</td>
         <td class="r"><span class="more">Details →</span></td></tr>`; }).join("")
-    }</tbody></table>`;
+    }</tbody></table>`);
     const sw = R.sweep || {};
-    $("labNote").innerHTML = (sw.symbol ? `Average-length test (${esc(sw.symbol)}): 2010-19 picked a ${sw.chosen_in_sample}-day average; on 2020-26 it scored ${(sw.oos_sharpe_of_chosen || 0).toFixed(2)} for smoothness, and the typical length scored ${(sw.oos_sharpe_median || 0).toFixed(2)} (close numbers mean the exact choice doesn't matter much, which is good). ` : "") +
+    put($("labNote"), (sw.symbol ? `Average-length test (${esc(sw.symbol)}): 2010-19 picked a ${sw.chosen_in_sample}-day average; on 2020-26 it scored ${(sw.oos_sharpe_of_chosen || 0).toFixed(2)} for smoothness, and the typical length scored ${(sw.oos_sharpe_median || 0).toFixed(2)} (close numbers mean the exact choice doesn't matter much, which is good). ` : "") +
       (reports.has("paper_book.html") ? `<a href="/reports/paper_book.html" target="_blank" rel="noopener" style="color:var(--neon)">Paper book tearsheet ↗</a> · ` : "") +
-      `Uses each day's closing price, includes trading costs, leaves out dividends. "What the bot runs now" rows match the bot's real setup. Up to 6 lines on the chart.`;
+      `Uses each day's closing price, includes trading costs, leaves out dividends. "What the bot runs now" rows match the bot's real setup. Up to 6 lines on the chart.`);
   }
 
   function renderCatalog() {
@@ -2045,7 +2058,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
     $("catMeta").textContent = A.enabled
       ? `${A.models.filter((m) => m.status === "trading").length} trading · ${A.models.filter((m) => m.status !== "trading").length} benched (not allowed to trade)`
       : `${strats.filter((s) => runOf(s.name)).length} invested · ${strats.filter((s) => !runOf(s.name)).length} watching`;
-    $("catalog").innerHTML = `<table class="tbl lib"><thead><tr><th>Strategy</th><th>Status</th><th>Why</th>
+    put($("catalog"), `<table class="tbl lib"><thead><tr><th>Strategy</th><th>Status</th><th>Why</th>
       <th class="r" title="How it would have done over the past year (simulation)">Past year (simulated)</th><th class="r">Practice trades</th><th class="r">Profit / loss</th></tr></thead><tbody>${list.map((s) => {
       const P = s.plain || {}, m = models[s.name], run = runOf(s.name), ap = apOf[s.name], yr = ((s.performance || {}).windows || {})["1Y"];
       const badge = !s.enabled ? `<span class="tag off">Off</span>`
@@ -2057,13 +2070,13 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
         <td class="r">${yr ? `<span class="${dir(yr.return)}">${sgnPct(yr.return, 1)}</span>` : "–"}</td>
         <td class="r">${m ? `${m.closed}${m.win_rate == null ? "" : ` · ${pct(m.win_rate, 0)} won`}` : "0"}</td>
         <td class="r">${pnl == null ? "–" : `<span class="${dir(pnl)}">${sgnUsd(pnl)}</span>`}</td></tr>`;
-    }).join("")}</tbody></table>`;
+    }).join("")}</tbody></table>`);
   }
   function renderLibStrip(list) {  // Overview: one card per strategy with a simulated record, yours first
     const Q = (S.benchmarks || {}).QQQ || {}, fn = freeNote();
     const win = (s) => { const W = (s.performance || {}).windows || {}; const k = ["1Y", "6M", "3M"].find((k) => W[k]); return k ? [k, W[k]] : null; };
     const cards = list.filter((s) => s.enabled && (s.performance || {}).curve && win(s));
-    $("libStrip").innerHTML = cards.length ? cards.map((s) => {
+    put($("libStrip"), cards.length ? cards.map((s) => {
       const P = s.plain || {}, run = runOf(s.name), [k, w] = win(s), q = ((Q.windows || {})[k] || {}).return;
       const risk = P.risk === "Lower" ? ["on", "Low risk"] : P.risk === "High" ? ["rej", "High risk"] : ["grey", `${P.risk || "Medium"} risk`];
       return `<article class="lcard" data-detail="${esc(s.name)}" tabindex="0" aria-label="${esc(P.title || s.name)}">
@@ -2074,7 +2087,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
         <div class="pf">${miniChart(s.performance.curve, Q.curve, { "3M": 92, "6M": 183, "1Y": 365 }[k])}
           <div><b class="${dir(w.return)}">${sgnPct(w.return, 0)}</b><small>vs QQQ ${q == null ? "—" : sgnPct(q, 0)}</small><small>${PERIOD_LABEL[k]} (simulated)</small></div></div>
         <button class="btn ghost" type="button" data-detail="${esc(s.name)}">View details</button></article>`;
-    }).join("") : `<div class="empty" style="height:90px">No simulated results yet. Run ctbot-perf in Terminal.</div>`;
+    }).join("") : `<div class="empty" style="height:90px">No simulated results yet. Run ctbot-perf in Terminal.</div>`);
   }
   // ---- strategies in plain words, the invest sheet and "your strategies" -------------
   const brief = (t) => String(t).replace(/(\s*\([^)]*\))+$/, "");
@@ -2156,9 +2169,9 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
     ];
     const done = steps.filter((x) => x[0]).length;
     $("stepsMeta").textContent = `${done} of ${steps.length} complete`;
-    $("stepBars").innerHTML = steps.map(([ok]) => `<i class="${ok ? "ok" : ""}"></i>`).join("");
-    $("steps").innerHTML = steps.map(([ok, title, text, btn], i) => `<li class="${ok ? "ok" : ""}">
-      <span class="sn">${ok ? "✓" : i + 1}</span><div><b>${title}</b><p>${text}</p></div>${btn}</li>`).join("");
+    put($("stepBars"), steps.map(([ok]) => `<i class="${ok ? "ok" : ""}"></i>`).join(""));
+    put($("steps"), steps.map(([ok, title, text, btn], i) => `<li class="${ok ? "ok" : ""}">
+      <span class="sn">${ok ? "✓" : i + 1}</span><div><b>${title}</b><p>${text}</p></div>${btn}</li>`).join(""));
   }
   function renderRuns() {
     const L = S.launcher || { runs: [], allocated: 0, max_total: 0 }, runs = L.runs.filter((r) => r.status !== "stopped");
@@ -2193,13 +2206,13 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
     const cols = ap
       ? [["Strategy"], ["Symbol(s)"], ["Allocation", "r"], ["Current Value", "r"], ["Total Return", "r"], ["Status"], ["Stop"], [""]]
       : [["Strategy"], ["Status"], ["Symbol(s)"], ["Allocated", "r"], ["Current Value", "r"], ["Total Return", "r"], ["Stop / Action"], [""]];
-    $("runs").innerHTML = runs.length ? `<table class="tbl"><thead><tr>${cols.map(([h, c]) => `<th class="${c || ""}">${h}</th>`).join("")}</tr></thead><tbody>${runs.map((r, i) => {
+    put($("runs"), runs.length ? `<table class="tbl"><thead><tr>${cols.map(([h, c]) => `<th class="${c || ""}">${h}</th>`).join("")}</tr></thead><tbody>${runs.map((r, i) => {
       const cell = { Strategy: `<td title="${esc([plainOf(r.strategy).title, limits(r), "since " + fmtTime(r.started_at), idle(r)].filter(Boolean).join(" · "))}"><span class="sdot" style="background:${DOTS[i % 3]}"></span>${esc(brief(plainOf(r.strategy).title))}</td>`,
         "Symbol(s)": `<td>${esc(syms(r))}</td>`, Status: `<td>${status(r)}</td>`, Allocation: `<td class="r">${usd(r.capital)}</td>`, Allocated: `<td class="r">${usd(r.capital)}</td>`,
         "Current Value": `<td class="r">${usd(r.capital + r.gain)}</td>`, "Total Return": `<td class="r ${dir(r.gain)}" title="${sgnUsd(r.gain)}">${sgnPct(r.gain_pct)}</td>`,
         Stop: `<td>${stop(r)}</td>`, "Stop / Action": `<td>${stop(r)}</td>`, "": `<td>${chart(r)}</td>` };
       return `<tr>${cols.map(([h]) => cell[h]).join("")}</tr>`; }).join("")}</tbody></table>`
-      : `<div class="empty-row"><p>You haven't invested in a strategy yet. On Autopilot, press Invest for Me and the bot picks them.</p><button class="btn solid" type="button" data-goto="trading">Open Autopilot</button></div>`;
+      : `<div class="empty-row"><p>You haven't invested in a strategy yet. On Autopilot, press Invest for Me and the bot picks them.</p><button class="btn solid" type="button" data-goto="trading">Open Autopilot</button></div>`);
   }
   let investOpener = null;
   const stratOf = (name) => (S.strategies || []).find((x) => x.name === name) || { name, plain: { title: name } };
@@ -2279,7 +2292,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
   function showSheet({ title, tag, body, invest, extra }) {
     if ($("invest").hidden) investOpener = document.activeElement;
     $("invTitle").textContent = title; $("invTag").textContent = tag || ""; $("invTag").hidden = !tag;
-    $("invDetail").innerHTML = body; $("invExtra").innerHTML = extra || "";
+    put($("invDetail"), body); put($("invExtra"), extra || "");
     $("invest").dataset.name = invest || "";
     const run = invest ? runOf(invest) : null, free = freeCash(), why = !canTrade() ? "Start the dashboard with ./run_ctbot.sh to invest." : freeNote();
     $("invFields").hidden = !invest || !!run;
@@ -2314,10 +2327,10 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
   function invSummary() {
     const name = $("invest").dataset.name, amt = Number($("invAmt").value) || 0;
     const loss = Number($("invLoss").value) || 0, tp = Number($("invTp").value) || 0;
-    $("invSum").innerHTML = `<b>${usd(amt, 0)}</b> goes into ${esc(plainOf(name).title)}. It trades on its own and never uses more than this.` +
+    put($("invSum"), `<b>${usd(amt, 0)}</b> goes into ${esc(plainOf(name).title)}. It trades on its own and never uses more than this.` +
       (loss ? ` If it's down <b>${usd(amt * loss, 0)}</b> (${pct(loss, 0)}) in total, the bot sells everything and stops.` : " No max loss: only the strategy's own stop-losses apply.") +
       (tp ? ` If it's up <b>${usd(amt * tp, 0)}</b> (${pct(tp, 0)}), it sells and locks in the gain.` : "") +
-      ` While it runs, strategies you haven't invested in only suggest ideas. Paper money only.`;
+      ` While it runs, strategies you haven't invested in only suggest ideas. Paper money only.`);
   }
   const closeInvest = () => {
     $("invest").hidden = true;
@@ -2428,7 +2441,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
     const years = []; for (let yy = new Date(t0).getFullYear() + 1; yy <= new Date(t1).getFullYear(); yy += W < 520 ? 4 : 2) years.push(new Date(yy, 0, 1).getTime());
     const lab$ = (v) => "$" + (v >= 1000 ? (v / 1000).toLocaleString("en-US", { maximumFractionDigits: 1 }) + "K" : v);
     const line = (s) => s.map((p) => x(p[0]).toFixed(1) + "," + y(p[1]).toFixed(1)).join(" ");
-    el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria)}">
+    put(el, `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.aria)}">
       ${o.area ? `<defs><linearGradient id="gcfill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${series[0].color}" stop-opacity=".28"/><stop offset="1" stop-color="${series[0].color}" stop-opacity="0"/></linearGradient></defs>` : ""}
       ${years.map((t) => `<line x1="${x(t)}" x2="${x(t)}" y1="${pt}" y2="${H - pb}" stroke="var(--grid)"/><text x="${x(t)}" y="${H - 6}" text-anchor="middle" fill="var(--ink-2)" font-family="var(--mono)" font-size="11.5">${new Date(t).getFullYear()}</text>`).join("")}
       ${ticks.map((v) => `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${pl - 8}" y="${y(v) + 4}" text-anchor="end" fill="var(--ink-2)" font-family="var(--mono)" font-size="11.5">${lab$(v)}</text>`).join("")}
@@ -2437,51 +2450,51 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
       ${pts.map((s, k) => { const p = s[s.length - 1];
         return o.tags ? endTag(x(p[0]) + 8, y(p[1]), lab$(Math.round(p[1] / 1000) * 1000), series[k].color, series[k].color, 56)
           : `<circle cx="${x(p[0])}" cy="${y(p[1])}" r="4" fill="${series[k].color}" stroke="var(--bg)" stroke-width="2"/>`; }).join("")}
-    </svg>`;
+    </svg>`);
   }
   function renderCompare() {
     const rows = Object.fromEntries((((S.research || {}).lab || {}).rows || []).map((r) => [r.strategy, r]));
     const sel = cmpSel.filter((n) => rows[n] && rows[n].curve);
     const el = $("cmpChart");
     $("cmpMeta").textContent = sel.length ? `tick tests in the leaderboard below to add or remove lines` : "";
-    if (!sel.length) { el.innerHTML = `<div class="empty">Tick tests in the leaderboard below to draw them here.</div>`; $("cmpLegend").innerHTML = ""; }
+    if (!sel.length) { put(el, `<div class="empty">Tick tests in the leaderboard below to draw them here.</div>`); put($("cmpLegend"), ""); }
     else {
       growthChart(el, sel.map((n, k) => ({ curve: rows[n].curve, color: COLORS[k] })), { log: cmpScale === "log", aria: "Equity curves of selected strategies" });
-      $("cmpLegend").innerHTML = sel.map((n, k) => { const c = rows[n].curve, v = c[c.length - 1][1], o = rows[n].out_of_sample;
-        return `<span><i style="background:${COLORS[k]}"></i>${esc(testName(n))} · <b style="color:var(--ink)">${usd(v, 0)}</b> · worst drop ${pct(o.max_dd, 0)} (2020-26)</span>`; }).join("");
+      put($("cmpLegend"), sel.map((n, k) => { const c = rows[n].curve, v = c[c.length - 1][1], o = rows[n].out_of_sample;
+        return `<span><i style="background:${COLORS[k]}"></i>${esc(testName(n))} · <b style="color:var(--ink)">${usd(v, 0)}</b> · worst drop ${pct(o.max_dd, 0)} (2020-26)</span>`; }).join(""));
     }
     // Overview: what the bot runs now against just holding the Nasdaq-100
     const L = (S.research || {}).lab || {}, list = L.rows || [];
     const bot = list.find((r) => r.strategy.startsWith("LIVE") && r.curve), qqq = rows["hold QQQ"];
     if (!bot || !qqq || !qqq.curve) {
-      $("ovChart").innerHTML = `<div class="empty">No backtest yet. Run ctbot-lab --cash-apy 0.035 in Terminal.</div>`; $("ovLegend").innerHTML = ""; $("ovNote").textContent = ""; return;
+      put($("ovChart"), `<div class="empty">No backtest yet. Run ctbot-lab --cash-apy 0.035 in Terminal.</div>`); put($("ovLegend"), ""); $("ovNote").textContent = ""; return;
     }
     growthChart($("ovChart"), [{ curve: bot.curve, color: "var(--fill)" }, { curve: qqq.curve, color: "var(--blue)" }],
       { area: true, tags: true, aria: `Simulated growth of $5,000: ${testName(bot.strategy)} against holding the Nasdaq-100` });
-    $("ovLegend").innerHTML = `<span title="${esc(testName(bot.strategy))}"><i style="background:var(--fill)"></i>CTbot strategy (simulated)</span><span><i style="background:var(--blue)"></i>Nasdaq (QQQ)</span>`;
+    put($("ovLegend"), `<span title="${esc(testName(bot.strategy))}"><i style="background:var(--fill)"></i>CTbot strategy (simulated)</span><span><i style="background:var(--blue)"></i>Nasdaq (QQQ)</span>`);
     const y0 = bot.curve[0][0].slice(0, 4), y1 = bot.curve[bot.curve.length - 1][0].slice(0, 4);
     $("ovNote").textContent = `Simulated growth of $5,000 from ${y0} to ${y1}, after trading costs. Past performance is not a guarantee of future results.`;
   }
   function renderStressWF() {
     const L = (S.research || {}).lab || {}, st = L.stress || {}, wf = L.walk_forward || {};
-    $("stress").innerHTML = Object.keys(st).length ? Object.entries(st).map(([w, rows]) => `<div class="sec" style="margin:6px 0">${esc(w)}</div>
+    put($("stress"), Object.keys(st).length ? Object.entries(st).map(([w, rows]) => `<div class="sec" style="margin:6px 0">${esc(w)}</div>
       <table class="tbl"><thead><tr><th>Test</th><th class="r">Yearly return</th><th class="r">Worst drop</th><th class="r" title="Sharpe: above 1 is smooth">Smoothness</th><th class="r">$5,000 became</th></tr></thead><tbody>${
       rows.map((r) => `<tr><td class="sym" title="${esc(r.strategy)}">${esc(testName(r.strategy))}</td><td class="r ${dir(r.cagr)}">${sgnPct(r.cagr, 1)}</td>
         <td class="r" style="color:${r.max_dd <= -0.6 ? "var(--crit)" : "var(--ink-2)"}">${r.max_dd <= -0.6 ? "△ " : ""}${pct(r.max_dd, 0)}</td>
         <td class="r">${(r.sharpe || 0).toFixed(2)}</td><td class="r">${usd(r.growth_of_5000, 0)}</td></tr>`).join("")}</tbody></table>`).join("")
-      : `<div class="empty" style="height:80px">No results yet. Run ctbot-lab in Terminal to create them.</div>`;
+      : `<div class="empty" style="height:80px">No results yet. Run ctbot-lab in Terminal to create them.</div>`);
     const wfe = Object.entries(wf);
-    $("wf").innerHTML = wfe.length ? `<table class="tbl"><thead><tr><th>Idea</th><th class="r">Yearly return</th><th class="r">Worst drop</th><th class="r" title="Sharpe: above 1 is smooth">Smoothness</th><th>Trend length it picked each year (days)</th></tr></thead><tbody>${
+    put($("wf"), wfe.length ? `<table class="tbl"><thead><tr><th>Idea</th><th class="r">Yearly return</th><th class="r">Worst drop</th><th class="r" title="Sharpe: above 1 is smooth">Smoothness</th><th>Trend length it picked each year (days)</th></tr></thead><tbody>${
       wfe.map(([n, w]) => `<tr><td class="sym" title="${esc(n)}">${esc(testName(n))}</td><td class="r ${dir(w.cagr)}">${sgnPct(w.cagr, 1)}</td><td class="r down">${pct(w.max_dd, 0)}</td>
         <td class="r">${(w.sharpe || 0).toFixed(2)}</td><td style="white-space:normal;color:var(--ink-2)">${Object.entries(w.picks).map(([yy, p]) => `${yy}:${p}`).join(" ")}</td></tr>`).join("")
       }</tbody></table><div style="color:var(--muted);font-size:12px;margin-top:8px">${esc(wfe[0][1].from)} → ${esc(wfe[0][1].to)} · each year used the trend length that did best over the 5 years before it.</div>`
-      : `<div class="empty" style="height:80px">No results yet. Run ctbot-lab in Terminal to create them.</div>`;
+      : `<div class="empty" style="height:80px">No results yet. Run ctbot-lab in Terminal to create them.</div>`);
   }
 
   let apDirty = false;  // don't overwrite the form while you're editing it
   function setSel(sel, v, opts) {  // preset choices, plus the saved value if it isn't one of them
     const all = [...new Set([...opts, v])].sort((x, y) => x - y);
-    sel.innerHTML = all.map((o) => `<option value="${o}">${o}%</option>`).join(""); sel.value = String(v);
+    put(sel, all.map((o) => `<option value="${o}">${o}%</option>`).join("")); sel.value = String(v);
   }
   const DEC_ICON = { bought: ["good", "check"], rec: ["good", "star"], watch: ["", "eye"], no: ["bad", "x"], blocked: ["bad", "ban"] };
   function renderAutopilot() {
@@ -2500,14 +2513,14 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
     const recent = (S.ideas || []).slice(0, 12);  // S.ideas is newest first
     const TAGC = { rec: "rec", bought: "on", no: "rej", blocked: "rej", watch: "q" };
     const keep = new Set([...$("apDecisions").querySelectorAll(".dec.open")].map((li) => li.dataset.id));
-    $("apDecisions").innerHTML = recent.length ? recent.map((i) => {
+    put($("apDecisions"), recent.length ? recent.map((i) => {
       const names = (i.strategies || []).map((n) => plainOf(n).title), [g, label, why] = ideaOutcome(i);
       const [tone, icon] = i.status === "too_close_to_close" ? ["bad", "late"] : DEC_ICON[g] || ["", "info"];
       return `<li class="dec${keep.has(i.id) ? " open" : ""}" data-id="${esc(i.id)}"><span class="dic ${tone}">${ico(icon)}</span><div style="min-width:0">
         <div class="r1"><b title="${esc(STOCKS[i.symbol] || "")}">${esc(i.symbol)}</b><span class="tag ${TAGC[g] || ""}">${label}</span><time title="${esc(fmtTime(i.ts))}">${ago(i.ts, true)}</time></div>
         <div class="r2"><span class="why" title="${esc(why)}">${esc(why || "—")}</span><button class="link" type="button" data-why aria-expanded="${keep.has(i.id)}">Why? ${ico("arrow")}</button></div>
         <div class="full">From ${esc(names.join(", ") || "—")} · ${esc(fmtTime(i.ts))}</div></div></li>`;
-    }).join("") : `<li class="empty" style="height:60px">No decisions yet: they appear here once the market opens.</li>`;
+    }).join("") : `<li class="empty" style="height:60px">No decisions yet: they appear here once the market opens.</li>`);
   }
   $("apDecisions").addEventListener("click", (e) => {
     const b = e.target.closest("[data-why]"); if (!b) return;
@@ -2528,7 +2541,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
     };
     const extra = (v) => Object.entries(v.env || {}).filter(([k]) => k !== "CLAUDE_MODEL" || v.name !== "main")
       .map(([k, x]) => ENV_WORDS[k] ? ENV_WORDS[k](x) : `${k.toLowerCase().replaceAll("_", " ")} ${x}`).join(" · ");
-    $("variants").innerHTML = `<table class="tbl lib"><thead><tr><th>Account</th><th class="r">Value</th><th class="r">Return</th>
+    put($("variants"), `<table class="tbl lib"><thead><tr><th>Account</th><th class="r">Value</th><th class="r">Return</th>
       <th class="r" title="Biggest fall from a high point">Worst drop</th><th class="r" title="Trades closed">Trades</th><th class="r">Won</th><th class="r" title="Stocks held now">Holding</th>
       <th class="r" title="Daily returns compared with your main account. It says better or worse only when the difference is too steady to be luck, across all the accounts at once. Expect weeks, not days.">Vs yours</th>
       <th title="Max loss before selling · how far the trailing stop sits below the high · how sure Claude must be to buy">Settings: stop-loss · trail · how sure Claude must be</th></tr></thead><tbody>${
@@ -2537,7 +2550,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
         <td class="r">${v.win_rate == null ? "–" : pct(v.win_rate, 0)}</td><td class="r">${v.open}</td>
         <td class="r ${v.vs_main?.verdict === "better" ? "up" : v.vs_main?.verdict === "worse" ? "down" : ""}">${v.vs_main ? `${esc(v.vs_main.verdict)} <span style="color:var(--muted)">${v.vs_main.days}d</span>` : "–"}</td>
         <td class="why">${pct(v.max_loss_pct, 0)} · ${pct(v.giveback_pct, 0)} · ${pct(v.min_confidence, 0)}${extra(v) ? " · " + esc(extra(v)) : ""}</td></tr>`).join("")
-    }</tbody></table>`;
+    }</tbody></table>`);
   }
   ["apLoss", "apGive", "apConf"].forEach((id) => $(id).addEventListener("input", () => (apDirty = true)));
   $("apOn").addEventListener("change", () => { apDirty = true; $("apForm").requestSubmit(); });  // the switch saves at once
@@ -2698,13 +2711,18 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
   sortObserver.observe(document.querySelector(".wrap"), { childList: true, subtree: true });
 
   // ---- data ------------------------------------------------------------------
+  let loading = false;  // a slow /api/state must not stack up requests
   async function load() {
+    if (loading) return;
+    loading = true;
     try {
       const r = await fetch("/api/state", { cache: "no-store" });
       if (!r.ok) throw new Error("HTTP " + r.status);
       S = await r.json(); renderAll();
     } catch (e) {
       $("sub").textContent = "dashboard server unreachable: " + e.message;
+    } finally {
+      loading = false;
     }
   }
   // ---- layout: drag a card (title bar or ⠿) or a summary tile to reorder; drag the corner to resize.
@@ -2765,10 +2783,10 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
     $("drawerCount").textContent = list.length;
     $("drawerBtn").classList.toggle("has", list.length > 0);
     $("drawerAll").hidden = list.length < 2;
-    $("drawerList").innerHTML = list.length ? list.map((c) => {
+    put($("drawerList"), list.length ? list.map((c) => {
       const where = tabsOf(c).map((t) => TAB_NAME[t]).filter(Boolean).join(" and ");
       return `<li><span><b>${esc(cardTitle(c))}</b><small>${esc(where)}</small></span><button class="btn" type="button" data-reopen="${esc(c.dataset.card)}">Reopen</button></li>`;
-    }).join("") : `<li class="drawer-empty">Nothing here. Press × on a card to put it away; it waits here until you reopen it.</li>`;
+    }).join("") : `<li class="drawer-empty">Nothing here. Press × on a card to put it away; it waits here until you reopen it.</li>`);
   }
   function setClosed(c, isClosed) {
     const k = c.dataset.card;
@@ -2963,7 +2981,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
     return out + (list ? "</ul>" : "");
   }
   function bubSay(html, cls) {
-    const el = document.createElement("div"); el.className = "bm " + cls; el.innerHTML = html;
+    const el = document.createElement("div"); el.className = "bm " + cls; put(el, html);
     bubLog.appendChild(el); bubLog.scrollTop = bubLog.scrollHeight; return el;
   }
   function bubUsage(u) {
@@ -2977,9 +2995,9 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
   }
   function bubCard(c) {
     const el = document.createElement("div"); el.className = "acard"; el.setAttribute("role", "group"); el.setAttribute("aria-label", "Suggested change");
-    el.innerHTML = `<div class="asum">${esc(c.summary)}</div>${c.reason ? `<div class="why">${esc(c.reason)}</div>` : ""}
+    put(el, `<div class="asum">${esc(c.summary)}</div>${c.reason ? `<div class="why">${esc(c.reason)}</div>` : ""}
       ${c.risk ? `<div class="rk"><b>Risk:</b> ${esc(c.risk)}</div>` : ""}${c.note ? `<div class="nt">${esc(c.note)}</div>` : ""}
-      <div class="row"><button class="btn solid" type="button" data-a="apply">Apply</button><button class="btn" type="button" data-a="dismiss">Dismiss</button></div>`;
+      <div class="row"><button class="btn solid" type="button" data-a="apply">Apply</button><button class="btn" type="button" data-a="dismiss">Dismiss</button></div>`);
     el.addEventListener("click", async (e) => {
       const b = e.target.closest("[data-a]"); if (!b) return;
       el.querySelectorAll("button").forEach((x) => (x.disabled = true));
@@ -3048,14 +3066,14 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
     } catch (e) { return; }
     bub.hasKey = j.has_key; bubUsage(j.usage);
     const rows = (j.entries || []).slice(0, 20);
-    $("asstAudit").innerHTML = rows.length ? `<ul class="aud">${rows.map((e) => {
+    put($("asstAudit"), rows.length ? `<ul class="aud">${rows.map((e) => {
       const label = e.revert_of ? "Reverted" : ACT_LABEL[e.event] || e.event;
       const tagc = e.event === "applied" ? "on" : e.event === "dismissed" ? "" : "q";
       const what = e.summary || `${e.action}${e.params && e.params.key ? " " + e.params.key : ""}`;
       const sub = [e.error, e.user_message && e.user_message !== "(revert)" ? `you asked: "${e.user_message}"` : "", e.reverted ? "reverted since" : ""].filter(Boolean).join(" · ");
       return `<li><span class="t">${esc(fmtTime(e.ts))}</span><span class="s"><span class="tag ${tagc}">${esc(label)}</span> ${esc(what)}${sub ? `<small>${esc(sub)}</small>` : ""}</span>
         <span>${e.can_revert ? `<button class="btn" type="button" data-revert="${esc(e.id)}">Revert</button>` : ""}</span></li>`;
-    }).join("")}</ul>` : `<div class="note">Nothing yet. Open Bub (bottom right) and ask what to change.${j.has_key ? "" : " Bub needs the Anthropic API key above."}</div>`;
+    }).join("")}</ul>` : `<div class="note">Nothing yet. Open Bub (bottom right) and ask what to change.${j.has_key ? "" : " Bub needs the Anthropic API key above."}</div>`);
   }
   $("asstAudit").addEventListener("click", async (e) => {
     const b = e.target.closest("[data-revert]"); if (!b) return;
@@ -3066,7 +3084,10 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
   });
 
   if (window.__CTBOT_STATE__) { S = window.__CTBOT_STATE__; renderAll(); }
-  else { load(); setInterval(load, 10000); }
+  else {  // no polling while the tab is hidden; catch up as soon as it's shown again
+    load(); setInterval(() => document.hidden || load(), 10000);
+    document.addEventListener("visibilitychange", () => document.hidden || load());
+  }
 })();
 </script>
 </body>

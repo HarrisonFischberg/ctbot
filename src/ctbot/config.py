@@ -110,6 +110,7 @@ class Settings:
     max_claude_reviews_per_day: int = 40  # API cost cap; later candidates are skipped
     max_reviews_per_model_per_day: int = 15  # so one noisy model can't use the whole budget
     max_assistant_messages_per_day: int = 100  # dashboard assistant chats; separate from reviews
+    openai_model: str = "gpt-5"  # Bub's fallback when Claude errors or has no key
     max_claude_usd_per_day: float = 1.0   # estimated review spend (data/llm_usage.jsonl); then no more reviews
     review_shadow_ideas: bool = False     # pay for Claude reviews of ideas from shadow-only models
     review_outcome_memory: bool = True    # show the reviewer each model's settled paper results (no LLM)
@@ -285,6 +286,7 @@ class Settings:
             max_claude_reviews_per_day=_int(env, "MAX_CLAUDE_REVIEWS_PER_DAY", 40),
             max_reviews_per_model_per_day=_int(env, "MAX_REVIEWS_PER_MODEL_PER_DAY", 15),
             max_assistant_messages_per_day=_int(env, "MAX_ASSISTANT_MESSAGES_PER_DAY", 100),
+            openai_model=env.get("OPENAI_MODEL", "gpt-5"),
             max_claude_usd_per_day=_float(env, "MAX_CLAUDE_USD_PER_DAY", 1.0),
             review_shadow_ideas=_bool(env, "REVIEW_SHADOW_IDEAS", False),
             review_outcome_memory=_bool(env, "REVIEW_OUTCOME_MEMORY", True),
