@@ -204,6 +204,39 @@ class ReadOnlyRobinhoodClient:
             async def _initialize(self) -> None:
                 await super()._initialize()
                 self.context.token_expiry_time = self.context.storage.expires_at()
+                if not self.context.is_token_valid() and self.context.can_refresh_token():
+                    try:
+                        await self._discover_token_endpoint()
+                    except Exception:  # noqa: BLE001 - offline: the SDK falls back to its own guess
+                        pass
+
+            async def _discover_token_endpoint(self) -> None:
+                # The SDK learns the token endpoint only on a 401; a refresh before that guesses
+                # <server>/token, which Hey Astral answers with 404.
+                from mcp.client.auth.utils import (
+                    build_oauth_authorization_server_metadata_discovery_urls,
+                    build_protected_resource_metadata_discovery_urls,
+                    create_oauth_metadata_request,
+                    handle_auth_metadata_response,
+                    handle_protected_resource_response,
+                )
+                from mcp.shared._httpx_utils import create_mcp_http_client
+
+                ctx = self.context
+                async with create_mcp_http_client() as http:
+                    for url in build_protected_resource_metadata_discovery_urls(None, ctx.server_url):
+                        prm = await handle_protected_resource_response(await http.send(create_oauth_metadata_request(url)))
+                        if prm:
+                            ctx.protected_resource_metadata = prm
+                            ctx.auth_server_url = str(prm.authorization_servers[0])
+                            break
+                    for url in build_oauth_authorization_server_metadata_discovery_urls(ctx.auth_server_url,
+                                                                                         ctx.server_url):
+                        ok, asm = await handle_auth_metadata_response(await http.send(create_oauth_metadata_request(url)))
+                        if asm:
+                            ctx.oauth_metadata = asm
+                        if asm or not ok:
+                            return
 
         return Provider(
             server_url=self.server_url,
