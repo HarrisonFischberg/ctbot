@@ -19,6 +19,7 @@ import json
 import os
 import select
 import socket
+import time
 import webbrowser
 from collections.abc import Iterable
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -85,11 +86,22 @@ class _FileTokenStorage:
     async def get_tokens(self):
         from mcp.shared.auth import OAuthToken
 
-        raw = self._read().get("tokens")
+        raw = {k: v for k, v in (self._read().get("tokens") or {}).items() if k != "saved_at"}
         return OAuthToken.model_validate(raw) if raw else None
 
     async def set_tokens(self, tokens) -> None:
-        self._write("tokens", tokens.model_dump(mode="json", exclude_none=True))
+        self._write("tokens", {**tokens.model_dump(mode="json", exclude_none=True), "saved_at": time.time()})
+
+    def expires_at(self) -> float | None:
+        """When the stored access token expires (older files: the file's write time + expires_in)."""
+        raw = self._read().get("tokens") or {}
+        if not raw.get("expires_in"):
+            return None
+        try:
+            saved = float(raw.get("saved_at") or self.path.stat().st_mtime)
+        except OSError:
+            return None
+        return saved + float(raw["expires_in"]) - 60  # refresh a minute early
 
     async def get_client_info(self):
         from mcp.shared.auth import OAuthClientInformationFull
@@ -186,7 +198,14 @@ class ReadOnlyRobinhoodClient:
             response_types=["code"],
             token_endpoint_auth_method="none",
         )
-        return OAuthClientProvider(
+        class Provider(OAuthClientProvider):
+            # The SDK forgets a stored token's expiry, sends the expired token, and on the 401 starts
+            # a browser sign-in instead of using the refresh token; restoring the expiry makes it refresh.
+            async def _initialize(self) -> None:
+                await super()._initialize()
+                self.context.token_expiry_time = self.context.storage.expires_at()
+
+        return Provider(
             server_url=self.server_url,
             client_metadata=metadata,
             storage=_FileTokenStorage(self.token_path),
