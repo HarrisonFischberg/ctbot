@@ -14,7 +14,7 @@ import json
 import logging
 from collections import deque
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +22,7 @@ from ctbot import manual_queue, market_hours, thoughts, track_record, trade_log
 from ctbot.config import Settings, load_universe
 from ctbot.models import Quote
 from ctbot.paper.simulator import buying_power, margin_call
+from ctbot.research import bars as bar_cache
 
 log = logging.getLogger(__name__)
 
@@ -324,6 +325,28 @@ def _launcher(settings: Settings, positions: list[dict[str, Any]]) -> dict[str, 
             "auto": _read_json(settings.allocations_path.with_name("auto_invest.json")) or None}
 
 
+_PREV_CLOSE: dict[tuple[str, Any], float | None] = {}  # (symbol, day, file mtime) -> close, so polls skip the CSV
+
+
+def prev_closes(symbols: list[str], now: datetime, root: Path = bar_cache.CACHE_DIR) -> dict[str, float]:
+    """symbol -> close of the trading day before the current (or last) session, from the saved daily
+    bars. Left out when the cache doesn't have that exact day, so the page shows a dash, not a wrong change."""
+    session = market_hours.trading_date(now if market_hours.session_open(now) else market_hours.last_close(now))
+    prev = session - timedelta(days=1)
+    while not market_hours.is_trading_day(prev):
+        prev -= timedelta(days=1)
+    out = {}
+    for s in symbols:
+        f = bar_cache.cache_path("day", s, root)
+        key = (s, prev, f.stat().st_mtime_ns if f.exists() else None)
+        if key not in _PREV_CLOSE:  # a daily bar's UTC date is its trading date (Robinhood stamps midnight UTC)
+            _PREV_CLOSE[key] = next((b.close for b in reversed(bar_cache.load("day", s, root))
+                                     if b.ts.astimezone(timezone.utc).date() == prev), None)
+        if _PREV_CLOSE[key]:
+            out[s] = _PREV_CLOSE[key]
+    return out
+
+
 def build_state(
     settings: Settings,
     quotes_fn: QuotesFn | None = None,
@@ -348,6 +371,8 @@ def build_state(
     unsettled = sum(float(u["amount"]) for u in ledger.get("unsettled", []))
     brackets = risk_state.get("brackets", {})
     pos_out, market_value = [], 0.0
+    prev = prev_closes([p["symbol"] for p in positions], now)
+    session = market_hours.trading_date(now if market_hours.session_open(now) else market_hours.last_close(now))
     for p in positions:
         q = quotes.get(p["symbol"])
         last = q.mid if q else None
@@ -355,10 +380,16 @@ def build_state(
         mv = p["quantity"] * px
         market_value += mv
         b = brackets.get(p["symbol"], {})
+        # bought this session: today's change runs from what you paid. shortcut: a same-day add-on to an
+        # older position still counts from yesterday's close; per-lot baselines if that ever matters.
+        opened = p.get("opened_at") and market_hours.trading_date(datetime.fromisoformat(p["opened_at"])) == session
+        base = p["avg_cost"] if opened else prev.get(p["symbol"])
         pos_out.append({
             "symbol": p["symbol"], "quantity": p["quantity"], "avg_cost": p["avg_cost"],
             "last": last, "market_value": mv, "pnl": mv - p["quantity"] * p["avg_cost"],
             "pnl_pct": (px / p["avg_cost"] - 1) if p["avg_cost"] else 0.0,
+            "day_change": p["quantity"] * (last - base) if last and base else None,
+            "day_change_pct": (last / base - 1) if last and base else None,
             "stop": b.get("stop"), "target": b.get("target"), "opened_at": p.get("opened_at"),
             "trail": b.get("trail"), "peak": b.get("peak"),
             "model": b.get("model"), "exit_at": b.get("exit_at"), "swings": b.get("swings", 0),
@@ -402,6 +433,7 @@ def build_state(
         "entry_mode": settings.entry_mode,
         "preflight": _read_json(settings.paper_ledger_path.with_name("preflight.json")),
         "bot": _bot_status(settings, now),
+        "halted": settings.halt_path.exists(),  # Pause all: no new buys while the HALT file exists; exits still run
         "ideas": _ideas(settings),
         "autopilot": _autopilot(settings, _strategies(settings.strategies_file), ledger.get("fills", []), now),
         "variants": _variants(settings),

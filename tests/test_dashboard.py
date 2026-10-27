@@ -128,6 +128,15 @@ def test_server_is_read_only_and_rejects_foreign_hosts():
             assert status(order({"side": "short", "symbol": "KO"})) == 400
             assert status(order({"side": "buy", "symbol": "KO", "idea_id": "nope"})) == 400
             assert status(order({"side": "sell", "symbol": "KO"}, Origin="https://evil.test")) == 403
+            # Pause all: the HALT file stops new buys; resume removes it
+            assert status(urllib.request.Request(base + "/api/pause", data=b'{"paused": true}', method="POST",
+                          headers={"Content-Type": "application/json", "X-Ctbot-Token": token})) == 200
+            assert (d / "HALT").exists() and json.loads(urllib.request.urlopen(base + "/api/state").read())["halted"]
+            assert status(urllib.request.Request(base + "/api/pause", data=b'{"paused": false}', method="POST",
+                          headers={"Content-Type": "application/json", "X-Ctbot-Token": token})) == 200
+            assert not (d / "HALT").exists()
+            # The new Observatory view is served beside the classic page, with the same token
+            assert token in urllib.request.urlopen(base + "/observatory").read().decode()
             queued = (d / "paper_manual_orders.jsonl").read_text().splitlines()
             assert len(queued) == 1 and json.loads(queued[0])["notional"] == 50.0
         finally:
@@ -222,4 +231,18 @@ def test_server_accepts_its_tailnet_name_and_still_rejects_others(monkeypatch):
 
 def test_what_you_own_shows_on_home_and_autopilot():
     html = (ROOT / "src" / "ctbot" / "dashboard" / "index.html").read_text()
-    assert '<div data-tab="home trading" data-sub="overview" class="card span-12 own">' in html
+    assert '<div data-tab="home trading" class="card span-12 own">' in html
+    new = (ROOT / "src" / "ctbot" / "dashboard" / "observatory.html").read_text()
+    assert '<div data-tab="home trading" data-sub="overview" class="card span-12 own">' in new
+
+
+def test_prev_closes_needs_the_exact_previous_session(tmp_path):
+    from ctbot.dashboard.state import prev_closes
+    from ctbot.models import Bar
+    from ctbot.research import bars as bar_cache
+
+    day = lambda d, c: Bar("KO", datetime(2026, 10, d, tzinfo=timezone.utc), c, c, c, c, 1)  # noqa: E731
+    bar_cache.save("day", "KO", [day(8, 49.0), day(9, 50.0)], tmp_path)  # Thu, Fri
+    mon = datetime(2026, 10, 12, 15, tzinfo=timezone.utc)  # Mon 11:00 ET: yesterday's session is Fri
+    assert prev_closes(["KO", "PEP"], mon, tmp_path) == {"KO": 50.0}
+    assert prev_closes(["KO"], NOW, tmp_path) == {}  # Tue: Monday's close isn't saved, so no guess
