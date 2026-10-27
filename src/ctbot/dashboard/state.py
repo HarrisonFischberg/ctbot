@@ -291,7 +291,7 @@ def _autopilot(settings: Settings, strategies: list[dict[str, Any]], fills: list
                "systematic": s["name"].startswith("trend_core"), "configured_mode": s["mode"],
                **verdicts[s["name"]]} for s in enabled]
     return {"enabled": cfg.enabled, "max_loss_pct": cfg.max_loss_pct, "giveback_pct": cfg.giveback_pct,
-            "limits": autopilot.LIMITS, "models": models}
+            "min_confidence": cfg.min_confidence, "limits": autopilot.LIMITS, "models": models}
 
 
 def _launcher(settings: Settings, positions: list[dict[str, Any]]) -> dict[str, Any]:

@@ -122,6 +122,12 @@ def test_launch_endpoints_validate_and_need_the_token(tmp_path, monkeypatch):
         assert post("/api/autopilot", {"enabled": True, "max_loss_pct": 0.05, "giveback_pct": 0.06}) == 200
         assert autopilot.load(s.autopilot_path) == autopilot.AutopilotConfig(True, 0.05, 0.06, 0.45)
         assert post("/api/autopilot", {"enabled": True, "max_loss_pct": 0.9, "giveback_pct": 0.06}) == 400
+        assert post("/api/autopilot", {"enabled": True, "max_loss_pct": 0.05, "giveback_pct": 0.06,
+                                       "min_confidence": 0.2}) == 200  # the page's floor control
+        assert autopilot.load(s.autopilot_path).min_confidence == 0.2
+        assert json.loads(urllib.request.urlopen(base + "/api/state").read())["autopilot"]["min_confidence"] == 0.2
+        assert post("/api/autopilot", {"enabled": True, "max_loss_pct": 0.05, "giveback_pct": 0.06,
+                                       "min_confidence": 0.05}) == 400  # below the 10% bound
         import ctbot.dashboard.state as st  # auto-invest: picks winners, stops runs it didn't pick
 
         monkeypatch.setattr(st, "PERF_PATH", tmp_path / "perf.json")
