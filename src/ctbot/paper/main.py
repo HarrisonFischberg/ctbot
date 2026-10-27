@@ -195,7 +195,7 @@ def main() -> None:
             except ValueError:
                 log.exception("tuning.json changed but could not be applied; keeping the old limits")
             else:
-                components.risk = RiskManager(components.settings.risk, components.risk.strategy_overrides)
+                components.risk.limits = components.settings.risk  # keeps the autopilot's per-cycle settings
                 log.info("assistant tuning applied: %s", ", ".join(
                     f"{k}={tuning.fmt(k, tuning.current(components.settings, k))}" for k in tuning.KNOBS))
         stamp = _mtime(settings.strategies_file)

@@ -44,7 +44,7 @@ from ctbot.market_data.base import MarketDataProvider
 from ctbot.models import Candidate, Decision, Direction, OrderRequest, Quote, Side, Signal
 from ctbot.providers.base import AltDataProvider
 from ctbot.providers.registry import fetch_all
-from ctbot.risk.manager import AccountState, RiskManager, RiskVerdict
+from ctbot.risk.manager import AccountState, RiskManager, RiskVerdict, save_account_state
 from ctbot.strategies.base import StrategyContext
 from ctbot.strategies.registry import WeightedStrategy, required_event_kinds
 
@@ -116,11 +116,13 @@ def apply_launcher(c: Components, state: AccountState, positions: dict, now: dat
     path = c.settings.allocations_path
     used: dict[str, float] = {}
     open_gain: dict[str, float] = {}
+    tagged = [s for s in positions if (state.brackets.get(s) or {}).get("model")]
+    marks = c.market_data.quotes(tagged) if tagged else {}
     for sym, p in positions.items():  # what each strategy holds now (at cost) and its open gain
         owner = (state.brackets.get(sym) or {}).get("model")
         if owner:
             used[owner] = used.get(owner, 0.0) + p.quantity * p.avg_cost
-            q = c.market_data.quotes([sym]).get(sym)
+            q = marks.get(sym)
             mark = q.mid if q and q.mid else p.avg_cost
             open_gain[owner] = open_gain.get(owner, 0.0) + (mark - p.avg_cost) * p.quantity
     for name, run in allocations.load(path).items():  # max loss / take profit, before anything trades
@@ -324,6 +326,8 @@ def _submit(c: Components, state: AccountState, order, positions, today, decisio
             state.sleeve_reserve[owner] = max(0.0, state.sleeves[owner] - state.sleeve_used[owner])
     sync_cash(c.executor, state)
     state.open_positions = len(c.executor.positions())
+    # the ledger already holds the fill: save its bracket now, so a stop mid-cycle can't orphan it
+    save_account_state(state, c.settings.paper_risk_state_path)
     return True
 
 
@@ -367,6 +371,7 @@ def _maybe_top_up(c: Components, state: AccountState, cand: Candidate, pos, quot
         return
     spendable = state.cash if state.buying_power is None or state.risk_off else state.buying_power
     cash = spendable - sum(v for k, v in state.sleeve_reserve.items() if k != owner)  # others' money stays theirs
+    cash = min(cash, L.max_trading_capital - max(0.0, state.equity - state.cash))  # never past the capital cap
     if gap <= band or cash < 1:
         return
 
@@ -434,8 +439,9 @@ def manage_positions(c: Components, state: AccountState, now: datetime) -> None:
         return
     today = market_hours.trading_date(now)
     positions = {p.symbol: p for p in c.executor.positions()}
+    quotes = c.market_data.quotes(list(positions)) if positions else {}  # one call for every position
     for sym, pos in list(positions.items()):
-        quote = c.market_data.quotes([sym]).get(sym)
+        quote = quotes.get(sym)
         if quote:
             trade_log.track(state.brackets.get(sym), quote.bid)
         if quote and c.risk.trail(state, sym, quote.bid):

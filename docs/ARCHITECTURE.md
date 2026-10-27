@@ -60,7 +60,6 @@ src/ctbot/
     event_cluster.py           congressional / institutional / copy_trading
     options_flow.py            net bullish premium of large prints
     trend_template.py          stage-2 trend template (maverick-mcp supply/demand screen)
-    ranker_signal.py           frozen walk-forward ranking model (shadow, systematic, no review)
   aggregation/ensemble.py      weighted agreement score; min agreeing strategies; caps Claude calls
   analysis/stats.py            z-score, returns, SMA, vol, half-life
   analysis/regime.py           SPY trend/volatility regime label for reviews

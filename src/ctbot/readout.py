@@ -70,30 +70,21 @@ def _trades(ledger: Path, day: date) -> tuple[list[str], list[dict[str, Any]]]:
         fills = json.loads(ledger.read_text()).get("fills", [])
     except (FileNotFoundError, json.JSONDecodeError):
         return [], []
-    lots: dict[str, list[list]] = {}
-    buys, closes = [], []
-    for f in sorted(fills, key=lambda f: f["ts"]):
-        try:
-            sym, qty, px = f["symbol"], float(f["quantity"]), float(f["price"])
-            today = market_hours.trading_date(datetime.fromisoformat(f["ts"])) == day
-        except (KeyError, ValueError, TypeError):
-            continue
-        if f.get("side") == "buy":
-            lots.setdefault(sym, []).append([qty, px])
-            if today:
-                buys.append(sym)
-            continue
-        pnl, q = 0.0, lots.get(sym, [])
-        left = qty
-        while left > 1e-9 and q:
-            take = min(left, q[0][0])
-            pnl += take * (px - q[0][1])
-            q[0][0] -= take
-            left -= take
-            if q[0][0] <= 1e-9:
-                q.pop(0)
-        if today:
-            closes.append({"symbol": sym, "pnl": pnl, "why": f.get("tag") or "?"})
+    from ctbot import track_record
+
+    def today(f) -> bool:
+        return market_hours.trading_date(datetime.fromisoformat(f["ts"])) == day
+
+    try:
+        pieces, _ = track_record.fifo([f for f in fills if f.get("side") in ("buy", "sell")])
+        buys = [f["symbol"] for f in sorted(fills, key=lambda f: f["ts"]) if f["side"] == "buy" and today(f)]
+    except (KeyError, ValueError, TypeError):
+        return [], []
+    pnl: dict[int, list] = {}  # id(sell) -> [sell, pnl]
+    for buy, sell, take, _ in pieces:
+        if today(sell):
+            pnl.setdefault(id(sell), [sell, 0.0])[1] += take * (float(sell["price"]) - float(buy["price"]))
+    closes = [{"symbol": f["symbol"], "pnl": v, "why": f.get("tag") or "?"} for f, v in pnl.values()]
     return buys, closes
 
 

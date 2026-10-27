@@ -246,3 +246,13 @@ def test_prev_closes_needs_the_exact_previous_session(tmp_path):
     mon = datetime(2026, 10, 12, 15, tzinfo=timezone.utc)  # Mon 11:00 ET: yesterday's session is Fri
     assert prev_closes(["KO", "PEP"], mon, tmp_path) == {"KO": 50.0}
     assert prev_closes(["KO"], NOW, tmp_path) == {}  # Tue: Monday's close isn't saved, so no guess
+
+
+def test_tail_reads_only_the_end_of_a_long_file(tmp_path):
+    from ctbot.dashboard.state import _read_history, _tail
+
+    p = tmp_path / "ideas.jsonl"
+    p.write_text("".join(f'{{"i": {i}}}\n' for i in range(50_000)) + "not json\n")
+    assert _tail(p, 3) == ['{"i": 49998}', '{"i": 49999}', "not json"]
+    assert [r["i"] for r in _read_history(p, 3)] == [49998, 49999]
+    assert _tail(tmp_path / "missing", 3) == [] and _tail(p, 10**6)[0] == '{"i": 0}'

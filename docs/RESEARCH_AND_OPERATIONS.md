@@ -9,7 +9,7 @@ assessment of the four reference projects is in `docs/research/2026-10-20-refere
 |---|---|---|
 | Research and idea generation | `research/ranker.py`, `research/lab.py`, `research/backtest.py`, `research/registry.py`, `research/validation.py` | No |
 | Deterministic features | `research/factors.py` (Alpha158 subset, point-in-time) | No |
-| Strategy signals, model predictions | `strategies/*` incl. `strategies/ranker_signal.py` (frozen model file) | No |
+| Strategy signals, model predictions | `strategies/*` | No |
 | Review | `decision/engine.py` (one fail-closed call; optional debate), `decision/memory.py` (outcome memory, code-computed) | Yes: proposes and explains only |
 | Allocation and risk limits | `risk/manager.py` (sizes, caps, PDT, stale quotes, kill switch), `allocations.py` | No |
 | Execution and reconciliation | `pipeline._submit` (HALT file, duplicate window), `paper/simulator.py`, `dayplan.reconcile` | No |
@@ -33,10 +33,10 @@ a confidence and a rationale, and its suggested size can only shrink a position.
    over equal weight survives Benjamini-Hochberg at q=10%.
 5. **Holdout once**: `ctbot-rank-research --holdout` scores 2023-now. A second holdout run of the
    same trial is refused unless forced, and a forced run is marked `holdout_rerun` in the registry.
-6. **Paper (shadow)**: `ctbot-rank-research --write-model` writes `data/research/ranker_model.json`;
-   the `ranker` model (shadow in `config/strategies.toml`) then records ideas every Monday
-   09:35-10:00 ET with no Claude cost.
-7. **Compare against the baseline**: after enough forward weeks, compare the ranker's shadow ideas
+6. **Paper (shadow)**: a model that passes gets a live strategy in `strategies/`, in shadow mode
+   in `config/strategies.toml`, and records ideas with no Claude cost. (The ranker failed its
+   holdout on 2026-10-20, so its live strategy was removed; the research command stays.)
+7. **Compare against the baseline**: after enough forward weeks, compare its shadow ideas
    (`ctbot-score-ideas`, the journal) with the trend core and SPY over the same dates.
 8. **Promote**: only you can switch a model to trade (dashboard or `strategies.toml`). No model,
    model file, LLM or assistant proposal changes its own mode; the risk limits apply either way.
@@ -49,7 +49,6 @@ a confidence and a rationale, and its suggested size can only shrink a position.
 .venv/bin/ctbot-rank-research                     # dev + validation only; writes data/research/ranker_report.json
 .venv/bin/ctbot-rank-research --extra-cost-bps 5  # cost sensitivity
 .venv/bin/ctbot-rank-research --holdout           # once, after choosing
-.venv/bin/ctbot-rank-research --write-model       # shadow model file for the live bot
 .venv/bin/ctbot-lab --lag 1 --cash-apy 0.035      # lab with next-close execution (leaderboard_lag1.json)
 ```
 
@@ -68,8 +67,8 @@ Trials (16 per run): SPY, equal weight, 12-1 momentum (±regime), ranker k∈{3,
 | When (ET) | What | Command / module |
 |---|---|---|
 | ~09:00 (scheduled job) | Plan: session or holiday, early close, which models trade vs watch, risk headroom, HALT, Claude budget, data/model freshness; verdict "entries possible" or "no trade" with reasons | `ctbot-dayplan` → `data/day_plan/<date>.json` |
-| 09:30-09:35 | Observe; the opening range forms. No entries from the ranker before 09:35 | — |
-| 09:35-11:00 | Setup windows: ORB / scanner ORB, ranker (Mondays, on yesterday's close) | `ctbot-paper --loop --interval 300` |
+| 09:30-09:35 | Observe; the opening range forms | — |
+| 09:35-11:00 | Setup windows: ORB / scanner ORB | `ctbot-paper --loop --interval 300` |
 | every 5 min | Scan cadence = the 5-minute bar the intraday models use; quotes older than 120 s are refused; brackets, time exits and thesis invalidation (`stop`, `exit_at`, the model's own exit signals) run first | `pipeline.manage_positions` |
 | 15:30-15:44 | Multi-day models decide on the live price | trend core, RSI(2), turn of month |
 | 15:45-16:00 | No new entries in the last 15 minutes | `NO_ENTRIES_LAST_MINUTES` |
@@ -122,7 +121,6 @@ The review estimate above is not measured yet; the log replaces it after a few t
 | Undo | How |
 |---|---|
 | Everything | revert the merge commit of this change; no data migration is involved |
-| Ranker model only | `enabled = false` under `[ranker]` in `config/strategies.toml`, or delete `data/research/ranker_model.json`; delete `data/research/ranker_book.json` to reset its picks |
 | Old review behaviour | `REVIEW_SHADOW_IDEAS=true`, `REVIEW_OUTCOME_MEMORY=false`, `MAX_CLAUDE_USD_PER_DAY=1000` |
 | Stop new entries now | `touch data/HALT` (delete to resume) |
 | New files are additive | `data/journal.jsonl`, `data/llm_usage.jsonl`, `data/research/`, `data/day_plan/`, `data/eod/` can be deleted at any time |

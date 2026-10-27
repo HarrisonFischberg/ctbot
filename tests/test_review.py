@@ -48,6 +48,19 @@ def test_review_logs_usage_and_cost(tmp_path):
     assert llm_costs.summary(path)["by_purpose"] == {"review": row["usd"]}
 
 
+def test_review_without_key_is_a_rejection_not_a_crash():
+    class Raises:
+        def __init__(self):
+            self.messages = self
+
+        def create(self, **kw):  # what the SDK does when no API key is set
+            raise TypeError("Could not resolve authentication method")
+
+    eng = ClaudeDecisionEngine("claude-opus-5-5", client=Raises())
+    d = eng.evaluate(CAND, {}, debate=True)
+    assert not d.approve and d.rationale == "review_failed"
+
+
 def test_one_hour_cache_writes_cost_double():
     u = {"input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 1_000_000,
          "cache_creation": {"ephemeral_1h_input_tokens": 1_000_000}}

@@ -19,7 +19,7 @@ def test_plan_says_no_trade_with_reasons(tmp_path):
     assert holiday["verdict"] == "no trade" and not holiday["session"]
     ok = plan(s, date(2026, 10, 21))
     assert ok["session"] and ok["verdict"] == "entries possible", ok["reasons"]
-    assert "ranker" in [m["model"] for m in ok["models"]]
+    assert "orb" in [m["model"] for m in ok["models"]]
     s.halt_path.write_text("x")
     assert any("HALT" in r for r in plan(s, date(2026, 10, 21))["reasons"])
 

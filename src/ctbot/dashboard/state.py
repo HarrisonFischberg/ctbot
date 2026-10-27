@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections import deque
+import os
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -39,7 +39,7 @@ PERF_PATH = Path("data/lab/performance.json")  # ctbot-perf: 3/6/12-month simula
 
 
 def _ideas(settings: Settings) -> list[dict[str, Any]]:
-    ideas = _read_history(settings.ideas_path)[-MAX_IDEAS:]
+    ideas = _read_history(settings.ideas_path, MAX_IDEAS)
     orders = manual_queue.read_orders(settings.manual_orders_path)
     results = {r["order_id"]: r for r in manual_queue.read_results(settings.manual_results_path)}
     by_idea: dict[str, dict[str, Any]] = {}
@@ -95,42 +95,34 @@ def _c2(root: Path | None = None) -> dict[str, Any]:
 
 
 def model_stats(fills: list[dict[str, Any]], marks: dict[str, float]) -> list[dict[str, Any]]:
-    """Per-model round trips from tagged fills (FIFO per symbol). A buy's tag names the model;
-    the sell that closes it is credited to that model. Open lots are marked to market."""
-    lots: dict[str, list[list]] = {}  # symbol -> [[qty, price, model, ts], ...]
+    """Per-model round trips from tagged fills (track_record.fifo). A buy's tag names its models;
+    the sell that closes it is credited to each, its dollars split evenly between them so the
+    models still add up to the account. Open lots are marked to market."""
     stats: dict[str, dict[str, Any]] = {}
 
     def st(m):
         return stats.setdefault(m, {"model": m, "closed": 0, "wins": 0, "pnl": 0.0, "rets": [],
                                     "open": 0, "open_pnl": 0.0, "exits": {}})
 
-    for f in sorted(fills, key=lambda f: f["ts"]):
-        sym, qty, px = f["symbol"], float(f["quantity"]), float(f["price"])
-        if f["side"] == "buy":
-            lots.setdefault(sym, []).append([qty, px, f.get("tag") or "untagged", f["ts"]])
-            continue
-        q = lots.get(sym, [])
-        while qty > 1e-9 and q:
-            lot = q[0]
-            take = min(qty, lot[0])
-            s = st(lot[2])
-            pnl = take * (px - lot[1])
-            s["pnl"] += pnl
-            if take >= lot[0] - 1e-9:  # lot fully closed: count one trade
+    pieces, lots = track_record.fifo(fills)
+    for buy, sell, take, closed in pieces:
+        bpx, px, names = float(buy["price"]), float(sell["price"]), track_record.models(buy)
+        for m in names:
+            s = st(m)
+            s["pnl"] += take * (px - bpx) / len(names)
+            if closed:  # lot fully closed: count one trade
                 s["closed"] += 1
-                s["wins"] += px > lot[1]
-                s["rets"].append(px / lot[1] - 1)
-                reason = f.get("tag") or "?"
+                s["wins"] += px > bpx
+                s["rets"].append(px / bpx - 1)
+                reason = sell.get("tag") or "?"
                 s["exits"][reason] = s["exits"].get(reason, 0) + 1
-            lot[0] -= take
-            qty -= take
-            if lot[0] <= 1e-9:
-                q.pop(0)
     for sym, q in lots.items():
-        for qty, px, model, _ in q:
-            s = st(model)
-            s["open"] += 1
-            s["open_pnl"] += qty * (marks.get(sym, px) - px)
+        for qty, buy in q:
+            names = track_record.models(buy)
+            for m in names:
+                s = st(m)
+                s["open"] += 1
+                s["open_pnl"] += qty * (marks.get(sym, float(buy["price"])) - float(buy["price"])) / len(names)
     out = []
     for s in stats.values():
         rets = s.pop("rets")
@@ -142,26 +134,20 @@ def model_stats(fills: list[dict[str, Any]], marks: dict[str, float]) -> list[di
 
 def fills_with_pnl(fills: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Copies of the fills; each sell gains 'pnl' and 'pnl_pct': what it made or lost against
-    the buy price of the shares it closed (FIFO per symbol, like model_stats)."""
-    lots: dict[str, list[list[float]]] = {}  # symbol -> [[qty, price], ...]
+    the buy price of the shares it closed (track_record.fifo)."""
+    matched: dict[int, list[float]] = {}  # id(sell) -> [shares matched, their cost]
+    for buy, sell, take, _ in track_record.fifo(fills)[0]:
+        m = matched.setdefault(id(sell), [0.0, 0.0])
+        m[0] += take
+        m[1] += take * float(buy["price"])
     out = []
     for f in sorted(fills, key=lambda f: f["ts"]):
+        qty, cost = matched.get(id(f), (0.0, 0.0))
         f = dict(f)
-        sym, qty, px = f["symbol"], float(f["quantity"]), float(f["price"])
-        if f["side"] == "buy":
-            lots.setdefault(sym, []).append([qty, px])
-        else:
-            q, cost, matched = lots.get(sym, []), 0.0, 0.0
-            while qty - matched > 1e-9 and q:
-                take = min(qty - matched, q[0][0])
-                cost += take * q[0][1]
-                matched += take
-                q[0][0] -= take
-                if q[0][0] <= 1e-9:
-                    q.pop(0)
-            if matched > 1e-9:
-                f["pnl"] = matched * px - cost
-                f["pnl_pct"] = px / (cost / matched) - 1
+        if qty > 1e-9:
+            px = float(f["price"])
+            f["pnl"] = qty * px - cost
+            f["pnl_pct"] = px / (cost / qty) - 1
         out.append(f)
     return out
 
@@ -193,26 +179,31 @@ def _read_json(path: Path) -> dict[str, Any]:
         return {}
 
 
-def _read_history(path: Path) -> list[dict[str, Any]]:
-    out: deque[dict[str, Any]] = deque(maxlen=MAX_HISTORY_POINTS)
-    try:
-        with path.open() as fh:
-            for line in fh:
-                try:
-                    out.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-    except FileNotFoundError:
-        pass
-    return list(out)
+def _read_history(path: Path, n: int = MAX_HISTORY_POINTS) -> list[dict[str, Any]]:
+    """The last n JSON lines of a file that only grows (bad lines skipped)."""
+    out = []
+    for line in _tail(path, n):
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return out
 
 
 def _tail(path: Path, n: int) -> list[str]:
+    """The last n lines, read back from the end: a file months long costs what a short one does."""
     try:
-        with path.open(errors="replace") as fh:
-            return [ln.rstrip("\n") for ln in deque(fh, maxlen=n)]
+        with path.open("rb") as fh:
+            pos = fh.seek(0, os.SEEK_END)
+            data = b""
+            while pos > 0 and data.count(b"\n") <= n:
+                step = min(pos, 1 << 16)
+                pos -= step
+                fh.seek(pos)
+                data = fh.read(step) + data
     except FileNotFoundError:
         return []
+    return data.decode(errors="replace").splitlines()[-n:]
 
 
 def _parse_log(lines: list[str]) -> list[dict[str, str]]:
@@ -429,8 +420,9 @@ def build_state(
             "data_error": data_error,
         },
         "claude": {"model": settings.claude_model, "effort": settings.claude_effort,
-                   "reviews_today": sum(1 for i in _read_history(settings.ideas_path)
-                                        if i.get("decision") and i.get("ts", "")[:10] == now.date().isoformat()),
+                   "reviews_today": sum(1 for r in _read_history(settings.llm_usage_path)
+                                        if r.get("purpose") == "review"
+                                        and r.get("day") == market_hours.trading_date(now).isoformat()),
                    "review_budget": settings.max_claude_reviews_per_day},
         "entry_mode": settings.entry_mode,
         "preflight": _read_json(settings.paper_ledger_path.with_name("preflight.json")),

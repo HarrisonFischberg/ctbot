@@ -284,3 +284,16 @@ def test_invested_strategies_trade_alongside_autopilot_on_their_own_money():
         assert {ws.strategy.name: ws.mode for ws in c.strategies} == {"trend_core": "trade", "spy_core": "trade"}
         # the invested one gets its whole $1,000; autopilot's other model only the $500 not kept for it
         assert sorted((f.symbol, round(f.quantity * f.price)) for f in broker._fills) == [("QQQ", 1000), ("SPY", 500)]
+
+
+def test_concurrent_edits_are_never_lost(tmp_path):
+    import threading
+
+    path = tmp_path / "allocations.json"
+    allocations.start(path, "trend_core", 100.0, 250.0)
+    threads = [threading.Thread(target=allocations.add_realized, args=(path, "trend_core", 1.0)) for _ in range(40)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert allocations.load(path)["trend_core"]["realized"] == 40.0

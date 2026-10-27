@@ -89,9 +89,9 @@ def test_losing_model_is_benched_and_gets_another_chance_later():
     for i in range(10):
         t = NOW - timedelta(days=5, hours=i)
         fills += [_fill("orb", "buy", 100, t), _fill("stop_loss", "sell", 99, t + timedelta(minutes=5))]
-    v = autopilot.decide(["orb", "rsi2_etf", "ranker"], fills, NOW)
+    v = autopilot.decide(["orb", "rsi2_etf"], fills, NOW)
     assert v["orb"]["status"] == "benched" and v["orb"]["closed"] == 10
-    assert v["rsi2_etf"]["status"] == "trading" and v["ranker"]["status"] == "benched"
+    assert v["rsi2_etf"]["status"] == "trading"
     assert autopilot.decide(["orb"], fills, NOW + timedelta(days=40))["orb"]["status"] == "trading"
 
 
@@ -112,7 +112,7 @@ def test_autopilot_overrides_shadow_modes_in_the_pipeline():
     with tempfile.TemporaryDirectory() as d:
         s = Settings.from_env({"PAPER_LEDGER_PATH": str(Path(d) / "l.json")})
         broker = PaperBroker(MD(), 10_000, Path(d) / "l.json", clock=lambda: NOW)
-        strats = [WeightedStrategy(S("orb"), 1.0, mode="shadow"), WeightedStrategy(S("ranker"), 1.0, mode="shadow")]
+        strats = [WeightedStrategy(S("orb"), 1.0, mode="shadow"), WeightedStrategy(S("lib_untested"), 1.0, mode="shadow")]
         c = Components(s, MD(), [], strats, None, RiskManager(s.risk), broker, [])
         st = AccountState(10_000, 10_000, 10_000, 10_000, 0)
         apply_launcher(c, st, {}, NOW)
@@ -120,7 +120,7 @@ def test_autopilot_overrides_shadow_modes_in_the_pipeline():
         s.autopilot_path.write_text(json.dumps({"enabled": True, "max_loss_pct": 0.05, "giveback_pct": 0.07}))
         apply_launcher(c, st, {}, NOW)
         assert [(w.strategy.name, w.mode, w.standalone) for w in c.strategies] == [
-            ("orb", "trade", True), ("ranker", "shadow", False)]
+            ("orb", "trade", True), ("lib_untested", "shadow", False)]
         assert c.risk.trail_giveback == 0.07 and c.risk.max_loss_pct == 0.05
         s.autopilot_path.write_text(json.dumps({"enabled": False}))
         apply_launcher(c, st, {}, NOW)

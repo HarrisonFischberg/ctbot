@@ -274,3 +274,35 @@ def test_next_cycle_reviews_a_new_name_instead_of_repeating_the_top_one():
         run_cycle(c, state, NOW)
         run_cycle(c, state, NOW)
     assert seen == ["KO", "PEP"]
+
+
+def test_top_up_never_deploys_past_max_trading_capital():
+    from ctbot.models import Candidate, OrderRequest, Side
+    from ctbot.pipeline import _maybe_top_up
+    from ctbot.strategies.registry import WeightedStrategy
+
+    with tempfile.TemporaryDirectory() as d:
+        broker = PaperBroker(_MD(), 500.0, Path(d) / "ledger.json", slippage_bps=0, clock=lambda: NOW)
+        broker.submit(OrderRequest("QQQ", Side.BUY, 100.0))  # the trend core, under its $150 target
+        broker.submit(OrderRequest("KO", Side.BUY, 150.0))   # another model: $250 deployed, the cap
+        c = _components(broker, [WeightedStrategy(_Strategy("core", []), 1.0)])
+        state = AccountState(equity=500, cash=broker.cash(), peak_equity=500, day_start_equity=500,
+                             open_positions=2, brackets={"QQQ": {"stop": 40.0, "model": "core"}})
+        sig = Signal("core", "QQQ", Direction.LONG, 1.0, 30, {"rebalance": True, "size_pct": 0.6})
+        _maybe_top_up(c, state, Candidate("QQQ", Direction.LONG, 1.0, (sig,)),
+                      broker.positions()[0], Quote("QQQ", 50.0, 50.0, 50.0), NOW)
+    assert broker.market_value() == 250.0
+
+
+def test_a_fill_saves_its_bracket_at_once():
+    import json
+
+    from ctbot.strategies.registry import WeightedStrategy
+
+    sigs = [Signal("copy_trading", "KO", Direction.LONG, 1.0, 30)]
+    with tempfile.TemporaryDirectory() as d:
+        broker = PaperBroker(_MD(), 250.0, Path(d) / "ledger.json", slippage_bps=0, clock=lambda: NOW)
+        c = _components(broker, [WeightedStrategy(_Strategy("copy_trading", sigs), 0.5, standalone=True)])
+        run_cycle(c, _state(broker), NOW)  # nobody calls save_account_state after the cycle here
+        saved = json.loads(c.settings.paper_risk_state_path.read_text())
+    assert "KO" in saved["brackets"]

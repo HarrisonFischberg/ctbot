@@ -41,7 +41,6 @@ from ctbot.research.backtest import ETFS
 
 MODEL_VERSION = "ranker-1"
 REPORT = Path("data/research/ranker_report.json")
-MODEL_FILE = Path("data/research/ranker_model.json")
 SPLITS = {"dev": ("2000-01-01", "2017-12-31"), "validation": ("2018-01-01", "2022-12-31"),
           "holdout": ("2023-01-01", "2100-01-01")}
 FEATURE_GROUPS = {
@@ -143,22 +142,6 @@ def walk_forward_scores(a: Arrays, p: RankerParams, start_idx: int = 252) -> tup
         fits.append({"from": str(a.dates[lo].date()), "through": str(a.dates[cut].date()),
                      "used_from": str(a.dates[i].date()), "rows": int(ok.sum())})
     return scores, fits
-
-
-def fit_final(a: Arrays, p: RankerParams) -> dict[str, Any]:
-    """Model trained on the latest window, for the shadow live strategy (`ranker_signal`)."""
-    y = labels(a, p.horizon)
-    t_len, n, f = a.features.shape
-    cut = t_len - 1 - p.horizon - 1
-    lo = max(0, cut - p.train_days + 1)
-    x = np.nan_to_num(a.features[lo:cut + 1], nan=0.0).reshape(-1, f)
-    ys = y[lo:cut + 1].reshape(-1)
-    ok = ~np.isnan(ys) & a.eligible[lo:cut + 1].reshape(-1)
-    w = np.linalg.solve(x[ok].T @ x[ok] + p.ridge * ok.sum() / 1000 * np.eye(f), x[ok].T @ ys[ok])
-    return {"version": MODEL_VERSION, "params": asdict(p), "features": a.feature_names,
-            "weights": [round(float(v), 8) for v in w], "trained_from": str(a.dates[lo].date()),
-            "trained_through": str(a.dates[cut].date()), "universe": a.symbols,
-            "created": datetime.now(UTC).isoformat(timespec="seconds")}
 
 
 # ---- portfolio simulation -------------------------------------------------------------------
@@ -418,8 +401,6 @@ def main() -> None:
     ap.add_argument("--holdout", action="store_true",
                     help="also score the locked final holdout (once per trial; recorded)")
     ap.add_argument("--extra-cost-bps", type=float, default=0.0, help="added per side to every trade")
-    ap.add_argument("--write-model", action="store_true",
-                    help="write data/research/ranker_model.json for the shadow strategy")
     ap.add_argument("--no-registry", action="store_true")
     args = ap.parse_args()
     from ctbot.research.registry import Registry
@@ -433,8 +414,6 @@ def main() -> None:
               registry=None if args.no_registry else Registry())
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(rep, indent=2, default=str))
-    if args.write_model:
-        MODEL_FILE.write_text(json.dumps(fit_final(prepare(panel, base, universe), base), indent=2))
     print(format_report(rep))
 
 

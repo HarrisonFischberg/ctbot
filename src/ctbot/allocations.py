@@ -13,8 +13,11 @@ marks it "stopped". Paper only: nothing here can reach live code.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -37,6 +40,17 @@ def _write(path: Path, runs: dict[str, dict[str, Any]]) -> None:
     os.replace(tmp, path)  # the bot never reads a half-written file
 
 
+@contextmanager
+def _edit(path: Path) -> Iterator[dict[str, dict[str, Any]]]:
+    """Read, change and write the runs under a lock: the dashboard and the bot both edit this file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.with_suffix(".lock").open("a") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        runs = load(path)
+        yield runs
+        _write(path, runs)
+
+
 def running(path: Path) -> dict[str, float]:
     """Strategy name -> capital, for strategies that may open positions."""
     return {k: float(v["capital"]) for k, v in load(path).items() if v.get("status") == RUNNING}
@@ -55,40 +69,36 @@ def start(path: Path, name: str, capital: float, max_total: float,
         raise ValueError("max loss must be 1%-90%")
     if take_profit_pct is not None and not 0.01 <= take_profit_pct <= 10:
         raise ValueError("take profit must be 1%-1000%")
-    runs = load(path)
-    others = sum(float(v["capital"]) for k, v in runs.items() if k != name and v.get("status") == RUNNING)
-    if others + capital > max_total + 1e-9:
-        raise ValueError(f"only ${max_total - others:,.0f} of the ${max_total:,.0f} paper capital is unallocated")
-    now = datetime.now(timezone.utc).isoformat()
-    prev = runs.get(name, {})
-    again = prev.get("status") == RUNNING
-    runs[name] = {"capital": round(capital, 2), "status": RUNNING,
-                  "max_loss_pct": max_loss_pct, "take_profit_pct": take_profit_pct,
-                  "started_at": prev.get("started_at") if again else now,
-                  "realized": prev.get("realized", 0.0) if again else 0.0,  # $ gained/lost on sells
-                  "updated_at": now}
-    _write(path, runs)
-    return runs[name]
+    with _edit(path) as runs:
+        others = sum(float(v["capital"]) for k, v in runs.items() if k != name and v.get("status") == RUNNING)
+        if others + capital > max_total + 1e-9:
+            raise ValueError(f"only ${max_total - others:,.0f} of the ${max_total:,.0f} paper capital is unallocated")
+        now = datetime.now(timezone.utc).isoformat()
+        prev = runs.get(name, {})
+        again = prev.get("status") == RUNNING
+        runs[name] = {"capital": round(capital, 2), "status": RUNNING,
+                      "max_loss_pct": max_loss_pct, "take_profit_pct": take_profit_pct,
+                      "started_at": prev.get("started_at") if again else now,
+                      "realized": prev.get("realized", 0.0) if again else 0.0,  # $ gained/lost on sells
+                      "updated_at": now}
+        return runs[name]
 
 
 def stop(path: Path, name: str, reason: str = "stopped by you") -> None:
-    runs = load(path)
-    if name not in runs or runs[name].get("status") == STOPPED:
-        raise ValueError("that strategy is not running")
-    runs[name].update(status=STOPPING, reason=reason, updated_at=datetime.now(timezone.utc).isoformat())
-    _write(path, runs)
+    with _edit(path) as runs:
+        if name not in runs or runs[name].get("status") == STOPPED:
+            raise ValueError("that strategy is not running")
+        runs[name].update(status=STOPPING, reason=reason, updated_at=datetime.now(timezone.utc).isoformat())
 
 
 def add_realized(path: Path, name: str, amount: float) -> None:
-    runs = load(path)
-    if name in runs:
-        runs[name]["realized"] = round(float(runs[name].get("realized", 0.0)) + amount, 2)
-        _write(path, runs)
+    with _edit(path) as runs:
+        if name in runs:
+            runs[name]["realized"] = round(float(runs[name].get("realized", 0.0)) + amount, 2)
 
 
 def mark_stopped(path: Path, name: str) -> None:
-    runs = load(path)
-    if name in runs:
-        runs[name].update(status=STOPPED, stopped_at=datetime.now(timezone.utc).isoformat())
-        _write(path, runs)
+    with _edit(path) as runs:
+        if name in runs:
+            runs[name].update(status=STOPPED, stopped_at=datetime.now(timezone.utc).isoformat())
 
