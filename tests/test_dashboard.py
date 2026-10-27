@@ -1,6 +1,7 @@
 """Dashboard: state snapshot from local files, no secrets, loopback-only read-only server."""
 
 import json
+import re
 import tempfile
 import threading
 import urllib.error
@@ -257,3 +258,10 @@ def test_prev_closes_needs_the_exact_previous_session(tmp_path):
     mon = datetime(2026, 10, 12, 15, tzinfo=timezone.utc)  # Mon 11:00 ET: yesterday's session is Fri
     assert prev_closes(["KO", "PEP"], mon, tmp_path) == {"KO": 50.0}
     assert prev_closes(["KO"], NOW, tmp_path) == {}  # Tue: Monday's close isn't saved, so no guess
+
+
+def test_observatory_refresh_only_rewrites_changed_cards():
+    # The 10s refresh used to rebuild every card, which froze the page and reset scroll and hover.
+    html = (ROOT / "src" / "ctbot" / "dashboard" / "observatory.html").read_text()
+    assert not re.search(r'\$\("\w+"\)\.innerHTML = ', html), "write card HTML with put()"
+    assert "setInterval(() => document.hidden || load(), 10000)" in html
