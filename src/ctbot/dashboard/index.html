@@ -1213,7 +1213,9 @@ main:focus { outline: none; }
     const lossUsed = Math.max(0, -a.day_pnl_pct) / L.max_daily_loss_pct;
     const ddUsed = Math.max(0, -a.drawdown_pct) / L.max_total_drawdown_pct;
     const M = money(), nRuns = M.runs.length;
-    const inv = M.held > 1 ? `${usd(M.stocks, 0)} in stocks · ${usd(M.held, 0)} waiting inside strategies` : "in stocks and funds";
+    const paid = (S.positions || []).reduce((t, p) => t + p.quantity * p.avg_cost, 0), gain = M.stocks - paid;
+    const inv = (M.held > 1 ? `${usd(M.stocks, 0)} in stocks · ${usd(M.held, 0)} waiting inside strategies` : "in stocks and funds") +
+      (paid ? ` · you paid ${usd(paid, 0)}, ${sgnUsd(gain)} ${gain >= 0 ? "gain" : "loss"} since` : "");
     const what = nRuns ? `${nRuns} strateg${nRuns === 1 ? "y" : "ies"}${M.inside ? `, holding ${M.inside} stock${M.inside === 1 ? "" : "s"}` : ""}` +
       (M.loose ? ` + ${M.loose} other stock${M.loose === 1 ? "" : "s"}` : "") : `stock${M.loose === 1 ? "" : "s"} and funds`;
     const tiles = [
