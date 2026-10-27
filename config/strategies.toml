@@ -111,10 +111,11 @@ max_per_day = 2
 
 # Market intraday momentum (Gao, Han, Li & Zhou 2018, from awesome-systematic-trading): when SPY is
 # up from yesterday's close at 10:00 ET, buy it 15:30-15:44 and sell 15:55. A fixed rule: no Claude
-# review. Forward test only: not backtested here yet. Autopilot benches it if it loses.
+# review. Benched 2026-10-27: on Hey Astral (5m SPY, Nov 2024-Oct 2026, 270 trades) it lost 0.6%
+# before costs and 14.8% at 3 bp/side, so it only logs ideas now.
 [intraday_momentum]
 enabled = true
-mode = "trade"
+mode = "shadow"
 weight = 1.0
 standalone = true
 [intraday_momentum.params]
