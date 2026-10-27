@@ -148,8 +148,10 @@ def _reason_family(code: str) -> str | None:
 
 def _today_rejections(ideas_path: Path, now: datetime) -> tuple[Counter, int]:
     """Today's turned-down ideas by reason family, and how many ideas came up today."""
+    from ctbot.dashboard.state import _tail
+
     try:
-        lines = ideas_path.read_text().splitlines()[-3000:]
+        lines = _tail(ideas_path, 3000)
     except OSError:
         return Counter(), 0
     today = market_hours.trading_date(now)

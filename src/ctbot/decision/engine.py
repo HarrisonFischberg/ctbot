@@ -102,8 +102,6 @@ class ClaudeDecisionEngine:
     def debate(self, message: str) -> dict[str, str] | None:
         """Two short advocacy calls (for / against) at low effort, after TradingAgents' bull/bear
         researchers, bounded to one round. Any failure returns None: the review goes ahead without it."""
-        import anthropic
-
         out = {}
         for side, prompt in DEBATE_PROMPTS.items():
             try:
@@ -112,7 +110,7 @@ class ClaudeDecisionEngine:
                     messages=[{"role": "user", "content": message}],
                     output_config={"effort": "low"},
                 )
-            except (anthropic.APIStatusError, anthropic.APIConnectionError) as e:
+            except Exception as e:  # noqa: BLE001 - API error or no key: review without the debate
                 log.warning("debate (%s) skipped: %s", side, e)
                 return None
             self._log_usage(r, "debate")
@@ -152,6 +150,9 @@ class ClaudeDecisionEngine:
         except anthropic.APIConnectionError as e:
             log.error("Claude connection error: %s", e)
             return _reject("connection_error")
+        except Exception:  # noqa: BLE001 - e.g. no API key (the SDK raises TypeError): still a rejection
+            log.exception("Claude review failed")
+            return _reject("review_failed")
 
         self._log_usage(response, "review")
         if response.stop_reason != "end_turn":

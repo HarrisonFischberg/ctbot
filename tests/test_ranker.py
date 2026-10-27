@@ -188,62 +188,6 @@ def test_lab_lag_delays_execution_by_one_close():
     assert late.final < 5000.0    # filled at day 231's close (110): costs only
 
 
-def test_shadow_strategy_matches_research_scoring(tmp_path):
-    import json
-    from datetime import datetime
-    from datetime import time as dtime
-
-    from ctbot.market_hours import ET
-    from ctbot.models import Bar, Direction, Quote
-    from ctbot.strategies.base import StrategyContext
-    from ctbot.strategies.ranker_signal import RankerSignal
-
-    panel = synthetic_panel(n=12, days=800, signal=0.0015)
-    p = rk.RankerParams(train_days=300, min_adv=1e6, top_k=3)
-    model = rk.fit_final(rk.prepare(panel, p), p)
-    path = tmp_path / "model.json"
-    path.write_text(json.dumps(model))
-
-    class MD:
-        def daily_bars(self, sym, n):
-            df = panel[sym]
-            return [Bar(sym, datetime.combine(d.date(), dtime(16), tzinfo=ET), *row) for d, row in
-                    zip(df.index[-n:], df[list(fx.FIELDS)].to_numpy()[-n:])]
-
-        def quotes(self, syms):
-            return {s: Quote(s, 10.0, 10.01, 10.0) for s in syms}
-
-    strat = RankerSignal(path, max_model_age_days=10_000)
-    # first trading day after the panel ends that is a rebalance day
-    day = pd.bdate_range(panel["SPY"].index[-1] + pd.Timedelta(days=1), periods=10)
-    day = next(d.date() for d in day if strat.rebalance_day(d.date(), p.rebalance_every))
-    now = datetime.combine(day, dtime(9, 40), tzinfo=ET)
-    ctx = StrategyContext(MD(), tuple(panel), (), day, frozenset(), now)
-    sigs = strat.generate(ctx)
-    longs = [s for s in sigs if s.direction is Direction.LONG]
-    assert len(longs) == 3 and all(s.evidence["systematic"] for s in longs)
-    assert all(s.evidence["stop"] == 8.5 for s in longs)
-    assert strat.generate(ctx) == []  # once per day
-    # research scores for the same (last completed) day pick the same names
-    a = rk.prepare(panel, p)
-    x = np.nan_to_num(a.features[-1]) @ np.array(model["weights"])
-    x[~a.eligible[-1]] = np.nan
-    x[a.symbols.index("SPY")] = np.nan
-    top = {a.symbols[j] for j in rk.topk_dropout(x, set(), 3, 1)}
-    assert {s.symbol for s in longs} == top
-    # outside the morning window, nothing
-    late = StrategyContext(MD(), tuple(panel), (), day, frozenset(), datetime.combine(day, dtime(15, 0), tzinfo=ET))
-    assert RankerSignal(path, max_model_age_days=10_000).generate(late) == []
-    assert RankerSignal(tmp_path / "missing.json").generate(ctx) == []
-    # the model trades its own book, not the account's positions
-    book = json.loads((tmp_path / "ranker_book.json").read_text())["held"]
-    assert sorted(book) == sorted(top)
-    (tmp_path / "ranker_book.json").write_text(json.dumps({"held": sorted(top) + ["GONE"]}))
-    other = StrategyContext(MD(), tuple(panel), (), day, frozenset({"QQQ", "XYZ"}), now)
-    sigs = RankerSignal(path, max_model_age_days=10_000).generate(other)
-    assert [(s.symbol, s.evidence["reason"]) for s in sigs] == [("GONE", "no_score")]  # held top k: no new buys
-
-
 def test_topk_dropout_with_more_held_than_k():
     scores = np.array([8.0, 7, 6, 5, 4, 3, 2, 1])
     keep = rk.topk_dropout(scores, {2, 3, 4, 5, 6, 7}, 3, 2)

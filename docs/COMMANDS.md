@@ -53,7 +53,7 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
   new trade's starting stop may sit) and *give back from the high* (how far the trailing stop
   follows below each position's highest price). Saved in `data/autopilot.json`; the bot reads it
   every cycle. While on, every enabled strategy may trade on its own (day trades, overnight holds,
-  swings, the trend cores), except ones research rejected (the ranker) or that lost money over 10+
+  swings, the trend cores), except ones that lost money over 10+
   paper trades in the last 30 days (shown as benched, with the reason). Claude reviews each
   non-systematic entry and sets its starting stop; those positions have no fixed take-profit, and
   winners keep rolling past their usual exit time while they are up. The trend cores keep their own
@@ -126,7 +126,6 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
 | Lab with next-close execution (stricter) | `.venv/bin/ctbot-lab --lag 1 --cash-apy 0.035` |
 | Stock ranking model: walk-forward vs SPY, equal weight, momentum (dev + validation) | `.venv/bin/ctbot-rank-research` |
 | Score the locked holdout once, after choosing | `.venv/bin/ctbot-rank-research --holdout` |
-| Write the shadow model file for the bot (retrain monthly) | `.venv/bin/ctbot-rank-research --write-model` |
 | Strategy library backtest: which `lib_*` entries the autopilot may trade | `.venv/bin/ctbot-library-research` |
 | Strategy factory: 864 candidates backtested, kept only past PBO, BH, Deflated Sharpe and 3x costs; the `factory` paper book trades the live list (runs nightly after the close) | `.venv/bin/ctbot-factory` (`--universe etfs` for a quick run) |
 | Compare the side-by-side paper books | `.venv/bin/ctbot-variants` |

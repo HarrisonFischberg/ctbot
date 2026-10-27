@@ -34,7 +34,7 @@ SCHEDULE = {  # when each model looks for setups (ET); cadence follows the 5-min
     "vwap_revert": "intraday, 5-min bars", "overnight": "15:30-15:50 entry, next open exit",
     "intraday_momentum": "15:30-15:44 entry if SPY was up at 10:00, out 15:55",
     "rsi2_etf": "15:30-15:44 on the live price", "turn_of_month": "15:30-15:44 on the live price",
-    "trend_core": "15:30-15:44 on the live price", "ranker": "09:35-10:00 on yesterday's close, weekly",
+    "trend_core": "15:30-15:44 on the live price",
 }
 
 
@@ -83,7 +83,7 @@ def plan(settings: Settings, day: date, now: datetime | None = None) -> dict[str
             continue
         cls = t.get("class", name)
         models.append({"model": name, "mode": t.get("mode", "trade"), "schedule": SCHEDULE.get(cls, "every cycle"),
-                       "reviewed_by_claude": not cls.startswith(("trend_core", "ranker"))})
+                       "reviewed_by_claude": not cls.startswith("trend_core")})
     trading = [m["model"] for m in models if m["mode"] == "trade"]
     if not trading:
         reasons.append("no model is in trade mode (all watching)")
@@ -103,11 +103,6 @@ def plan(settings: Settings, day: date, now: datetime | None = None) -> dict[str
     if spy.exists():
         freshness["bars_cache_day_spy_modified"] = datetime.fromtimestamp(spy.stat().st_mtime, timezone.utc).isoformat(
             timespec="minutes")
-    model_file = _json(Path("data/research/ranker_model.json"))
-    if model_file:
-        age = (day - date.fromisoformat(model_file["trained_through"])).days
-        freshness["ranker_model_trained_through"] = model_file["trained_through"]
-        freshness["ranker_model_age_days"] = age
     early = day in market_hours.early_closes(day.year)
     return {
         "date": day.isoformat(), "generated": now.isoformat(timespec="seconds"), "session": session,

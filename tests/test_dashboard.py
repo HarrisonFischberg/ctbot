@@ -260,6 +260,16 @@ def test_prev_closes_needs_the_exact_previous_session(tmp_path):
     assert prev_closes(["KO"], NOW, tmp_path) == {}  # Tue: Monday's close isn't saved, so no guess
 
 
+def test_tail_reads_only_the_end_of_a_long_file(tmp_path):
+    from ctbot.dashboard.state import _read_history, _tail
+
+    p = tmp_path / "ideas.jsonl"
+    p.write_text("".join(f'{{"i": {i}}}\n' for i in range(50_000)) + "not json\n")
+    assert _tail(p, 3) == ['{"i": 49998}', '{"i": 49999}', "not json"]
+    assert [r["i"] for r in _read_history(p, 3)] == [49998, 49999]
+    assert _tail(tmp_path / "missing", 3) == [] and _tail(p, 10**6)[0] == '{"i": 0}'
+
+
 def test_observatory_refresh_only_rewrites_changed_cards():
     # The 10s refresh used to rebuild every card, which froze the page and reset scroll and hover.
     html = (ROOT / "src" / "ctbot" / "dashboard" / "observatory.html").read_text()

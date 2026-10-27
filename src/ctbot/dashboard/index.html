@@ -650,6 +650,8 @@ main:focus { outline: none; }
           <span class="lm">the most a new trade can fall below its buy price before the bot sells it</span></label>
         <label>Give back from the high <span class="ap-in"><input type="number" id="apGive" min="1" max="30" step="0.5" required> %</span>
           <span class="lm">once a stock rises, the bot sells it if it falls this much from its highest price</span></label>
+        <label>How sure Claude must be to buy <span class="ap-in"><input type="number" id="apConf" min="10" max="90" step="5" required> %</span>
+          <span class="lm"><b>Lower = MORE aggressive: more buys, including ideas Claude is less sure of. Higher = MORE conservative: fewer buys, only ideas Claude is surer of.</b></span></label>
         <button class="btn solid" type="submit" id="apSave">Save</button>
       </form>
       <h3 class="ap-h3">Invest for me</h3>
@@ -2166,6 +2168,7 @@ main:focus { outline: none; }
     const A = S.autopilot; if (!A) return;
     if (!apDirty) {
       $("apOn").checked = A.enabled; $("apLoss").value = +(A.max_loss_pct * 100).toFixed(2); $("apGive").value = +(A.giveback_pct * 100).toFixed(2);
+      $("apConf").value = Math.round(A.min_confidence * 100);
     }
     $("apSave").disabled = !canTrade();
     const on = A.models.filter((m) => m.status === "trading").length;
@@ -2211,16 +2214,17 @@ main:focus { outline: none; }
         <td class="why">${pct(v.max_loss_pct, 0)} · ${pct(v.giveback_pct, 0)} · ${pct(v.min_confidence, 0)}${extra(v) ? " · " + esc(extra(v)) : ""}</td></tr>`).join("")
     }</tbody></table>`;
   }
-  ["apOn", "apLoss", "apGive"].forEach((id) => $(id).addEventListener("input", () => (apDirty = true)));
+  ["apOn", "apLoss", "apGive", "apConf"].forEach((id) => $(id).addEventListener("input", () => (apDirty = true)));
   $("apForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const body = { enabled: $("apOn").checked, max_loss_pct: +$("apLoss").value / 100, giveback_pct: +$("apGive").value / 100 };
+    const body = { enabled: $("apOn").checked, max_loss_pct: +$("apLoss").value / 100, giveback_pct: +$("apGive").value / 100,
+      min_confidence: +$("apConf").value / 100 };
     const [ok, j] = await api("/api/autopilot", body);
     if (!ok) return toast(j.error || "could not save", true);
     apDirty = false;
-    Object.assign(S.autopilot, { enabled: j.enabled, max_loss_pct: j.max_loss_pct, giveback_pct: j.giveback_pct });
+    Object.assign(S.autopilot, { enabled: j.enabled, max_loss_pct: j.max_loss_pct, giveback_pct: j.giveback_pct, min_confidence: j.min_confidence });
     renderAutopilot();
-    toast(j.enabled ? `Autopilot on: max loss ${pct(j.max_loss_pct, 1)}, give-back ${pct(j.giveback_pct, 1)}. The bot picks it up next cycle.` : "Autopilot off");
+    toast(j.enabled ? `Autopilot on: max loss ${pct(j.max_loss_pct, 1)}, give-back ${pct(j.giveback_pct, 1)}, Claude must be ${pct(j.min_confidence, 0)} sure. The bot picks it up next cycle.` : "Autopilot off");
   });
   function renderAll() {
     renderChrome(); renderAutopilot(); renderVariants(); renderKpis(); renderIdeas(); renderChart(); renderLimits(); renderPositions();

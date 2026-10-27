@@ -78,10 +78,12 @@ class _FileTokenStorage:
         data = self._read()
         data[key] = value
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        tmp = self.path.with_suffix(f".{os.getpid()}.tmp")  # the bot and the dashboard both refresh it
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as fh:
             json.dump(data, fh)
-        os.chmod(self.path, 0o600)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, self.path)  # a reader never sees a half-written sign-in
 
     async def get_tokens(self):
         from mcp.shared.auth import OAuthToken

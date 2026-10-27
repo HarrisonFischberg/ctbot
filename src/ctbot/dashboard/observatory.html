@@ -876,6 +876,9 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
           <button class="info" type="button" title="The most a new trade can fall below its buy price before the bot sells it" aria-label="About max loss per trade" data-explain="loss"><svg class="ico"><use href="#i-info"/></svg></button></label>
         <label class="ap-row">Give back from high <select class="sel" id="apGive" required></select>
           <button class="info" type="button" title="Once a stock rises, the bot sells it if it falls this much from its highest price" aria-label="About give back from high" data-explain="give"><svg class="ico"><use href="#i-info"/></svg></button></label>
+        <label class="ap-row">How sure Claude must be <select class="sel" id="apConf" required></select>
+          <button class="info" type="button" title="Lower = MORE aggressive: more buys, including ideas Claude is less sure of. Higher = MORE conservative: fewer buys, only ideas Claude is surer of." aria-label="About how sure Claude must be" data-explain="conf"><svg class="ico"><use href="#i-info"/></svg></button></label>
+        <p class="ap-note"><b>Lower = more aggressive</b> (more buys) · <b>higher = more conservative</b> (fewer, surer buys)</p>
         <button class="btn solid big" type="submit" id="apSave">Save Rules</button>
       </form>
       <div class="ap-div"></div>
@@ -2500,6 +2503,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
       $("apOn").checked = A.enabled;
       setSel($("apLoss"), +(A.max_loss_pct * 100).toFixed(2), [1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20, 25]);
       setSel($("apGive"), +(A.giveback_pct * 100).toFixed(2), [2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30]);
+      setSel($("apConf"), Math.round(A.min_confidence * 100), [10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80, 90]);
     }
     $("apSave").disabled = $("apOn").disabled = !canTrade();
     const on = A.models.filter((m) => m.status === "trading").length;
@@ -2548,17 +2552,18 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
         <td class="why">${pct(v.max_loss_pct, 0)} · ${pct(v.giveback_pct, 0)} · ${pct(v.min_confidence, 0)}${extra(v) ? " · " + esc(extra(v)) : ""}</td></tr>`).join("")
     }</tbody></table>`);
   }
-  ["apLoss", "apGive"].forEach((id) => $(id).addEventListener("input", () => (apDirty = true)));
+  ["apLoss", "apGive", "apConf"].forEach((id) => $(id).addEventListener("input", () => (apDirty = true)));
   $("apOn").addEventListener("change", () => { apDirty = true; $("apForm").requestSubmit(); });  // the switch saves at once
   $("apForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const body = { enabled: $("apOn").checked, max_loss_pct: +$("apLoss").value / 100, giveback_pct: +$("apGive").value / 100 };
+    const body = { enabled: $("apOn").checked, max_loss_pct: +$("apLoss").value / 100, giveback_pct: +$("apGive").value / 100,
+      min_confidence: +$("apConf").value / 100 };
     const [ok, j] = await api("/api/autopilot", body);
     if (!ok) { apDirty = false; renderAutopilot(); return toast(j.error || "could not save", true); }
     apDirty = false;
-    Object.assign(S.autopilot, { enabled: j.enabled, max_loss_pct: j.max_loss_pct, giveback_pct: j.giveback_pct });
+    Object.assign(S.autopilot, { enabled: j.enabled, max_loss_pct: j.max_loss_pct, giveback_pct: j.giveback_pct, min_confidence: j.min_confidence });
     renderAutopilot();
-    toast(j.enabled ? `Autopilot on: max loss ${pct(j.max_loss_pct, 1)}, give-back ${pct(j.giveback_pct, 1)}. The bot picks it up next cycle.` : "Autopilot off");
+    toast(j.enabled ? `Autopilot on: max loss ${pct(j.max_loss_pct, 1)}, give-back ${pct(j.giveback_pct, 1)}, Claude must be ${pct(j.min_confidence, 0)} sure. The bot picks it up next cycle.` : "Autopilot off");
   });
   function renderAll() {
     renderChrome(); renderAutopilot(); renderVariants(); renderPortfolio(); renderAlloc(); renderIdeas(); renderChart(); renderLimits(); renderPositions();
@@ -2581,6 +2586,9 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
       when the price falls back to it. Strategies that failed testing, or lost money over their last 10+ trades, are benched: they aren't allowed to trade.</p>
       <p class="dp">The switch turns Autopilot on or off at once. When it's off, only strategies you invested in trade.</p>`],
     loss: ["Max loss per trade", `<p class="dp">The most a new trade can fall below its buy price before the bot sells it. Press Save Rules to use a new value.</p>`],
+    conf: ["How sure Claude must be", `<p class="dp">Before the autopilot buys an idea, Claude says how likely it is to work. The bot buys only when Claude is at least this sure.</p>
+      <p class="dp"><b>Lower = more aggressive:</b> more buys, including ideas Claude is less sure of.<br><b>Higher = more conservative:</b> fewer buys, only ideas Claude is surer of.</p>
+      <p class="dp">Every trade still keeps its max loss and trailing stop. Press Save Rules to use a new value.</p>`],
     give: ["Give back from high", `<p class="dp">Once a stock rises, the bot sells it if it falls this much from its highest price. Press Save Rules to use a new value.</p>`],
     invest: ["Invest for Me", `<p class="dp">Type one amount. The bot picks the best strategies in the library, splits this between them, keeps them funded and re-picks every week.</p>
       <p class="dp">Max loss: if a strategy is down this much in total, the bot sells it and stops it. Practice money only.</p>`],

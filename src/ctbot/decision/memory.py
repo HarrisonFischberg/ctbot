@@ -13,6 +13,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from ctbot import track_record
+
 
 def _fills(ledger_path: Path, as_of: datetime) -> list[dict[str, Any]]:
     try:
@@ -37,15 +39,10 @@ def outcome_memory(ledger_path: Path, models: list[str], symbol: str, as_of: dat
         out["models"][m] = {"closed_trades": closed, "win_rate": round(wins / closed, 3) if closed else None,
                             "avg_return": round(sum(avg) / len(avg), 5) if avg else None,
                             "realized_pnl": round(sum(s["pnl"] for s in rows), 2)}
-    # last round trips in this symbol (FIFO on this symbol's fills only)
-    lots, trips = [], []
-    for f in sorted((f for f in fills if f["symbol"] == symbol), key=lambda f: f["ts"]):
-        if f["side"] == "buy":
-            lots.append([float(f["quantity"]), float(f["price"]), f.get("tag")])
-        elif lots:
-            qty, px, tag = lots.pop(0)
-            trips.append({"model": tag, "return": round(float(f["price"]) / px - 1, 5), "closed": f["ts"][:10],
-                          "exit": f.get("tag")})
+    # last round trips in this symbol (a partial sale is its own row)
+    pieces, _ = track_record.fifo([f for f in fills if f["symbol"] == symbol])
+    trips = [{"model": buy.get("tag"), "return": round(float(sell["price"]) / float(buy["price"]) - 1, 5),
+              "closed": sell["ts"][:10], "exit": sell.get("tag")} for buy, sell, _, _ in pieces]
     out["symbol_last_trades"] = trips[-last_n:]
     if idea_scores_path is not None:
         try:

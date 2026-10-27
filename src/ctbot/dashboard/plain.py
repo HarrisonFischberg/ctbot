@@ -156,12 +156,6 @@ STRATEGIES: dict[str, dict[str, Any]] = {
                                 "with the 200-day average still rising."),
                                "Scores extra for heavy volume and for being within 25% of the 52-week high.",
                                "Votes with other models rather than buying alone; votes to sell below the 50-day average."]},
-    "ranker": {"title": "Stock Ranking Model", "risk": "Medium", "holds": "Weeks",
-               "tagline": "Holds the 3 large caps a trained price-pattern model ranks highest, swapping one a week.",
-               "how": [("Scores each stock on about 25 price and volume patterns (momentum, trend, volatility, "
-                        "volume) with weights learned from past data, retrained on a rolling window."),
-                       "Decides each Monday morning on the previous close; replaces at most one holding per week.",
-                       "Does nothing until the research command has trained a model. No AI review, so no API cost."]},
 }
 
 MODES = {"trade": "Active", "shadow": "Watching", "off": "Off"}

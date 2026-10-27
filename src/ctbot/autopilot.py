@@ -28,17 +28,13 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-# Rejected by research: never given money by the autopilot (reason shown on the page).
-EXCLUDED = {
-    "ranker": "failed its test on real prices (2026-10-20): it did no better than buying every stock equally, and its best results looked like luck",
-}
 MIN_TRADES_TO_BENCH = 10
 BENCH_WINDOW_DAYS = 30
 # With a capped loss and a trailing exit, a trade pays when its expected value is positive, not when it
 # is more likely than not to win (trend entries win ~40% of the time). While the autopilot is on,
 # Claude's approval is the gate and its win probability only has to clear this floor instead of
-# MIN_CLAUDE_CONFIDENCE (Harold's choice, 2026-10-20). Settable per book in autopilot.json.
-MIN_CONFIDENCE = 0.30
+# MIN_CLAUDE_CONFIDENCE (Harold's choice: 30% on 2026-10-20, 20% on 2026-10-27). Settable per book in autopilot.json.
+MIN_CONFIDENCE = 0.20
 LIMITS = {"max_loss_pct": (0.01, 0.25), "giveback_pct": (0.01, 0.30), "min_confidence": (0.10, 0.90)}
 
 
@@ -96,9 +92,7 @@ def decide(models: list[str], fills: list[dict[str, Any]], now: datetime,
         s = stats.get(m, {})
         closed, pnl = int(s.get("closed", 0)), float(s.get("pnl", 0.0))
         rec = {"closed": closed, "pnl": round(pnl, 2), "win_rate": (s.get("wins", 0) / closed) if closed else None}
-        if m in EXCLUDED:
-            out[m] = {**rec, "status": "benched", "reason": EXCLUDED[m]}
-        elif m.startswith("lib_") and not (verdict := lbt.reason(library, m))[0]:
+        if m.startswith("lib_") and not (verdict := lbt.reason(library, m))[0]:
             out[m] = {**rec, "status": "benched", "reason": verdict[1]}
         elif closed >= MIN_TRADES_TO_BENCH and pnl < 0:
             out[m] = {**rec, "status": "benched",
