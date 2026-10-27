@@ -33,8 +33,10 @@ def _frame(bars) -> pd.DataFrame:
 class RuleStrategy:
     event_kinds: frozenset[EventKind] = frozenset()
 
-    def __init__(self, family: str, universe: str, name: str | None = None) -> None:
-        self.family = sg.FAMILIES[family]
+    def __init__(self, family: str, universe: str, name: str | None = None, fam: sg.Family | None = None,
+                 evidence: dict | None = None) -> None:
+        self.family = fam or sg.FAMILIES[family]
+        self.evidence = evidence or {}  # extra plan fields, e.g. a factory candidate's systematic exits
         self.universe_key = universe
         self.symbols = sg.universe(universe)
         self.name = name or sg.entry_name(family, universe)
@@ -83,6 +85,6 @@ class RuleStrategy:
                 "family": self.family.key, "rule": self.family.tagline, "source": self.family.source,
                 "ref_price": round(q.last, 4), "stop": round(q.last * (1 - dist), 4), "target": None,
                 "exit_at": exit_at, "size_pct": lbt.SLOT, "momentum_3m": round(mom, 4),
-                "decided_on_bars_through": str(frames[sym].index[-1].date()),
+                "decided_on_bars_through": str(frames[sym].index[-1].date()), **self.evidence,
             }, ts=ctx.now))
         return out

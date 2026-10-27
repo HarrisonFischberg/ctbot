@@ -54,6 +54,7 @@ class Variant:
     title: str
     autopilot: autopilot.AutopilotConfig
     env: dict[str, str] = field(default_factory=dict)
+    strategies: str = "library"  # "factory": trade only the strategy factory's live list
 
 
 def load(path: Path = CONFIG) -> list[Variant]:
@@ -76,7 +77,10 @@ def load(path: Path = CONFIG) -> list[Variant]:
         if bad:
             raise ValueError(f"variants: {name} can't set {', '.join(sorted(bad))}")
         ap = autopilot.validate({"enabled": True, **(spec.get("autopilot") or {})})
-        out.append(Variant(name, str(spec.get("title") or name), ap, env))
+        strategies = str(spec.get("strategies", "library"))
+        if strategies not in ("library", "factory"):
+            raise ValueError(f"variants: {name}.strategies must be library or factory")
+        out.append(Variant(name, str(spec.get("title") or name), ap, env, strategies))
     return out
 
 
@@ -187,6 +191,7 @@ class Book:
     components: Any
     state: Any
     broker: Any
+    report_mtime: float | None = None  # factory books: the report their models were built from
 
     @property
     def settings(self):
@@ -201,6 +206,7 @@ def build(main: Any, reviews: dict) -> list[Book]:
     from ctbot.config import Settings
     from ctbot.contracts import Journal
     from ctbot.decision.engine import ClaudeDecisionEngine
+    from ctbot.library import factory
     from ctbot.manual_queue import _append
     from ctbot.paper.simulator import PaperBroker
     from ctbot.pipeline import Components
@@ -215,7 +221,8 @@ def build(main: Any, reviews: dict) -> list[Book]:
         assert not s.live_trading_enabled and s.mode.value == "paper"
         s.paper_ledger_path.parent.mkdir(parents=True, exist_ok=True)
         autopilot.save(s.autopilot_path, v.autopilot)
-        strategies = build_strategies(load_strategy_config(s0.strategies_file))
+        strategies = (factory.live_strategies(factory.load_report()) if v.strategies == "factory"
+                      else build_strategies(load_strategy_config(s0.strategies_file)))
         scanners = {ws.strategy.name: getattr(ws.strategy, "scanner", None) for ws in main.strategies}
         for ws in strategies:
             if scanners.get(ws.strategy.name) is not None:
@@ -233,7 +240,7 @@ def build(main: Any, reviews: dict) -> list[Book]:
         state = AccountState(equity=equity, cash=broker.cash(), peak_equity=max(equity, s.starting_capital),
                              day_start_equity=equity, open_positions=len(broker.positions()))
         load_account_state(state, s.paper_risk_state_path)
-        books.append(Book(v, c, state, broker))
+        books.append(Book(v, c, state, broker, _report_mtime() if v.strategies == "factory" else None))
         log.info("book %s: %s (max loss %.0f%%, give-back %.0f%%, Claude floor %.0f%%%s)", v.name, v.title,
                  v.autopilot.max_loss_pct * 100, v.autopilot.giveback_pct * 100, v.autopilot.min_confidence * 100,
                  "".join(f", {k}={val}" for k, val in v.env.items()))
@@ -250,6 +257,29 @@ def _sync_halt(main_halt: Path, book_halt: Path) -> None:
         book_halt.write_text(HALT_MARK)
     elif not main_halt.exists() and mine:
         book_halt.unlink()
+
+
+def _report_mtime() -> float | None:
+    from ctbot.library import factory
+
+    try:
+        return factory.REPORT.stat().st_mtime
+    except OSError:
+        return None
+
+
+def _reload_factory(b: Book) -> None:
+    """A factory book picks up the nightly report's new live list; open positions keep their exits."""
+    from ctbot.library import factory
+
+    m = _report_mtime()
+    if b.variant.strategies != "factory" or m == b.report_mtime:
+        return
+    b.report_mtime = m
+    b.components.strategies = factory.live_strategies(factory.load_report())
+    b.components.configured = b.components.launched = None  # the autopilot re-launches from the new list
+    log.info("book %s: factory models now %s", b.variant.name,
+             ", ".join(ws.strategy.name for ws in b.components.strategies) or "none")
 
 
 def _refresh(b: Book) -> None:
@@ -269,6 +299,7 @@ def run(books: list[Book], main: Any, now: datetime, record_equity) -> None:
         try:
             b.components.providers, b.components.context = main.providers, main.context
             _sync_halt(main.settings.halt_path, b.settings.halt_path)
+            _reload_factory(b)
             _refresh(b)
             run_cycle(b.components, b.state, now)
             save_account_state(b.state, b.settings.paper_risk_state_path)

@@ -6,6 +6,8 @@
 # autopilot = max_loss_pct (starting stop, at most this far below the fill), giveback_pct (trailing
 #             stop distance below the high), min_confidence (Claude's approval needs at least this).
 # env       = other settings for this book only (see ALLOWED_ENV in src/ctbot/variants.py).
+# strategies = "factory" trades only the strategy factory's nightly live list (ctbot-factory), each
+#             model with its own backtested exits; otherwise the book trades what main trades.
 # Each book below changes ONE thing from "base", so a difference in results points at that setting.
 # Delete a book's folder to restart it from scratch; set enabled = false to stop them all.
 
@@ -55,3 +57,8 @@ env = { PARTIAL_PROFIT_R = "1.0", VWAP_ENTRY_GATE = "true", REGIME_GATE = "true"
 title = "Opus 5.5 reviews instead of Haiku"
 autopilot = { max_loss_pct = 0.08, giveback_pct = 0.08, min_confidence = 0.30 }
 env = { CLAUDE_MODEL = "claude-opus-5-5", CLAUDE_EFFORT = "medium", MAX_CLAUDE_USD_PER_DAY = "4.00" }
+
+[factory]
+title = "Strategy factory: only rules that passed the nightly backtest gates, no Claude review"
+strategies = "factory"
+autopilot = { max_loss_pct = 0.08, giveback_pct = 0.08, min_confidence = 0.30 }

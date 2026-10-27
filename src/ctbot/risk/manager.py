@@ -185,11 +185,13 @@ class RiskManager:
             tp_pct = decision.take_profit_pct if decision else None
             b = {"stop": round(fill_price * (1 - stop_pct), 4),
                  "target": round(fill_price * (1 + tp_pct), 4) if tp_pct else None}
-        if self.trail_giveback and not systematic:
+        # a factory rule brings its own backtested give-back, even though it is systematic
+        giveback = (plan or {}).get("giveback") or (None if systematic else self.trail_giveback)
+        if giveback:
             # Claude's stop sets the trail (capped by the give-back); a model's own stop (often a
             # tight ATR stop) stays the starting stop and the trail uses the give-back itself
             dist = (fill_price - b["stop"]) / fill_price
-            trail = self.trail_giveback if plan and plan.get("stop") is not None else min(dist, self.trail_giveback)
+            trail = giveback if plan and plan.get("stop") is not None else min(dist, giveback)
             b.update(target=None, entry=round(fill_price, 4), peak=round(fill_price, 4), trail=round(trail, 4),
                      stop=round(max(b["stop"], fill_price * (1 - trail)), 4))
         if L.partial_profit_r > 0:  # risk a share at entry (1R), before any trail raises the stop
