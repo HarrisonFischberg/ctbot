@@ -1,7 +1,6 @@
 """Dashboard: state snapshot from local files, no secrets, loopback-only read-only server."""
 
 import json
-import re
 import tempfile
 import threading
 import urllib.error
@@ -107,10 +106,6 @@ def test_server_is_read_only_and_rejects_foreign_hosts():
 
             evil = urllib.request.Request(base + "/api/state", headers={"Host": "evil.test"})
             assert status(evil) == 403
-            # Bundled fonts are served by exact name only.
-            assert status(base + "/fonts/barlow-latin-400-normal.woff2") == 200
-            assert status(base + "/fonts/nope.woff2") == 404
-            assert status(base + "/fonts/..%2Fserver.py") == 404
             # Without the page's token, nothing can be queued.
             post = urllib.request.Request(base + "/api/paper/order", data=b'{"side":"buy","symbol":"KO"}',
                                           headers={"Content-Type": "application/json"}, method="POST")
@@ -136,8 +131,6 @@ def test_server_is_read_only_and_rejects_foreign_hosts():
             assert status(urllib.request.Request(base + "/api/pause", data=b'{"paused": false}', method="POST",
                           headers={"Content-Type": "application/json", "X-Ctbot-Token": token})) == 200
             assert not (d / "HALT").exists()
-            # The new Observatory view is served beside the classic page, with the same token
-            assert token in urllib.request.urlopen(base + "/observatory").read().decode()
             queued = (d / "paper_manual_orders.jsonl").read_text().splitlines()
             assert len(queued) == 1 and json.loads(queued[0])["notional"] == 50.0
         finally:
@@ -233,8 +226,6 @@ def test_server_accepts_its_tailnet_name_and_still_rejects_others(monkeypatch):
 def test_what_you_own_shows_on_home_and_autopilot():
     html = (ROOT / "src" / "ctbot" / "dashboard" / "index.html").read_text()
     assert '<div data-tab="home trading" class="card span-12 own">' in html
-    new = (ROOT / "src" / "ctbot" / "dashboard" / "observatory.html").read_text()
-    assert '<div data-tab="home trading" data-sub="overview" class="card span-12 own">' in new
 
 
 
@@ -242,10 +233,7 @@ def test_hidden_topup_row_stays_hidden():
     """A display rule on the row must not beat [hidden], or "Add -$236 paper cash" shows above the limit."""
     html = (ROOT / "src" / "ctbot" / "dashboard" / "index.html").read_text()
     assert 'class="empty-row" id="topup" hidden' in html and ".empty-row[hidden] { display: none; }" in html
-    new = (ROOT / "src" / "ctbot" / "dashboard" / "observatory.html").read_text()
-    assert 'class="ap-side" id="topup" hidden' in new and "[hidden], .tab-off, .sub-off { display: none !important; }" in new
-    for page in (html, new):
-        assert '$("topup").hidden = !(short >= 1);' in page
+    assert '$("topup").hidden = !(short >= 1);' in html
 
 
 def test_prev_closes_needs_the_exact_previous_session(tmp_path):
@@ -268,10 +256,3 @@ def test_tail_reads_only_the_end_of_a_long_file(tmp_path):
     assert _tail(p, 3) == ['{"i": 49998}', '{"i": 49999}', "not json"]
     assert [r["i"] for r in _read_history(p, 3)] == [49998, 49999]
     assert _tail(tmp_path / "missing", 3) == [] and _tail(p, 10**6)[0] == '{"i": 0}'
-
-
-def test_observatory_refresh_only_rewrites_changed_cards():
-    # The 10s refresh used to rebuild every card, which froze the page and reset scroll and hover.
-    html = (ROOT / "src" / "ctbot" / "dashboard" / "observatory.html").read_text()
-    assert not re.search(r'\$\("\w+"\)\.innerHTML = ', html), "write card HTML with put()"
-    assert "setInterval(() => document.hidden || load(), 10000)" in html

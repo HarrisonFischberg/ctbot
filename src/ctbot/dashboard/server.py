@@ -49,7 +49,6 @@ from ctbot.dashboard.last_quotes import SessionQuotes
 from ctbot.dashboard.state import _read_history, build_state
 
 INDEX = Path(__file__).with_name("index.html")
-PAGES = {"/": INDEX, "/observatory": INDEX.with_name("observatory.html")}  # classic view, and the new one to flip to
 log = logging.getLogger(__name__)
 
 
@@ -414,15 +413,9 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
             if self.headers.get("Host") not in allowed_hosts:
                 return self._send(403, b"forbidden", "text/plain")
             path = self.path.split("?", 1)[0]
-            if path in PAGES:
-                page = PAGES[path].read_text().replace("__CTBOT_TOKEN__", token)
+            if path == "/":
+                page = INDEX.read_text().replace("__CTBOT_TOKEN__", token)
                 return self._send(200, page.encode(), "text/html; charset=utf-8")
-            m = re.fullmatch(r"/fonts/([a-z0-9-]+\.woff2)", path)
-            if m:  # the dashboard's bundled fonts (SIL OFL), so the page needs no font CDN
-                f = INDEX.with_name("fonts") / m.group(1)
-                if f.is_file():
-                    return self._send(200, f.read_bytes(), "font/woff2")
-                return self._send(404, b"not found", "text/plain")
             m = re.fullmatch(r"/reports/([A-Za-z0-9_.-]+\.html)", path)
             if m:  # quantstats tearsheets, served only from data/reports
                 f = Path("data/reports") / m.group(1)
