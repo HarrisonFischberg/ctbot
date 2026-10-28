@@ -326,6 +326,29 @@ def manage(books: list[Book], now: datetime) -> None:
 
 # ---- results ---------------------------------------------------------------------------------
 
+_CACHE: dict[tuple, tuple[tuple, Any]] = {}  # (fn, args) -> (file versions, result)
+
+
+def _cached(fn: Any, files: list[Path], *args: Any) -> Any:
+    """fn(*args), re-run only once one of `files` changes: the dashboard asks every 10 s, and
+    re-parsing every book's full history each time took most of a second on four weeks of data."""
+    def version(f: Path) -> tuple[int, int] | None:
+        try:
+            st = f.stat()
+        except OSError:
+            return None
+        return st.st_mtime_ns, st.st_size
+
+    stamp, key = tuple(version(f) for f in files), (fn.__name__, *args)
+    hit = _CACHE.get(key)
+    if hit is None or hit[0] != stamp:
+        hit = _CACHE[key] = (stamp, fn(*args))
+    return hit[1]
+
+
+def _book_files(ledger: Path) -> list[Path]:
+    return [ledger, ledger.with_name("equity_history.jsonl"), ledger.with_name("llm_usage.jsonl")]
+
 def _book_summary(ledger: Path, start: float) -> dict[str, Any]:
     from ctbot.dashboard.state import model_stats
 
@@ -369,7 +392,8 @@ def summary(main_settings: Any, path: Path | None = None) -> list[dict[str, Any]
     rows = [{"name": "main", "title": "Your main account", "max_loss_pct": main_ap.max_loss_pct,
              "giveback_pct": main_ap.giveback_pct, "min_confidence": main_ap.min_confidence,
              "env": {"CLAUDE_MODEL": main_settings.claude_model},
-             **_book_summary(main_settings.paper_ledger_path, main_settings.starting_capital)}]
+             **_cached(_book_summary, _book_files(main_settings.paper_ledger_path),
+                         main_settings.paper_ledger_path, main_settings.starting_capital)}]
     try:
         variants = load(path or main_settings.strategies_file.with_name(CONFIG.name))
     except (ValueError, OSError) as e:
@@ -380,7 +404,7 @@ def summary(main_settings: Any, path: Path | None = None) -> list[dict[str, Any]
         start = float(v.env.get("STARTING_CAPITAL", main_settings.starting_capital))
         rows.append({"name": v.name, "title": v.title, "max_loss_pct": v.autopilot.max_loss_pct,
                      "giveback_pct": v.autopilot.giveback_pct, "min_confidence": v.autopilot.min_confidence,
-                     "env": v.env, **_book_summary(s.paper_ledger_path, start)})
+                     "env": v.env, **_cached(_book_summary, _book_files(s.paper_ledger_path), s.paper_ledger_path, start)})
     _vs_main(rows, main_settings.paper_ledger_path.parent)
     return sorted(rows, key=lambda r: -r["return"])
 
@@ -414,10 +438,12 @@ def _vs_main(rows: list[dict[str, Any]], data_dir: Path) -> None:
 
     import numpy as np
 
-    main = _daily_returns(data_dir / "equity_history.jsonl")
+    main_h = data_dir / "equity_history.jsonl"
+    main = _cached(_daily_returns, [main_h], main_h)
     diffs = {}
     for r in rows[1:]:
-        mine = _daily_returns(data_dir / ROOT_NAME / r["name"] / "equity_history.jsonl")
+        h = data_dir / ROOT_NAME / r["name"] / "equity_history.jsonl"
+        mine = _cached(_daily_returns, [h], h)
         diffs[r["name"]] = np.array([mine[d] - main[d] for d in sorted(mine.keys() & main.keys())])
     pvals = {n: 2 * min(sharpe_pvalue(d), sharpe_pvalue(-d)) for n, d in diffs.items() if len(d) >= MIN_DAYS_TO_JUDGE}
     keep = benjamini_hochberg(pvals) if pvals else {}

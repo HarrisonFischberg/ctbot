@@ -1,5 +1,6 @@
 """Dashboard: state snapshot from local files, no secrets, loopback-only read-only server."""
 
+import gzip
 import json
 import re
 import tempfile
@@ -98,6 +99,8 @@ def test_server_is_read_only_and_rejects_foreign_hosts():
             assert b"ctbot" in urllib.request.urlopen(base + "/").read()
             state = json.loads(urllib.request.urlopen(base + "/api/state").read())
             assert state["mode"] == "paper"
+            gz = urllib.request.urlopen(urllib.request.Request(base + "/api/state", headers={"Accept-Encoding": "gzip"}))
+            assert gz.headers["Content-Encoding"] == "gzip" and json.loads(gzip.decompress(gz.read()))["mode"] == "paper"
 
             def status(req):
                 try:

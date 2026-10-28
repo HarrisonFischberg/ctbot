@@ -504,13 +504,11 @@ main:focus { outline: none; }
 .bub .mouth { fill: none; }
 .bub .cheek { fill: rgba(255,255,255,.28); }
 .bub .body, .bub .eyes, .bub .pupils, .bub .tip { transform-box: fill-box; transform-origin: center; }
-.bub .body { animation: bub-bob 3.2s ease-in-out infinite; }
-.bub .eyes { animation: bub-blink 5.5s infinite; }
-.bub-btn.thinking .bub .body, .bub-hd .bub.thinking .body { animation-duration: .9s; }
+/* Bub moves only while thinking: an always-on animation inside an SVG re-lays out the whole page every frame */
+.bub-btn.thinking .bub .body, .bub-hd .bub.thinking .body { animation: bub-bob .9s ease-in-out infinite; }
 .bub-btn.thinking .bub .pupils, .bub.thinking .pupils { animation: bub-look 1.2s ease-in-out infinite; }
 .bub-btn.thinking .bub .tip, .bub.thinking .tip { animation: bub-tip .6s ease-in-out infinite alternate; }
 @keyframes bub-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
-@keyframes bub-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
 @keyframes bub-look { 0%, 100% { transform: translate(-1.5px, -2px); } 50% { transform: translate(1.5px, -2px); } }
 @keyframes bub-tip { from { transform: scale(1); } to { transform: scale(1.5); } }
 .bub-panel { position: fixed; right: 24px; bottom: 98px; width: min(410px, calc(100vw - 32px)); height: min(640px, calc(100vh - 124px));
@@ -887,7 +885,8 @@ main:focus { outline: none; }
   const arrow = (v) => v > 1e-9 ? "▲" : v < -1e-9 ? "▼" : "■";
   const qty = (v) => v == null ? "—" : Number(v).toLocaleString("en-US", { maximumFractionDigits: 6 });
   const ET = "America/New_York";
-  const fmtTime = (iso) => { if (!iso) return "—"; const d = new Date(iso); return d.toLocaleString("en-US", { timeZone: ET, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) + " ET"; };
+  const TIME_FMT = new Intl.DateTimeFormat("en-US", { timeZone: ET, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });  // one formatter: toLocaleString builds a new one per call
+  const fmtTime = (iso) => { const d = new Date(iso); return iso && !isNaN(d) ? TIME_FMT.format(d) + " ET" : "—"; };
 
   // What each stock is, in a few words (config/universe.txt plus a few common extras).
   const STOCKS = {

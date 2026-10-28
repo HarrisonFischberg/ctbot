@@ -224,3 +224,16 @@ def test_tearsheet_book_returns_leave_paper_top_ups_out(tmp_path):
     rows = [("2026-10-20", 250, 0), ("2026-10-21", 255, 0), ("2026-10-22", 20255, 20000), ("2026-10-23", 20457.55, 20000)]
     h.write_text("\n".join(json.dumps({"ts": f"{d}T20:00:00+00:00", "equity": e, "deposits": dep}) for d, e, dep in rows))
     assert [round(r, 4) for r in book_returns(h)] == [0.02, 0.0, 0.01]  # the $20,000 top-up is not a +7843% day
+
+
+def test_results_are_reread_only_after_the_file_changes(tmp_path):
+    f, calls = tmp_path / "equity_history.jsonl", []
+
+    def read(p):
+        calls.append(p)
+        return p.read_text()
+
+    f.write_text("a\n")
+    assert variants._cached(read, [f], f) == variants._cached(read, [f], f) == "a\n"
+    f.write_text("a\nb\n")  # a new equity point: size changes
+    assert variants._cached(read, [f], f) == "a\nb\n" and len(calls) == 2
