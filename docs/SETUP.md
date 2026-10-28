@@ -176,16 +176,16 @@ with a **Revert** button, and it can never turn on real money or raise your loss
 Open the **Autopilot** tab:
 
 1. **Trading rules** (left column), then **Save Rules**. Mine:
-   - **Max loss per trade: 5%**. Each position's starting stop.
-   - **Give back from high: 8%**. Once a trade is up, the stop trails 8% below its best price,
-     so winners keep running with no fixed profit cap.
-   - **How sure Claude must be: 20%**. Lower means more trades; higher means fewer, surer ones.
+   - **Max loss per trade: 7%**. Each position's starting stop.
+   - **Give back from high: 3.5%**. Once a trade is up, the stop trails 3.5% below its best
+     price, so winners keep running with no fixed profit cap but gains are locked in quickly.
+   - **How sure Claude must be: 15%**. Lower means more trades; higher means fewer, surer ones.
 2. Flip **Autopilot** on (top right). The bot now picks trades from every strategy in the
    library that passed its tests, sizes each one by that strategy's last 30 days of results, and
    benches any strategy that keeps losing.
-3. **Invest for Me**: type the amount (mine is all of it, $20,000), choose the max loss for that
-   amount and press **Invest for Me**. CTbot picks the strategies itself, funds them, re-picks
-   weekly (only swapping a pick for one that scores 20% better) and tops them up as cash frees.
+3. **Invest for Me**: type the amount (mine is all of it, $20,000), set **Max loss per strategy**
+   (mine is 15%; older versions call it "Max loss for this amount") and press **Invest for Me**.
+   CTbot picks the strategies itself, funds them, re-picks weekly (only swapping a pick for one that scores 20% better) and tops them up as cash frees.
 4. If the account has less than your limit (for example after losses), **Add paper cash** tops it
    back up. Deposits are recorded and kept out of your P&L.
 
