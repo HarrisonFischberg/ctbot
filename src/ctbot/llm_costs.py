@@ -4,7 +4,7 @@ The decision engine (and the optional debate step) log `response.usage` here; th
 refuses further paid reviews once today's estimated spend reaches MAX_CLAUDE_USD_PER_DAY.
 Prices are Anthropic list prices per million tokens (2026-10); unknown models are priced as
 Opus so the estimate errs high. Cache writes are billed at 1.25x the input price (2x for the
-1-hour TTL), cache reads at a tenth.
+1-hour TTL), cache reads at a tenth (less on the newest models: CACHE_READ).
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ PRICES_PER_M = {  # model: (input, output)
     "claude-fable-5-1": (10.0, 50.0),
 }
 DEFAULT = (5.0, 25.0)
+CACHE_READ = {"claude-opus-5-5": 0.05, "claude-sonnet-5-5": 0.05, "claude-fable-5-1": 0.025}  # else 0.1x input
 
 
 def cost_usd(model: str, usage: Any) -> float:
@@ -33,7 +34,7 @@ def cost_usd(model: str, usage: Any) -> float:
             else getattr(cc, "ephemeral_1h_input_tokens", 0)) or 0
     fresh = get("input_tokens") + 1.25 * get("cache_creation_input_tokens") + 0.75 * hour
     cached = get("cache_read_input_tokens")
-    return (fresh * pin + cached * pin * 0.1 + get("output_tokens") * pout) / 1e6
+    return (fresh * pin + cached * pin * CACHE_READ.get(model, 0.1) + get("output_tokens") * pout) / 1e6
 
 
 def record(path: Path, model: str, usage: Any, purpose: str, now: datetime | None = None) -> float:

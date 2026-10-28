@@ -68,6 +68,14 @@ def test_one_hour_cache_writes_cost_double():
     assert llm_costs.cost_usd("claude-opus-5-5", {**u, "cache_creation": None}) == 5.0  # 5-minute: 1.25x
 
 
+def test_cache_reads_use_each_models_rate():
+    u = {"input_tokens": 0, "output_tokens": 0, "cache_read_input_tokens": 1_000_000}
+    # Pricing page, 2026-10-28: cache hits per MTok
+    for model, usd in {"claude-opus-5-5": 0.20, "claude-sonnet-5-5": 0.10, "claude-fable-5-1": 0.25,
+                       "claude-haiku-5-5": 0.01, "unknown-model": 0.50}.items():
+        assert abs(llm_costs.cost_usd(model, u) - usd) < 1e-9, model
+
+
 def test_debate_adds_two_low_effort_calls_and_never_blocks(tmp_path):
     c = _Client()
     eng = ClaudeDecisionEngine("claude-haiku-5-5", client=c, usage_path=tmp_path / "u.jsonl")
