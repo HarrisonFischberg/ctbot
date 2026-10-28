@@ -278,3 +278,12 @@ def test_observatory_refresh_only_rewrites_changed_cards():
     html = (ROOT / "src" / "ctbot" / "dashboard" / "observatory.html").read_text()
     assert not re.search(r'\$\("\w+"\)\.innerHTML = ', html), "write card HTML with put()"
     assert "setInterval(() => document.hidden || load(), 10000)" in html
+
+
+def test_observatory_styles_stay_cheap_for_safari():
+    # Exchange Floor and Opening Bell are CSS over the same page; Safari repaints blur and fixed backgrounds every scroll frame
+    html = (ROOT / "src" / "ctbot" / "dashboard" / "observatory.html").read_text()
+    for style in ("floor", "bell"):
+        assert f'<option value="{style}">' in html and f':root[data-style="{style}"] {{' in html
+    assert 'if (y === "floor" || y === "bell") document.documentElement.dataset.style = y;' in html
+    assert "backdrop-filter" not in html and "background-attachment" not in html
