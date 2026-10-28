@@ -351,6 +351,10 @@ def binding_limits(state: dict[str, Any], settings: Settings, ideas: dict[str, A
         out.append(f"paused for the day after a losing streak: {', '.join(paused)}")
     if not state["bot"]["running"]:
         out.append("paper bot not running (no heartbeat)" + (" - asleep until the open" if state["bot"].get("asleep_until") else ""))
+    ap = state.get("autopilot") or {}
+    if ap.get("enabled"):  # the pipeline swaps MIN_CLAUDE_CONFIDENCE for the Autopilot floor while it is on
+        out.append(f"Claude confidence floor in use: {ap['min_confidence']:.0%} (Autopilot setting; "
+                   f"MIN_CLAUDE_CONFIDENCE={L['min_claude_confidence']} applies only with the Autopilot off)")
     out.append(f"MIN_CLAUDE_CONFIDENCE={L['min_claude_confidence']}, MIN_AGREEING_STRATEGIES="
                f"{settings.ensemble.min_agreeing_strategies}, MIN_LONG_SCORE={settings.ensemble.min_long_score}")
     return out

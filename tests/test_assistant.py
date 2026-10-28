@@ -124,6 +124,11 @@ def test_context_explains_why_only_n_trades_and_has_no_secrets(d):
     assert lg["warnings_and_errors"][0]["times"] == 2 and "529" in lg["warnings_and_errors"][0]["msg"]
     assert ctx["user_is_looking_at"]["idea"]["claude"]["confidence"] == 0.55
     assert any("entry_mode=manual" in b for b in ctx["binding_limits_now"])
+    assert not any("floor in use" in b for b in ctx["binding_limits_now"])  # autopilot off
+    st = build_state(s, None, NOW)
+    st["autopilot"] = {**st["autopilot"], "enabled": True, "min_confidence": 0.15}
+    on = json.loads(build_context(s, st, NOW))["binding_limits_now"]
+    assert any("floor in use: 15%" in b for b in on)
     blob = json.dumps(ctx)
     assert FAKE_KEY not in blob and "PLANTED" not in blob and "123459999" not in blob
 
