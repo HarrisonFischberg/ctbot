@@ -1,7 +1,8 @@
 # CTbot · Creature Trading Bot
 
-A trading bot you run on your own computer. Pick a strategy, give it an amount of paper money, set
-a max loss and a take-profit, and let it trade. CTbot reads live prices from your own Robinhood
+A paper-trading bot you run on your own computer or a small server. Turn on **Autopilot**, give it
+one amount of paper money and three rules, and it picks the strategies, funds them and trades
+them for you. CTbot reads live prices from your own Robinhood
 account, can ask Claude to review each trade idea, and runs every order through hard risk rules
 first.
 
@@ -14,35 +15,49 @@ Free and open source ([MIT](LICENSE)) by [Rare Creatures](https://rarecreatures.
 no servers of ours, no tracking: your keys and data stay on your machine (or on a server you rent
 yourself, see [Run it on a server](#run-it-on-a-server-recommended-for-all-day-trading)).
 
+**New: Opening Bell.** The dashboard has a new default look: light and blue, a live ticker tape,
+big numbers and a left rail (bottom bar on a phone), in light or dark. The older design is still a
+click away in the style menu.
+
 <p align="center">
-  <img src="docs/images/home.png" alt="CTbot Home screen in dark mode: account value, today's return, cash and other summary tiles, and What you own: QQQ, QLD and IWM with the strategy that bought each, gain or loss and a stop-loss bar" width="790">
+  <img src="docs/images/home.png" alt="CTbot Home in Opening Bell: portfolio value $10,107.59 with today's gain, drawdown and gain since starting, a value chart, account allocation, Bub's take, holdings and running strategies" width="800">
 </p>
 
-| Discover: strategies with simulated 3/6/12-month returns | Invest: amount, max loss, take-profit |
-|---|---|
-| <img src="docs/images/discover.png" alt="Discover tab: strategy cards with past-year simulated returns, worst drop, a small chart against the S&P 500 and Stop buttons on the ones you invested in" width="400"> | <img src="docs/images/invest.png" alt="Invest section of a strategy sheet: $1,000 into Overnight Hold with a 15% max loss and a 20% take-profit, and a plain-English summary" width="400"> |
-| **Your strategies: what each one holds and returns** | **Research: backtests since 2010** |
-| <img src="docs/images/strategies.png" alt="Your strategies table: four strategies with the amount in each, value now, total return, cash waiting for the next buy, limits and Stop buttons" width="400"> | <img src="docs/images/research.png" alt="Research chart: growth of $5,000 since 2010 for the Nasdaq-100 trend, holding QQQ, and the 2x volatility-capped trend, on a log scale" width="400"> |
+### Autopilot: the bot picks, funds and trades the strategies for you
 
-<sub>Screenshots: dark mode with made-up demo data (generated prices and a paper account; no real account). Every number comes from those made-up prices, so none of it is a real result or a promise of anything.</sub>
+| Set three rules, flip it on, give it an amount | Every strategy it may use, and why |
+|---|---|
+| <img src="docs/images/autopilot.png" alt="Autopilot tab: trading rules (max loss per trade 5%, give back from high 8%, how sure Claude must be 20%), Invest for Me with $10,500, the strategy vs Nasdaq backtest chart, latest decisions, running strategies and the strategy library" width="400"> | <img src="docs/images/library.png" alt="Strategy library: 28 strategies trading and 12 benched, each with the reason, such as no practice trades lately or failed its test because results could be luck" width="400"> |
+| **Activity: every idea, what happened and why** | **Dark mode** |
+| <img src="docs/images/activity.png" alt="Activity tab: the bot's trade ideas with what happened to each and what Claude said, then results by strategy" width="400"> | <img src="docs/images/home-dark.png" alt="Home in Opening Bell dark mode" width="400"> |
+
+<sub>Screenshots: Opening Bell with made-up demo data (generated prices and a paper account; no real account). Every number comes from those made-up prices, so none of it is a real result or a promise of anything.</sub>
+
+**Want it running all day like mine, with phone alerts?** Follow
+**[Set up CTbot exactly like mine](docs/SETUP.md)**: a ~$7/month server, a private dashboard on
+your Mac and phone over Tailscale, ntfy phone messages, and Autopilot investing for you, step by
+step.
 
 ## What you get
 
-- **A local dashboard** at `http://127.0.0.1:8787`, in light or dark:
-  - **Home**: account value, what you own (with each stop-loss), a 4-step setup checklist, a
-    portfolio value chart, a stock chart and your strategies.
-  - **Activity**: the bot's trade ideas, results by strategy, safety limits, a watchlist, order
-    history and a live log.
-  - **Autopilot**: switch it on and set two numbers (max loss per trade, and how much of a run-up
-    to give back before selling). CTbot then picks trades from every strategy by itself, with
-    trailing stops and no fixed profit cap, and shows what it trades and why. It learns from its
-    own paper record: each closed trade gets a post-mortem (`data/trade_log.jsonl`), a strategy's
-    size grows or shrinks with its last 30 days of results, a strategy losing over 10+ trades is
-    benched, and the account stops borrowing after a bad day, a drawdown or a QQQ downtrend. Below it: every
-    strategy in plain English with simulated returns (Invest still starts one by hand), each
-    strategy's paper record, growth of $5,000 since 2010, a crash test back to 1999, a no-hindsight
-    (walk-forward) test and the backtest leaderboard.
-  - **Settings**: add your API keys, connect Robinhood, run a health check.
+- **A dashboard** at `http://127.0.0.1:8787` (or privately on your phone, see
+  [SETUP.md](docs/SETUP.md)), in the Opening Bell style by default, light or dark:
+  - **Home**: portfolio value and its chart, account allocation, Bub's take on the market, a
+    4-step setup checklist, holdings (with each stop), running strategies and a stock chart.
+  - **Autopilot**: switch it on and set three rules: max loss per trade, how much of a run-up to
+    give back before selling, and how sure Claude must be before a buy. CTbot then picks trades
+    from every strategy by itself, with trailing stops and no fixed profit cap. **Invest for Me**
+    takes one dollar amount, picks and funds the strategies itself, re-picks weekly and tops them
+    up as cash frees. It learns from its own paper record: each closed trade gets a post-mortem
+    (`data/trade_log.jsonl`), a strategy's size grows or shrinks with its last 30 days of results,
+    a strategy losing over 10+ trades is benched, and the account stops borrowing after a bad day,
+    a drawdown or a QQQ downtrend. Its sections: *Overview* (rules, decisions, what's running),
+    *Strategy library* (every strategy, trading or benched and why), *Testing* (crash test back to
+    1999, a no-hindsight walk-forward test, the comparison books), *Backtests* (growth of $5,000
+    since 2010, the leaderboard) and *Outside traders*.
+  - **Activity**: the bot's trade ideas and what happened to each, results by strategy, what each
+    trade taught, safety limits, trade history, the watchlist and a live log.
+  - **Settings**: add your API keys, connect Robinhood, run a health check, review Bub's changes.
 - **Strategies** you can run alone or together: Nasdaq-100 trend (plain and 2× leveraged), buy the
   dip on index funds, turn of the month, and same-day breakout models. Each is described, with its
   risk level, on the Autopilot tab.
@@ -68,14 +83,15 @@ cp .env.example .env              # optional: you can also add keys in the dashb
 ```
 
 Open `http://127.0.0.1:8787`, go to **Settings**, add your keys and press **Connect Robinhood**.
-Then turn on **Autopilot** (or invest in one strategy below it). The bot trades during US market hours while
+Then open **Autopilot**, set your rules, flip it on and press **Invest for Me** (or invest in one
+strategy from the library). The bot trades during US market hours while
 `./run_ctbot.sh` is running.
 
 ### Run it on a server (recommended for all-day trading)
 
 A laptop sleeps, travels and loses Wi-Fi. For a bot that trades every session, run it on a small
-Linux server instead (a ~$7/month Hetzner or ~$12 DigitalOcean VM works). Everything is in
-[docs/CLOUD_HOSTING.md](docs/CLOUD_HOSTING.md); in short:
+Linux server instead (a ~$7/month Hetzner or ~$12 DigitalOcean VM works). Step by step:
+[docs/SETUP.md](docs/SETUP.md). Every file and timer: [docs/CLOUD_HOSTING.md](docs/CLOUD_HOSTING.md). In short:
 
 - `deploy/setup-server.sh` (Ubuntu 24.04, as root) installs CTbot as systemd services, paper only.
 - `deploy/tailscale.sh` puts the dashboard on your private Tailscale network
@@ -134,7 +150,7 @@ How it fits together: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Assistant
 
-**Bub**, the little creature in the bottom-right corner of every tab, answers questions about what
+**Bub**, the little creature at the bottom of the left rail (bottom bar on a phone), answers questions about what
 the paper bot is doing and why ("Why so few trades today?", "Anything broken?"), in plain language
 with the bot's own numbers, and suggests changes when you ask for them ("Take more trades").
 
