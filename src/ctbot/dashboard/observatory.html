@@ -10,7 +10,8 @@
   try { if (location.pathname === "/" && localStorage.getItem("ctbot.view") === "new") location.replace("/observatory"); } catch (e) {}
   document.addEventListener("click", (e) => { const a = e.target.closest("[data-view]"); if (a) try { localStorage.setItem("ctbot.view", a.dataset.view); } catch (err) {} });
 </script>
-<script>try { const t = localStorage.getItem("ctbot.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<script>try { const t = localStorage.getItem("ctbot.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+  try { const y = localStorage.getItem("ctbot.style"); if (y === "floor" || y === "bell") document.documentElement.dataset.style = y; } catch (e) {}</script>
 <style>
 /* Observatory: deep navy night sky, one lime signal colour, a cool blue for comparisons.
    Fonts are bundled (OFL, served from /fonts) so the page needs no CDN. */
@@ -707,6 +708,164 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
 @media (prefers-reduced-motion: reduce) {
   .bub .body, .bub .eyes, .bub .pupils, .bub .tip, .bm.wait i { animation: none !important; }
   .card.settling, .apsw .track, .apsw .track::after { transition: none; } }
+/* ==== Page styles: <html data-style="floor|bell">, picked from the style menu. Same markup and data as Observatory,
+   own colours and layout. No blur, fixed backgrounds or always-on animation (Safari repaints those every frame). ==== */
+.ticker, .logo { display: none; }
+.viewlink { appearance: none; -webkit-appearance: none; font-family: var(--sans); cursor: pointer;
+  padding-right: 26px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.4'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") right 8px center / 12px no-repeat; }
+.viewlink:focus-visible { outline: 2px solid var(--neon); outline-offset: 2px; }
+:root[data-style] .logo { display: inline-grid; place-items: center; width: 24px; height: 24px; margin-right: 10px; border-radius: 6px; vertical-align: middle;
+  background: var(--lg); color: #fff; font: 700 10px/1 var(--sans); letter-spacing: 0; }
+:root[data-style] .take-art { display: none; }
+:root[data-style] .take p { margin: 12px 0 10px; }
+:root[data-style] .link { color: var(--neon); }
+:root[data-style] .ticker { display: flex; min-width: 0; overflow-x: auto; scrollbar-width: none; font-variant-numeric: tabular-nums; }
+:root[data-style] .ticker::-webkit-scrollbar { display: none; }
+:root[data-style] .ticker:empty { display: none; }
+.tk { white-space: nowrap; }
+.tk b { font-weight: 700; color: var(--ink); }
+.tks { width: 100%; height: 34px; display: block; }
+.tks polyline { fill: none; stroke: currentColor; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.tks polygon { fill: currentColor; opacity: .14; stroke: none; }
+
+/* ---- 04 Exchange Floor: black and amber, tabs across the top, a sparkline ticker row, numbered terminal panels ---- */
+:root[data-style="floor"] {
+  --bg: #050505; --bg-2: #0b0b0c; --panel: #0f0f11; --panel-2: #18181b; --tint: 200, 200, 212;
+  --ink: #f3f3f3; --ink-2: #b4b4ba; --muted: #808088;
+  --neon: #ffad1f; --fill: #ffad1f; --on-fill: #150d00; --on-neon: #150d00; --neon-ink: #ffb93d; --neon-dim: rgba(255, 173, 31, .42); --neon-soft: rgba(255, 173, 31, .12);
+  --blue: #c4c7ce; --blue-soft: rgba(196, 199, 206, .12);
+  --good: #2fd06f; --warn: #ff8a3d; --crit: #ff4d4f; --crit-soft: rgba(255, 77, 79, .13);
+  --grid: rgba(200, 200, 212, .07); --pop: #18181b; --pop-err: #2a1414; --dot-off: #4a4a50; --crit-ink: #ffc9c9; --warn-ink: #ffdcb8;
+  --shadow: none; --glow: none; color-scheme: dark;
+}
+@media (prefers-color-scheme: light) { :root[data-style="floor"]:not([data-theme="dark"]) {
+  --bg: #f3f1eb; --bg-2: #fbfaf7; --panel: #ffffff; --panel-2: #f3f1ea; --tint: 45, 35, 15;
+  --ink: #17140d; --ink-2: #4b4639; --muted: #7a7364;
+  --neon: #b06800; --neon-ink: #935500; --fill: #ffad1f; --on-fill: #1a1000; --on-neon: #fff; --neon-dim: rgba(176, 104, 0, .4); --neon-soft: rgba(255, 173, 31, .18);
+  --blue: #6c707a; --blue-soft: rgba(108, 112, 122, .12);
+  --good: #11823b; --warn: #b4530a; --crit: #c62828; --crit-soft: rgba(198, 40, 40, .09);
+  --grid: rgba(45, 35, 15, .08); --pop: #ffffff; --pop-err: #fdecec; --dot-off: #cac4b6; --crit-ink: #8f1d1d; --warn-ink: #6e3a0a;
+  --shadow: 0 1px 2px rgba(45, 35, 15, .06); color-scheme: light;
+} }
+:root[data-style="floor"][data-theme="light"] {
+  --bg: #f3f1eb; --bg-2: #fbfaf7; --panel: #ffffff; --panel-2: #f3f1ea; --tint: 45, 35, 15;
+  --ink: #17140d; --ink-2: #4b4639; --muted: #7a7364;
+  --neon: #b06800; --neon-ink: #935500; --fill: #ffad1f; --on-fill: #1a1000; --on-neon: #fff; --neon-dim: rgba(176, 104, 0, .4); --neon-soft: rgba(255, 173, 31, .18);
+  --blue: #6c707a; --blue-soft: rgba(108, 112, 122, .12);
+  --good: #11823b; --warn: #b4530a; --crit: #c62828; --crit-soft: rgba(198, 40, 40, .09);
+  --grid: rgba(45, 35, 15, .08); --pop: #ffffff; --pop-err: #fdecec; --dot-off: #cac4b6; --crit-ink: #8f1d1d; --warn-ink: #6e3a0a;
+  --shadow: 0 1px 2px rgba(45, 35, 15, .06); color-scheme: light;
+}
+:root[data-style="floor"] .take { background: var(--panel); color: var(--ink); --ink: inherit; --ink-2: inherit; --muted: inherit; --blue: inherit; --line: inherit; }
+:root[data-style="floor"] :is(.card, .btn, .seg, .seg button, .subnav, .subnav button, .mode-pill, .realm, .viewlink, .tag, .acct) { border-radius: 3px; }
+:root[data-style="floor"] .card { background: var(--panel); }
+:root[data-style="floor"] .brand h1 { color: var(--neon); }
+:root[data-style="floor"] .mode-pill { background: transparent; color: var(--ink); border: 1px solid var(--line-2); text-transform: none; letter-spacing: 0; font: 500 13px var(--sans); }
+:root[data-style="floor"] .mode-pill .ico { color: var(--neon); }
+:root[data-style="floor"] .mode-pill.live { background: var(--crit); color: #fff; border-color: var(--crit); }
+/* panels read like a terminal: 01.PORTFOLIO, 02.ACCOUNT ALLOCATION ... (hidden cards don't count) */
+:root[data-style="floor"] #cards { counter-reset: panel; }
+:root[data-style="floor"] .card > h2 { font: 500 12px/1.3 var(--code); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+:root[data-style="floor"] .card > h2::before { counter-increment: panel; content: counter(panel, decimal-leading-zero) "."; color: var(--muted); margin-right: -10px; }
+:root[data-style="floor"] .card > h2 :is(.count, .own-sum) { font: inherit; color: var(--muted); }
+body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Autopilot reorders its cards with CSS, so numbers would jump */
+:root[data-style="floor"] .phead h2 { font-family: var(--sans); font-weight: 700; letter-spacing: -.02em; }
+:root[data-style="floor"] .tk { display: grid; grid-template-columns: auto minmax(60px, 1fr); column-gap: 14px; align-items: center; flex: 1 0 190px;
+  padding: 10px 18px; border-right: 1px solid var(--line); line-height: 1.25; }
+:root[data-style="floor"] .tk:last-child { border-right: 0; }
+:root[data-style="floor"] .tk > :not(svg) { grid-column: 1; }
+:root[data-style="floor"] .tk b { font-size: 12.5px; }
+:root[data-style="floor"] .tk .px { font: 600 17px var(--sans); }
+:root[data-style="floor"] .tk .tks { grid-column: 2; grid-row: 1 / span 3; }
+@media (min-width: 761px) {
+  /* two header lines plus the ticker; the tabs sit in the first line, next to the name. Nothing here is sticky:
+     a 160px bar would eat a laptop screen */
+  :root[data-style="floor"] { --side: 0px; }
+  :root[data-style="floor"] .wrap { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
+  :root[data-style="floor"] .top { grid-row: 1; position: relative; flex-wrap: wrap; row-gap: 0; padding: 0 18px; }
+  :root[data-style="floor"] .top::after, :root[data-style="floor"] .top::before { content: ""; flex-basis: calc(100% + 36px); margin: 0 -18px; height: 0; border-top: 1px solid var(--line); }
+  :root[data-style="floor"] .top::after { order: 1; } :root[data-style="floor"] .top::before { order: 3; }
+  :root[data-style="floor"] .brand { order: -1; width: 120px; height: 56px; justify-content: flex-start; border-right: 0; }
+  :root[data-style="floor"] :is(.mode-pill, .realm, .mkt) { order: 2; margin: 8px 0; height: 30px; }
+  :root[data-style="floor"] .ticker { order: 4; flex-basis: calc(100% + 36px); margin: 0 -18px; }
+  :root[data-style="floor"] .side { grid-row: 1; grid-column: 1; position: relative; top: auto; z-index: 36; align-self: start; justify-self: start;
+    height: 56px; margin-left: 138px; padding: 0; flex-direction: row; align-items: stretch; gap: 2px; border: 0; background: transparent; }
+  :root[data-style="floor"] .side button[data-tab] { display: flex; align-items: center; gap: 8px; padding: 0 16px; border-radius: 0; font-size: 14px; }
+  :root[data-style="floor"] .side button[data-tab] .ico { width: 18px; height: 18px; }
+  :root[data-style="floor"] .side button[data-tab].on::before { left: 8px; right: 8px; top: auto; bottom: 0; width: auto; height: 2px; border-radius: 0; }
+  :root[data-style="floor"] .side .bub-btn { margin: 9px 0 9px 10px; display: flex; align-items: center; gap: 6px; padding: 0 12px 0 4px; border-radius: 999px; }
+  :root[data-style="floor"] .side .bub-btn .bub { width: 30px; height: 30px; }
+  :root[data-style="floor"] .side .bub-btn .live { display: none; }
+  :root[data-style="floor"] .bubchip { display: none; }  /* Bub sits at the end of the tabs instead */
+  :root[data-style="floor"] main { grid-column: 1; grid-row: 2; padding-top: 14px; }
+  :root[data-style="floor"] .foot-wrap { grid-column: 1; grid-row: 3; }
+}
+@media (min-width: 761px) and (max-width: 1400px) { :root[data-style="floor"] .acct .lbl { display: none; } }
+@media (min-width: 761px) and (max-width: 1000px) { :root[data-style="floor"] .side button[data-tab] { padding: 0 10px; } :root[data-style="floor"] .side button[data-tab] .ico { display: none; } }
+
+/* ---- 06 Opening Bell: bright and blue, a navy rail and ticker tape, the headline cards in navy ---- */
+:root[data-style="bell"] {
+  --bg: #060d1c; --bg-2: #0a1830; --panel: #0c1730; --panel-2: #11203f; --tint: 140, 170, 230;
+  --ink: #eef3fc; --ink-2: #b2bfd6; --muted: #7f8ca5;
+  --neon: #5b95ff; --fill: #2f74ff; --on-fill: #ffffff; --on-neon: #ffffff; --neon-ink: #8ab2ff; --neon-dim: rgba(91, 149, 255, .42); --neon-soft: rgba(91, 149, 255, .14);
+  --blue: #98a3b8; --blue-soft: rgba(152, 163, 184, .14);
+  --good: #34d07a; --warn: #f5b84e; --crit: #ff5a62; --crit-soft: rgba(255, 90, 98, .13);
+  --grid: rgba(140, 170, 230, .08); --pop: #11203f; --pop-err: #2e1820; --dot-off: #4d5a6e; --crit-ink: #ffc9cd; --warn-ink: #f7dfb0;
+  --shadow: 0 8px 24px rgba(0, 0, 0, .2); --glow: none; --navy: #071530;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Helvetica Neue", Arial, sans-serif;
+  --display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Helvetica Neue", Arial, sans-serif;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) { :root[data-style="bell"]:not([data-theme="dark"]) {
+  --bg: #edf1f7; --bg-2: #ffffff; --panel: #ffffff; --panel-2: #f3f6fb; --tint: 15, 35, 75;
+  --ink: #0b1630; --ink-2: #3d4a63; --muted: #66738c;
+  --neon: #1463ff; --fill: #1463ff; --neon-ink: #0f52d6; --neon-dim: rgba(20, 99, 255, .38); --neon-soft: rgba(20, 99, 255, .09);
+  --blue: #8a94a6; --blue-soft: rgba(138, 148, 166, .14);
+  --good: #0c9a4b; --warn: #b26a00; --crit: #e0242f; --crit-soft: rgba(224, 36, 47, .08);
+  --grid: rgba(15, 35, 75, .08); --pop: #ffffff; --pop-err: #fdecec; --dot-off: #c3cad6; --crit-ink: #8f1d1d; --warn-ink: #6e450a;
+  --shadow: 0 1px 2px rgba(10, 25, 60, .06), 0 4px 14px rgba(10, 25, 60, .05); color-scheme: light;
+} }
+:root[data-style="bell"][data-theme="light"] {
+  --bg: #edf1f7; --bg-2: #ffffff; --panel: #ffffff; --panel-2: #f3f6fb; --tint: 15, 35, 75;
+  --ink: #0b1630; --ink-2: #3d4a63; --muted: #66738c;
+  --neon: #1463ff; --fill: #1463ff; --neon-ink: #0f52d6; --neon-dim: rgba(20, 99, 255, .38); --neon-soft: rgba(20, 99, 255, .09);
+  --blue: #8a94a6; --blue-soft: rgba(138, 148, 166, .14);
+  --good: #0c9a4b; --warn: #b26a00; --crit: #e0242f; --crit-soft: rgba(224, 36, 47, .08);
+  --grid: rgba(15, 35, 75, .08); --pop: #ffffff; --pop-err: #fdecec; --dot-off: #c3cad6; --crit-ink: #8f1d1d; --warn-ink: #6e450a;
+  --shadow: 0 1px 2px rgba(10, 25, 60, .06), 0 4px 14px rgba(10, 25, 60, .05); color-scheme: light;
+}
+/* navy surfaces in both themes: the rail, the first header line, and the three headline cards */
+:root[data-style="bell"] :is(.side, .brand, .ticker, .top > .acct, .bubchip, #styleSel, .top > .ibtn, .drawer-wrap > .ibtn, .avatar, .pv, .take, .runs) {
+  --ink: #eef3fc; --ink-2: #b2bfd6; --muted: #8b98b2; --tint: 180, 200, 240; --line: rgba(180, 200, 240, .12); --line-2: rgba(180, 200, 240, .22);
+  --neon: #6ea0ff; --neon-ink: #8ab2ff; --neon-soft: rgba(110, 160, 255, .16); --fill: #2f74ff; --on-fill: #fff; --good: #3ddc84; --crit: #ff6b72;
+  --grid: rgba(180, 200, 240, .09); --panel: #0c1d40; --panel-2: #12264d; --bg-2: var(--navy); color: var(--ink); }
+:root[data-style="bell"] :is(.pv, .take, .runs) { background: linear-gradient(180deg, #0f2550, #0a1a3a 160px), #0a1a3a; border-color: transparent; }
+:root[data-style="bell"] .card { border-radius: 12px; }
+:root[data-style="bell"] .card > h2 { font-weight: 700; font-size: 18px; letter-spacing: -.01em; }
+:root[data-style="bell"] .side { background: var(--navy); border-right: 0; }
+:root[data-style="bell"] .side button[data-tab].on { color: #fff; background: rgba(110, 160, 255, .16); }
+:root[data-style="bell"] :is(.brand, .top) { background: var(--navy); }
+:root[data-style="bell"] .brand h1 { font: 800 26px/1 var(--display); letter-spacing: -.02em; color: #fff; }
+:root[data-style="bell"] .mode-pill { text-transform: none; letter-spacing: 0; font: 600 13px var(--sans); }
+:root[data-style="bell"] .phead h2 { font: 800 56px/1 var(--display); letter-spacing: -.03em; }
+:root[data-style="bell"] .pv-big .val { font-family: var(--display); font-weight: 800; letter-spacing: -.03em; }
+:root[data-style="bell"] .seg button.on, :root[data-style="bell"] .subnav button.on { border-radius: 6px; }
+:root[data-style="bell"] .ticker { column-gap: 22px; padding: 0 18px; font-size: 13px; color: var(--ink-2); flex-wrap: wrap; height: 56px; overflow: hidden; }
+:root[data-style="bell"] .tk { display: inline-flex; gap: 7px; line-height: 56px; }  /* a stock that doesn't fit wraps out of sight, never half-cut */
+:root[data-style="bell"] .tk .px { color: var(--ink); }
+@media (min-width: 761px) {
+  /* header: navy line with the name, ticker tape and menus; a white line under it for mode and market */
+  :root[data-style="bell"] { --top: 104px; }
+  :root[data-style="bell"] .top { flex-wrap: wrap; align-content: flex-start; row-gap: 0;
+    background: linear-gradient(var(--navy), var(--navy)) 0 0 / var(--side) 100% no-repeat, linear-gradient(var(--navy) 56px, var(--bg-2) 56px); }
+  :root[data-style="bell"] .top::after { content: ""; order: 1; flex-basis: 100%; height: 0; }
+  :root[data-style="bell"] .brand { order: -2; height: 56px; }
+  :root[data-style="bell"] .ticker { order: -1; flex: 1 1 0; align-self: stretch; }
+  :root[data-style="bell"] .top .spacer { display: none; }
+  :root[data-style="bell"] :is(.mode-pill, .realm, .mkt) { order: 2; margin: 7px 0; height: 34px; }
+  :root[data-style="bell"] .mode-pill { margin-left: 18px; }
+}
+@media (max-width: 760px) { :root[data-style] .ticker { display: none; } .viewlink { max-width: 100px; padding-left: 8px; text-overflow: ellipsis; } .mode-pill .ico { display: none; } }
 </style>
 </head>
 <body>
@@ -743,6 +902,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
 <div class="wrap">
   <header class="top">
     <div class="brand"><h1>CTbot</h1></div>
+    <div class="ticker" id="ticker" aria-label="Your stocks today"></div>
     <span class="mode-pill" id="modePill" title="Real prices, pretend money"><svg class="ico"><use href="#i-pad"/></svg><span>Practice trading</span></span>
     <span class="realm" id="realMoney" role="img" aria-label="Real-money trading is off">Real money <span class="sw"><i></i><span>Off</span></span></span>
     <div class="mkt" id="mkt"><b><span class="dot"></span><span id="mktWord">Market</span></b><small id="sub">connecting…</small></div>
@@ -757,7 +917,8 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
   <g class="eyes"><ellipse class="eye" cx="25" cy="36.5" rx="4" ry="4.6"/><ellipse class="eye" cx="39" cy="36.5" rx="4" ry="4.6"/></g>
   <g class="pupils"><circle class="glint" cx="26.2" cy="34.8" r="1.3"/><circle class="glint" cx="40.2" cy="34.8" r="1.3"/></g>
   <path d="M17.5 21.5a19 19 0 0 1 10-7" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="2.6" stroke-linecap="round"/></g></svg>Bub</button>
-    <a class="viewlink" href="/" data-view="classic" title="Back to the classic view (switch again any time)">Classic view</a>
+    <select class="viewlink" id="styleSel" aria-label="Page style" title="Page style (remembered in this browser)">
+      <option value="classic">Classic</option><option value="observatory">Observatory</option><option value="floor">Exchange Floor</option><option value="bell">Opening Bell</option></select>
     <button class="ibtn" type="button" id="theme" aria-label="Theme"><svg class="ico"><use href="#i-sun"/></svg></button>
     <div class="drawer-wrap">
       <button class="ibtn" type="button" id="drawerBtn" aria-expanded="false" aria-controls="drawer" aria-label="Drawer: closed cards" title="Drawer: cards you closed"><svg class="ico"><use href="#i-cards"/></svg><span class="dcount" id="drawerCount">0</span></button>
@@ -1704,6 +1865,40 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
     if ($("pxSym").value.trim().toUpperCase() !== pxSym) $("pxForm").requestSubmit();
   });
 
+  // ---- page style: Observatory (default), Exchange Floor or Opening Bell. Same page, own CSS; Classic is the other page ----
+  const styleSel = $("styleSel");
+  styleSel.value = document.documentElement.dataset.style || "observatory";
+  styleSel.addEventListener("change", () => {
+    const v = styleSel.value;
+    if (v === "classic") { try { localStorage.setItem("ctbot.view", "classic"); } catch (e) {} location.href = "/"; return; }
+    if (v === "observatory") delete document.documentElement.dataset.style; else document.documentElement.dataset.style = v;
+    try { localStorage.setItem("ctbot.style", v); } catch (e) {}
+    if (S) renderTicker();
+    window.dispatchEvent(new Event("resize"));  // the charts redraw at their new width
+  });
+  // ticker strip (the two new styles): your biggest holdings' day moves; Exchange Floor adds today's sparkline
+  let tkBars = {}, tkAt = 0;
+  function tkSpark(c) {
+    if (!c || c.length < 2) return "";
+    const lo = Math.min(...c), hi = Math.max(...c), W = 90, H = 30, k = dir(c[c.length - 1] - c[0]);
+    const pts = c.map((v, i) => `${(i / (c.length - 1) * W).toFixed(1)},${(H - 1 - (v - lo) / ((hi - lo) || 1) * (H - 2)).toFixed(1)}`).join(" ");
+    return `<svg class="tks ${k}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,${H} ${pts} ${W},${H}"/><polyline points="${pts}"/></svg>`;
+  }
+  function renderTicker() {
+    const y = document.documentElement.dataset.style;
+    const P = y ? (S.positions || []).slice().sort((a, b) => b.market_value - a.market_value).slice(0, 6) : [];
+    put($("ticker"), P.map((p) => `<span class="tk"><b>${esc(p.symbol)}</b><span class="px">${usd(p.last ?? p.avg_cost)}</span>` +
+      `<span class="${dir(p.day_change_pct ?? 0)}">${sgnPct(p.day_change_pct)}</span>${y === "floor" ? tkSpark(tkBars[p.symbol]) : ""}</span>`).join(""));
+    if (y === "floor" && P.length && Date.now() - tkAt > 120000) { tkAt = Date.now(); loadTkBars(P.map((p) => p.symbol)); }
+  }
+  async function loadTkBars(syms) {  // /api/bars caches each symbol for a minute, so this is at most a few broker reads
+    await Promise.all(syms.map(async (s) => {
+      try { const r = await fetch(`/api/bars?symbol=${encodeURIComponent(s)}&span=1d`, { cache: "no-store" }); if (r.ok) tkBars[s] = ((await r.json()).bars || []).map((b) => b.c); } catch (e) {}
+    }));
+    renderTicker();
+  }
+  const logo = (sym) => `<span class="logo" style="--lg:${COLORS[[...sym].reduce((h, ch) => h + ch.charCodeAt(0), 0) % COLORS.length]}" aria-hidden="true">${esc(sym.slice(0, 2))}</span>`;
+
   // ---- tables ----------------------------------------------------------------
   const openPos = new Set();  // holdings whose detail row is open
   function renderPositions() {
@@ -1725,7 +1920,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
         const run = p.model ? runOf(p.model) : null;
         const why = p.model ? plainOf(p.model.split(",")[0]).tagline || "" : "";
         const sn = p.model ? stratNames(p.model) : "";
-        return `<tr class="pos" data-pos="${esc(p.symbol)}" aria-expanded="${open}"><td class="sym big">${esc(p.symbol)}</td>
+        return `<tr class="pos" data-pos="${esc(p.symbol)}" aria-expanded="${open}"><td class="sym big">${logo(p.symbol)}${esc(p.symbol)}</td>
           <td><span title="${esc(STOCKS[p.symbol] || "")}">${esc((STOCKS[p.symbol] || "").replace(/ \(.*\)$/, "") || "—")}</span></td>
           <td>${p.model ? `<button class="linkish who" type="button" data-detail="${esc(p.model.split(",")[0])}" title="${esc(sn + (why ? ": " + why : ""))}">${esc(sn.split(" + ").map(brief).join(" + "))}</button>${run ? "" : ` <span class="tag off" title="You're not invested in this strategy any more. The bot still sells this stock on the strategy's rules.">leftover</span>`}` : `<span class="lm">you bought it by hand</span>`}</td>
           <td class="r">${qty(p.quantity)}</td><td class="r">${p.last == null ? "—" : usd(p.last)}</td><td class="r">${usd(p.market_value)}</td>
@@ -2568,7 +2763,7 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
     toast(j.enabled ? `Autopilot on: max loss ${pct(j.max_loss_pct, 1)}, give-back ${pct(j.giveback_pct, 1)}, Claude must be ${pct(j.min_confidence, 0)} sure. The bot picks it up next cycle.` : "Autopilot off");
   });
   function renderAll() {
-    renderChrome(); renderAutopilot(); renderVariants(); renderPortfolio(); renderAlloc(); renderIdeas(); renderChart(); renderLimits(); renderPositions();
+    renderChrome(); renderTicker(); renderAutopilot(); renderVariants(); renderPortfolio(); renderAlloc(); renderIdeas(); renderChart(); renderLimits(); renderPositions();
     renderWatchlist(); renderFills(); renderStrategies(); renderLog(); renderC2(); renderModels(); renderPostmortems(); renderThoughts(); renderFilterScore(); renderLab();
     renderRuns(); renderCatalog(); renderCompare(); renderStressWF(); renderSteps(); applySub();
     loadPx();
