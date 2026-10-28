@@ -139,8 +139,9 @@ def test_server_is_read_only_and_rejects_foreign_hosts():
             assert status(urllib.request.Request(base + "/api/pause", data=b'{"paused": false}', method="POST",
                           headers={"Content-Type": "application/json", "X-Ctbot-Token": token})) == 200
             assert not (d / "HALT").exists()
-            # The new Observatory view is served beside the classic page, with the same token
-            assert token in urllib.request.urlopen(base + "/observatory").read().decode()
+            # The styled page (also at the old /observatory link) and the classic page share the token
+            for page in ("/observatory", "/classic"):
+                assert token in urllib.request.urlopen(base + page).read().decode()
             queued = (d / "paper_manual_orders.jsonl").read_text().splitlines()
             assert len(queued) == 1 and json.loads(queued[0])["notional"] == 50.0
         finally:
