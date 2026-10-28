@@ -653,9 +653,9 @@ main:focus { outline: none; }
       <form class="ap-form" id="autoForm">
         <label>Up to <span class="ap-in">$<input type="number" id="autoAmt" min="10" step="1" required></span>
           <span class="lm" id="autoNote">the bot picks the best strategies in the library, splits this between them, keeps them funded and re-picks every week</span></label>
-        <label>Max loss <select id="autoLoss"><option value="0.1">10%</option><option value="0.15" selected>15%</option>
+        <label>Max loss per strategy <select id="autoLoss"><option value="0.1">10%</option><option value="0.15" selected>15%</option>
           <option value="0.2">20%</option><option value="0.25">25%</option></select>
-          <span class="lm">if a strategy is down this much in total, the bot sells it and stops it</span></label>
+          <span class="lm">if one strategy is down this much of its own share, the bot sells it and stops it</span></label>
         <button class="btn solid" type="submit" id="autoGo">Invest for me</button>
       </form>
       <div class="empty-row" id="topup" hidden><p id="topupText"></p><button class="btn" type="button" id="topupGo">Add paper cash</button></div>
