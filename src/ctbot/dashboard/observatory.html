@@ -1049,8 +1049,9 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
       <form class="ap-form" id="autoForm">
         <label class="money"><span aria-hidden="true">$</span><input type="text" inputmode="decimal" id="autoAmt" required autocomplete="off" aria-label="Amount to invest, in dollars"></label>
         <p class="ap-note" id="autoNote">Deploy across approved strategies.</p>
-        <label class="ap-row wide">Max loss for this amount <select class="sel" id="autoLoss"><option value="0.1">10%</option><option value="0.15" selected>15%</option>
+        <label class="ap-row wide">Max loss per strategy <select class="sel" id="autoLoss"><option value="0.1">10%</option><option value="0.15" selected>15%</option>
           <option value="0.2">20%</option><option value="0.25">25%</option></select></label>
+        <p class="ap-note">Each strategy the bot picks gets its own share of the amount. If one is down this much of its share, the bot sells it and stops it.</p>
         <button class="btn solid big" type="submit" id="autoGo">Invest for Me</button>
       </form>
       <p class="ap-note" id="autoOn" hidden><span id="autoOnText"></span> <button class="linkish u" type="button" id="autoOff">Turn off Invest for Me</button></p>
@@ -2790,7 +2791,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
       <p class="dp">Every trade still keeps its max loss and trailing stop. Press Save Rules to use a new value.</p>`],
     give: ["Give back from high", `<p class="dp">Once a stock rises, the bot sells it if it falls this much from its highest price. Press Save Rules to use a new value.</p>`],
     invest: ["Invest for Me", `<p class="dp">Type one amount. The bot picks the best strategies in the library, splits this between them, keeps them funded and re-picks every week.</p>
-      <p class="dp">Max loss: if a strategy is down this much in total, the bot sells it and stops it. Practice money only.</p>`],
+      <p class="dp">Max loss per strategy: if one strategy is down this much of its own share, the bot sells it and stops it. It is not a limit on the whole amount, and each single trade still keeps its max loss per trade. Practice money only.</p>`],
   };
   document.addEventListener("click", (e) => {
     if (!(e.target instanceof Element)) return;
