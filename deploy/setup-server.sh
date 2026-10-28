@@ -2,6 +2,7 @@
 # Set up (or update) CTbot on a fresh Ubuntu 24.04 server. Run as root:
 #   bash setup-server.sh            first run: packages, ctbot user, deploy key, clone, venv, units
 #   bash setup-server.sh            again after adding the deploy key, and any time to update
+#   CTBOT_REPO=https://github.com/<you>/ctbot.git bash setup-server.sh   public clone, no deploy key
 # It never copies keys or the Robinhood sign-in: you put .env in place and sign in yourself
 # (docs/CLOUD_HOSTING.md). It starts the bot only once both exist. Paper only.
 set -euo pipefail
@@ -34,7 +35,9 @@ if ! ufw status | grep -q "Status: active"; then
   ufw --force enable >/dev/null
 fi
 
-if [ ! -d "$APP/.git" ]; then
+if [ ! -d "$APP/.git" ] && [[ $REPO == https://* ]]; then
+  as_ctbot git clone --branch "$BRANCH" "$REPO" "$APP"  # a public repo needs no key to read
+elif [ ! -d "$APP/.git" ]; then
   KEY=$HOME_DIR/.ssh/ctbot_deploy
   if [ ! -f "$KEY" ]; then
     as_ctbot ssh-keygen -q -t ed25519 -N "" -C "ctbot-server-deploy" -f "$KEY"
