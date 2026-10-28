@@ -29,6 +29,7 @@ open in your browser cannot submit clicks or change keys. Stop the server with C
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import logging
 import os
@@ -404,6 +405,11 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
         def _send(self, status: int, body: bytes, ctype: str) -> None:
             self.send_response(status)
             self.send_header("Content-Type", ctype)
+            self.send_header("Vary", "Accept-Encoding")
+            if len(body) > 1024 and ctype.startswith(("text/", "application/json")) \
+                    and "gzip" in (self.headers.get("Accept-Encoding") or ""):
+                body = gzip.compress(body, 6)  # the page and /api/state shrink ~5-10x over Tailscale
+                self.send_header("Content-Encoding", "gzip")
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")

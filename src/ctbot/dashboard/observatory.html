@@ -83,14 +83,17 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); -webkit-font-smoothing: antialiased; }
-body { min-height: 100vh; background: var(--glow), var(--bg); background-attachment: fixed; }
+/* the glow sits on its own fixed layer: a fixed body background repaints the whole page on every scroll frame */
+body { min-height: 100vh; background: transparent; }
+body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: var(--glow); }
 .num, .mono { font-variant-numeric: tabular-nums; }
 .ico { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 
 /* ---- frame: top bar, icon sidebar, content ---- */
 .wrap { display: grid; grid-template-columns: var(--side) minmax(0, 1fr); grid-template-rows: var(--top) auto; min-height: 100vh; }
+/* no backdrop blur: Safari re-blurs a sticky bar on every scroll frame, and at this opacity it barely showed */
 .top { grid-column: 1 / -1; position: sticky; top: 0; z-index: 35; display: flex; align-items: center; gap: 14px; padding: 0 18px 0 0;
-  background: color-mix(in srgb, var(--bg-2) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  background: color-mix(in srgb, var(--bg-2) 97%, transparent); border-bottom: 1px solid var(--line); }
 .brand { width: var(--side); align-self: stretch; display: flex; align-items: center; justify-content: center; border-right: 1px solid var(--line); flex: none; }
 .brand h1 { margin: 0; font: 700 25px/1 var(--display); letter-spacing: .01em; }
 .mode-pill { display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; height: 34px; border-radius: 6px; background: var(--fill); color: var(--on-fill);
@@ -602,13 +605,11 @@ code { font: 12px var(--code); background: rgba(var(--tint), .1); padding: 1px 5
 .bub .glint { fill: rgba(255, 255, 255, .7); }
 .bub .tip { fill: var(--fill); }
 .bub .body, .bub .eyes, .bub .pupils, .bub .tip { transform-box: fill-box; transform-origin: center; }
-.bub .body { animation: bub-bob 3.2s ease-in-out infinite; }
-.bub .eyes { animation: bub-blink 5.5s infinite; }
-.bub-btn.thinking .bub .body, .bub.thinking .body { animation-duration: .9s; }
+/* Bub moves only while thinking: an always-on animation inside an SVG re-lays out the whole page every frame */
+.bub-btn.thinking .bub .body, .bub.thinking .body { animation: bub-bob .9s ease-in-out infinite; }
 .bub-btn.thinking .bub .pupils, .bub.thinking .pupils { animation: bub-look 1.2s ease-in-out infinite; }
 .bub-btn.thinking .bub .tip, .bub.thinking .tip { animation: bub-tip .6s ease-in-out infinite alternate; }
 @keyframes bub-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
-@keyframes bub-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
 @keyframes bub-look { 0%, 100% { transform: translate(-1.5px, 0); } 50% { transform: translate(1.5px, 0); } }
 @keyframes bub-tip { from { transform: scale(1); } to { transform: scale(1.5); } }
 .bub-panel { position: fixed; left: calc(var(--side) + 14px); bottom: 14px; width: min(410px, calc(100vw - 32px)); height: min(640px, calc(100vh - var(--top) - 28px));
@@ -1128,7 +1129,8 @@ body[data-tab="trading"] .runs .link, body:not([data-tab="trading"]) .runs .ap-o
   const arrow = (v) => v > 1e-9 ? "▲" : v < -1e-9 ? "▼" : "■";
   const qty = (v) => v == null ? "—" : Number(v).toLocaleString("en-US", { maximumFractionDigits: 6 });
   const ET = "America/New_York";
-  const fmtTime = (iso) => { if (!iso) return "—"; const d = new Date(iso); return d.toLocaleString("en-US", { timeZone: ET, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) + " ET"; };
+  const TIME_FMT = new Intl.DateTimeFormat("en-US", { timeZone: ET, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });  // one formatter: toLocaleString builds a new one per call
+  const fmtTime = (iso) => { const d = new Date(iso); return iso && !isNaN(d) ? TIME_FMT.format(d) + " ET" : "—"; };
 
   // What each stock is, in a few words (config/universe.txt plus a few common extras).
   const STOCKS = {
