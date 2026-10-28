@@ -50,7 +50,7 @@ from ctbot.dashboard.last_quotes import SessionQuotes
 from ctbot.dashboard.state import _read_history, build_state
 
 INDEX = Path(__file__).with_name("index.html")
-PAGES = {"/": INDEX, "/observatory": INDEX.with_name("observatory.html")}  # classic view, and the new one to flip to
+PAGES = {"/": INDEX.with_name("observatory.html"), "/observatory": INDEX.with_name("observatory.html"), "/classic": INDEX}  # styled page, old link, classic
 log = logging.getLogger(__name__)
 
 

@@ -20,7 +20,7 @@ cd path/to/ctbot
 | Everything at once: dashboard + paper bot (Ctrl+C stops both) | `./run_ctbot.sh` |
 | Paper bot only | `.venv/bin/ctbot-paper --loop --interval 300` |
 | Dashboard only | `.venv/bin/ctbot-dashboard` then open http://127.0.0.1:8787 |
-| New Observatory view | open http://127.0.0.1:8787/observatory, or press **New view** on the dashboard. Its style menu picks Observatory, Exchange Floor (black and amber) or Opening Bell (light and blue), or Classic to flip back; the choice is remembered per browser |
+| Dashboard styles | http://127.0.0.1:8787/ opens in Opening Bell. The style menu at the top picks Opening Bell, Exchange Floor, Observatory or Classic (at /classic); the choice is remembered per browser |
 | Pre-open health check | `.venv/bin/ctbot-preflight` |
 | Premarket plan: trade or no-trade today, and why | `.venv/bin/ctbot-dayplan` |
 | Stop all new entries now (exits still run) / resume | `touch data/HALT` / `rm data/HALT` |
