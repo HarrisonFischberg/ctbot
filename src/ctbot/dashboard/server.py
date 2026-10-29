@@ -455,26 +455,30 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
             return self._send(404, b"not found", "text/plain")
 
         def do_POST(self):  # noqa: N802 (http.server API)
-            if self.headers.get("Host") not in allowed_hosts:
-                return self._send(403, b"forbidden", "text/plain")
-            origin = self.headers.get("Origin")
-            if origin is not None and origin not in allowed_origins:
-                return self._send(403, b"forbidden origin", "text/plain")
-            if not secrets.compare_digest(self.headers.get("X-Ctbot-Token", ""), token):
-                return self._send(403, b"bad token", "text/plain")
-            path = self.path.split("?", 1)[0]
-            route = routes.get(path)
-            if route is None:
-                return self._send(404, b"not found", "text/plain")
-            if "application/json" not in (self.headers.get("Content-Type") or ""):
-                return self._send(415, b"json only", "text/plain")
             try:
                 length = int(self.headers.get("Content-Length") or 0)
             except ValueError:
                 length = 0
-            if not 0 < length <= (8192 if path == "/api/assistant/chat" else 4096):  # chat: room for UTF-8
+
+            def reject(code: int, msg: bytes):
                 self.rfile.read(min(max(length, 0), 1 << 20))  # unread bytes would reset the connection
-                return self._send(413, b"bad length", "text/plain")
+                return self._send(code, msg, "text/plain")
+
+            if self.headers.get("Host") not in allowed_hosts:
+                return reject(403, b"forbidden")
+            origin = self.headers.get("Origin")
+            if origin is not None and origin not in allowed_origins:
+                return reject(403, b"forbidden origin")
+            if not secrets.compare_digest(self.headers.get("X-Ctbot-Token", ""), token):
+                return reject(403, b"bad token")
+            path = self.path.split("?", 1)[0]
+            route = routes.get(path)
+            if route is None:
+                return reject(404, b"not found")
+            if "application/json" not in (self.headers.get("Content-Type") or ""):
+                return reject(415, b"json only")
+            if not 0 < length <= (8192 if path == "/api/assistant/chat" else 4096):  # chat: room for UTF-8
+                return reject(413, b"bad length")
             try:
                 body = json.loads(self.rfile.read(length))
             except json.JSONDecodeError:
