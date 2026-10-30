@@ -68,10 +68,11 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
   `data/variants/<name>/`; `data/HALT` stops entries in all of them. The Autopilot page's *Settings
   test* card and `.venv/bin/ctbot-variants` compare them. Edit the file and restart the bot to change
   them; delete a folder to restart that account; `enabled = false` turns them off.
-- **Strategy library growth**: `ctbot.library` adds 12 published rule families (52-week high,
+- **Strategy library growth**: `ctbot.library` adds 15 published rule families (52-week high,
   channel breakout, pullback, Bollinger dip, NR7, gap-down reversal, golden cross, MACD, three down
-  days, volume breakout, relative strength, RSI(2)) on two universes (index/sector funds, 60 large
-  caps): 24 watch-only entries named `lib_<family>_<universe>`. `.venv/bin/ctbot-library-research`
+  days, volume breakout, relative strength, RSI(2), and three volatility rules: squeeze breakout,
+  volatility-scaled dip, calm uptrend) on two universes (index/sector funds, 60 large
+  caps): 30 watch-only entries named `lib_<family>_<universe>`. `.venv/bin/ctbot-library-research`
   backtests all of them with the live exits (next-open fills, 2×ATR starting stop capped at 8%, 8%
   trailing stop, longest hold), logs every trial in `data/research/trials.jsonl`, and writes
   `data/research/library_report.json`. The autopilot trades an entry only if that report admits it
@@ -127,7 +128,7 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
 | Stock ranking model: walk-forward vs SPY, equal weight, momentum (dev + validation) | `.venv/bin/ctbot-rank-research` |
 | Score the locked holdout once, after choosing | `.venv/bin/ctbot-rank-research --holdout` |
 | Strategy library backtest: which `lib_*` entries the autopilot may trade | `.venv/bin/ctbot-library-research` |
-| Strategy factory: 864 candidates backtested, kept only past PBO, BH, Deflated Sharpe and 3x costs; the `factory` paper book trades the live list (runs nightly after the close) | `.venv/bin/ctbot-factory` (`--universe etfs` for a quick run) |
+| Strategy factory: 1,080 candidates backtested, kept only past PBO, BH, Deflated Sharpe and 3x costs; the `factory` paper book trades the live list (runs nightly after the close) | `.venv/bin/ctbot-factory` (`--universe etfs` for a quick run) |
 | Compare the side-by-side paper books | `.venv/bin/ctbot-variants` |
 | Tests | `.venv/bin/pytest -q` |
 | Known-vulnerability scan of installed packages | `.venv/bin/pip-audit --skip-editable` |

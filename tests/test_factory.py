@@ -23,7 +23,7 @@ def _panel(n, syms, start="2015-01-01", seed=3):
 
 def test_grid_has_hundreds_of_distinct_candidates():
     names = [c["name"] for c in fy.candidates()]
-    assert len(names) == len(set(names)) == 864
+    assert len(names) == len(set(names)) == 1080
 
 
 @pytest.mark.parametrize("filt", [f for f in fy.FILTERS if fy.FILTERS[f]])

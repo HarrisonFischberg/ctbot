@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 
 QUOTES_PER_CALL = 20
 HISTORICALS_PER_CALL = 10
-DAILY_HISTORY_CALENDAR_DAYS = 400  # ~275 trading days; enough for every price strategy
+DAILY_HISTORY_CALENDAR_DAYS = 800  # ~550 trading days: the volatility rules rank today against a year of EWMA vol
 BACKFILL_CALENDAR_DAYS = 10  # rebuild missing recent daily bars from 5-minute bars this far back
 
 CallMany = Callable[[list[tuple[str, dict[str, Any]]]], list[dict[str, Any]]]

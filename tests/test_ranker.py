@@ -13,7 +13,7 @@ import pytest
 from ctbot.research import factors as fx
 from ctbot.research import ranker as rk
 from ctbot.research.registry import HoldoutLocked, Registry
-from ctbot.research.validation import benjamini_hochberg, pbo
+from ctbot.research.validation import benjamini_hochberg, pbo, spa_pvalue
 
 
 def synthetic_panel(n: int = 30, days: int = 1500, signal: float = 0.0008, seed: int = 7) -> dict[str, pd.DataFrame]:
@@ -165,6 +165,8 @@ def test_pbo_and_fdr():
     assert pbo(skilled)["pbo"] < 0.05
     keep = benjamini_hochberg({"a": 0.001, "b": 0.02, "c": 0.4, "d": 0.9}, q=0.10)
     assert keep == {"a": True, "b": True, "c": False, "d": False}
+    assert spa_pvalue(noise - noise.mean(axis=0)) > 0.2  # the best of 12 zero-mean trials is luck
+    assert spa_pvalue(skilled) < 0.05
 
 
 def test_lab_lag_delays_execution_by_one_close():

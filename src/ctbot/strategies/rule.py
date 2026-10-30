@@ -53,7 +53,7 @@ class RuleStrategy:
             if sym != "SPY" and sym not in ctx.universe:
                 continue
             try:
-                bars = [b for b in ctx.market_data.daily_bars(sym, 300) if b.ts.date() < ctx.today]
+                bars = [b for b in ctx.market_data.daily_bars(sym, 520) if b.ts.date() < ctx.today]
             except Exception:  # noqa: BLE001
                 continue
             if len(bars) >= 260:

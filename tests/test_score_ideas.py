@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 from ctbot.models import Bar
-from ctbot.research.score_ideas import score_idea, summarize
+from ctbot.research.score_ideas import calibration, score_idea, summarize
 
 T0 = datetime(2026, 10, 13, 15, tzinfo=timezone.utc)  # 11:00 ET
 
@@ -37,3 +37,11 @@ def test_pending_when_exit_not_cached_and_summary():
     summ = summarize([{"model": "orb", "approved": True, "net_ret": 0.01},
                       {"model": "orb", "approved": False, "net_ret": -0.02}])
     assert summ["orb"]["approved"]["n"] == 1 and round(summ["all"]["rejected"]["avg_bps"]) == -200
+
+
+def test_calibration_buckets_stated_confidence_against_wins():
+    s = [{"confidence": 0.25, "net_ret": 0.01}, {"confidence": 0.28, "net_ret": -0.01},
+         {"confidence": 1.0, "net_ret": 0.02}, {"confidence": None, "net_ret": 0.05}]
+    lo, hi = calibration(s)
+    assert (lo["from"], lo["n"], lo["win_rate"], round(lo["stated"], 3)) == (0.2, 2, 0.5, 0.265)
+    assert (hi["from"], hi["n"], hi["win_rate"]) == (0.9, 1, 1.0)  # 1.0 lands in the top bucket
