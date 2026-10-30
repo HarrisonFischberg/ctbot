@@ -154,6 +154,10 @@ class Settings:
         return self.paper_ledger_path.with_name("autopilot.json")
 
     @property
+    def trading_modes_path(self) -> Path:  # Trading tab: QQQ gauge, aggressive day trading (ctbot.trading_modes)
+        return self.paper_ledger_path.with_name("trading_modes.json")
+
+    @property
     def ideas_path(self) -> Path:
         return self.paper_ledger_path.with_name("ideas.jsonl")
 

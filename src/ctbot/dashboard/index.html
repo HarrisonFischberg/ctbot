@@ -664,6 +664,27 @@ main:focus { outline: none; }
       <div id="apDecisions" class="xscroll"></div>
     </div>
 
+    <div data-tab="trading" class="card span-12">
+      <h2>Trading modes <span class="count" id="tmMeta"></span></h2>
+      <form class="ap-form" id="tmForm">
+        <label class="ap-switch"><input type="checkbox" id="tmQqq"> <b>QQQ as market gauge</b></label>
+        <p class="lm">On: while QQQ is under its 50-day average, new buys use only cash on hand (no borrowing). The other pull-back rules (down on the day, below the best) don't change.</p>
+        <p class="alert warn" id="tmQqqWarn" hidden><span class="ic">△</span><span>Buys can happen while the Nasdaq is in a downtrend.</span></p>
+        <div style="flex-basis:100%"><button type="button" class="btn" id="tmAggBtn" aria-pressed="false" disabled>Aggressive day trading</button></div>
+        <p class="lm">The day-trading models (opening breakout, VWAP dip, scanner breakout) trade, a stock can be bought again after it's sold the same day, and more ideas get reviewed.
+          Intraday positions are sold at market by the time below, so the account is in cash at the close. Every loss limit, stop cap and the trading-capital cap stay the same. Paper only.</p>
+        <label class="ap-switch"><input type="checkbox" id="tmOvn"> Also trade the overnight model</label>
+        <label>Sell intraday positions by <span class="ap-in"><input type="time" id="tmAt" min="09:31" max="15:59" required> ET</span></label>
+        <label>Commission per order <span class="ap-in">$<input type="number" id="tmFee" min="0" max="10" step="0.01" required></span>
+          <span class="lm">taken off the P&amp;L shown for this mode</span></label>
+        <label class="ap-switch"><input type="checkbox" id="tmAll"> Also flatten these: the trend cores (trend_core, trend_core_qld) and planned multi-day holds</label>
+        <button class="btn solid" type="submit" id="tmSave">Save</button>
+      </form>
+      <p class="explain" id="tmPnl" style="margin-top:12px"></p>
+      <h3 class="ap-h3">Changes</h3>
+      <ul class="lm" id="tmLog"></ul>
+    </div>
+
     <div data-tab="trading" class="card span-12" id="varCard" hidden>
       <h2>Settings test <span class="count" id="varMeta"></span></h2>
       <p class="explain">Practice $10,000 accounts that trade next to yours, on the same prices and with the same yes/no answers from Claude.
@@ -1191,6 +1212,9 @@ main:focus { outline: none; }
     $("chips").innerHTML = chips.join("");
 
     const alerts = [];
+    const TM = S.trading_modes || {};
+    if (TM.aggressive) alerts.push(["warn", "△", "Aggressive mode: high trade count. Paper only."]);
+    if (TM.qqq_gate === false) alerts.push(["warn", "△", "Buys can happen while the Nasdaq is in a downtrend."]);
     if (a.kill_switch) alerts.push(["crit", "!", `Emergency stop is on: the account fell ${pct(S.limits.max_total_drawdown_pct, 0)} or more from its high, so the bot won't buy anything. To let it buy again, delete data/paper_risk_state.json.`]);
     if (S.live_trading_enabled) alerts.push(["crit", "!", "Real-money trading is switched on (LIVE_TRADING_ENABLED is true)."]);
     if (m.data_error) alerts.push(["warn", "△", "Can't get stock prices right now: " + m.data_error]);
@@ -1515,7 +1539,7 @@ main:focus { outline: none; }
       ["Sizes each strategy by its record", L.track_record_sizing ? `${L.track_record_min_mult}x to ${L.track_record_max_mult}x its usual size` : "off"],
       ["Stops borrowing if down today", L.risk_off_day_loss_pct ? pct(L.risk_off_day_loss_pct, 0) : "never"],
       ["Stops borrowing if down from its best", L.risk_off_drawdown_pct ? pct(L.risk_off_drawdown_pct, 0) : "never"],
-      ["Stops borrowing when", L.risk_off_trend_days ? `${L.risk_off_trend_symbol} is under its ${L.risk_off_trend_days}-day average` : "never"],
+      ["Stops borrowing when", L.risk_off_trend_days && (S.trading_modes || {}).qqq_gate !== false ? `${L.risk_off_trend_symbol} is under its ${L.risk_off_trend_days}-day average` : "never"],
       ["Most in any one sector", L.max_sector_pct ? pct(L.max_sector_pct, 0) + " of your money (Claude-picked buys)" : "No limit"],
     ];
     $("limits").innerHTML = rows.map((r) => r ? `<dt>${r[0]}</dt><dd>${esc(r[1])}</dd>` : `<div class="divider"></div>`).join("");
@@ -2226,8 +2250,47 @@ main:focus { outline: none; }
     renderAutopilot();
     toast(j.enabled ? `Autopilot on: max loss ${pct(j.max_loss_pct, 1)}, give-back ${pct(j.giveback_pct, 1)}, Claude must be ${pct(j.min_confidence, 0)} sure. The bot picks it up next cycle.` : "Autopilot off");
   });
+  let tmDirty = false;  // don't overwrite the trading-modes form while you're editing it
+  const TM_NAMES = { qqq_gate: "QQQ as market gauge", aggressive: "Aggressive day trading", overnight: "Overnight holds",
+    flatten_at: "Sell-by time", flatten_all: "Also flatten cores and multi-day holds", commission_per_order: "Commission per order" };
+  function renderModes() {
+    const T = S.trading_modes; if (!T) return;
+    if (!tmDirty) {
+      $("tmQqq").checked = T.qqq_gate; $("tmOvn").checked = T.overnight;
+      $("tmAt").value = T.flatten_at; $("tmAll").checked = T.flatten_all; $("tmFee").value = T.commission_per_order;
+    }
+    $("tmSave").disabled = $("tmAggBtn").disabled = !canTrade();
+    $("tmAggBtn").textContent = T.aggressive ? "Aggressive day trading is ON · turn off" : "Aggressive day trading is OFF · turn on";
+    $("tmAggBtn").className = T.aggressive ? "btn solid" : "btn";
+    $("tmAggBtn").setAttribute("aria-pressed", T.aggressive);
+    $("tmQqqWarn").hidden = T.qqq_gate;
+    const c = T.costs || {};
+    $("tmPnl").textContent = T.aggressive ? `Today after costs: ${sgnUsd(c.net_day_pnl)} · ${c.fills} fills · commissions ${usd(c.commissions)} · `
+      + `est. slippage ${usd(c.slippage)} (already in the fill prices). Paper fills never wait in line or fill partly, so real trading would likely do worse.` : "";
+    $("tmMeta").textContent = `QQQ gauge ${T.qqq_gate ? "on" : "off"} · aggressive day trading ${T.aggressive ? `on, in cash by ${T.flatten_at} ET` : "off"}`;
+    $("tmLog").innerHTML = (T.log || []).map((e) => `<li>${fmtTime(e.ts)}: ${esc(TM_NAMES[e.field] || e.field)} ${esc(String(e.from))} → ${esc(String(e.to))}</li>`).join("");
+  }
+  ["tmQqq", "tmOvn", "tmAt", "tmAll", "tmFee"].forEach((id) => $(id).addEventListener("input", () => (tmDirty = true)));
+  async function setAggressive(on) {  // one click: saves at once, no Save button
+    const [ok, j] = await api("/api/trading-modes", { aggressive: on });
+    if (!ok) { renderModes(); return toast(j.error || "could not save", true); }
+    Object.assign(S.trading_modes, j);
+    renderModes(); renderChrome();
+    toast(on ? `Aggressive day trading ON: more trades, in cash by ${j.flatten_at} ET. Paper only. The bot picks it up next cycle.` : "Aggressive day trading OFF. The bot picks it up next cycle.");
+  }
+  $("tmAggBtn").addEventListener("click", () => setAggressive(!S.trading_modes.aggressive));
+  $("tmForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const [ok, j] = await api("/api/trading-modes", { qqq_gate: $("tmQqq").checked, aggressive: S.trading_modes.aggressive,
+      overnight: $("tmOvn").checked, flatten_at: $("tmAt").value, flatten_all: $("tmAll").checked, commission_per_order: +$("tmFee").value });
+    if (!ok) return toast(j.error || "could not save", true);
+    tmDirty = false;
+    Object.assign(S.trading_modes, j);
+    renderModes(); renderChrome();
+    toast(`Saved: QQQ gauge ${j.qqq_gate ? "on" : "off"}, aggressive day trading ${j.aggressive ? "on" : "off"}. The bot picks it up next cycle.`);
+  });
   function renderAll() {
-    renderChrome(); renderAutopilot(); renderVariants(); renderKpis(); renderIdeas(); renderChart(); renderLimits(); renderPositions();
+    renderChrome(); renderModes(); renderAutopilot(); renderVariants(); renderKpis(); renderIdeas(); renderChart(); renderLimits(); renderPositions();
     renderWatchlist(); renderFills(); renderStrategies(); renderLog(); renderC2(); renderModels(); renderPostmortems(); renderThoughts(); renderFilterScore(); renderLab();
     renderRuns(); renderCatalog(); renderCompare(); renderStressWF(); renderSteps();
     loadPx();

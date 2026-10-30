@@ -26,6 +26,7 @@ from ctbot import (
     thoughts,
     track_record,
     trade_log,
+    trading_modes,
 )
 from ctbot.aggregation.ensemble import combine
 from ctbot.config import Settings
@@ -83,6 +84,7 @@ class Components:
     fills: int = 0       # fills submitted by this process (cycle summaries count the difference)
     trend: Any = field(default_factory=risk_mode.TrendCache)  # pull-back trend average, once a day
     think: bool = True  # Bub's thoughts (ctbot.thoughts): notes only, never changes a trade
+    modes: Any = field(default_factory=trading_modes.TradingModes)  # Trading tab modes, re-read each cycle
 
 
 DUPLICATE_WINDOW_S = 120.0
@@ -91,6 +93,14 @@ DUPLICATE_WINDOW_S = 120.0
 def _journal(c: Components, record) -> None:
     if c.journal is not None:
         c.journal.write(record)
+
+
+def load_modes(c: Components) -> None:
+    """Trading tab modes (paper only). A change to what trades makes the launcher rebuild."""
+    new = trading_modes.TradingModes() if c.executor.is_live else trading_modes.load(c.settings.trading_modes_path)
+    if trading_modes.traded_models(new) != trading_modes.traded_models(c.modes):
+        c.launched = None
+    c.modes = new
 
 
 def halted(c: Components) -> bool:
@@ -153,6 +163,9 @@ def apply_launcher(c: Components, state: AccountState, positions: dict, now: dat
         c.launched = (in_use, runs)
         log.info("launcher: %s", ", ".join(f"{k} ${v:,.0f}" for k, v in runs.items())
                  or ("nothing invested: every strategy only suggests ideas" if in_use else "off (strategies.toml)"))
+    if extra := trading_modes.traded_models(c.modes):  # aggressive day trading: these trade, benched or not
+        c.strategies = [replace(ws, mode="trade", standalone=True) if ws.strategy.name in extra else ws
+                        for ws in c.strategies]
     state.sleeves = dict(runs)
     state.sleeve_used = {n: used.get(n, 0.0) for n in runs}
     # each strategy's unspent money is kept for it: no other strategy may buy with it
@@ -285,6 +298,8 @@ def _submit(c: Components, state: AccountState, order, positions, today, decisio
     _journal(c, ExecutionOutcome(order.client_order_id, order.symbol, "filled", fill.quantity, fill.price,
                                  simulated=fill.simulated))
     if order.side is Side.SELL:
+        if c.modes.aggressive:  # another round trip: the symbol's setups may be reviewed again today
+            c.reviewed = {k for k in c.reviewed if k[1] != order.symbol}
         pos = positions[order.symbol]
         bracket = dict(state.brackets.get(order.symbol) or {})
         _book_sleeve_gain(c, state, order.symbol, pos.avg_cost, fill)
@@ -402,7 +417,8 @@ def refresh_learning(c: Components, state: AccountState, now: datetime) -> None:
         c.risk.size_mult = {}
 
     positions = c.executor.positions()
-    syms = sorted({p.symbol for p in positions} | ({L.risk_off_trend_symbol} if L.risk_off_trend_days > 0 else set()))
+    gauge = L.risk_off_trend_days > 0 and c.modes.qqq_gate  # QQQ as market gauge (Trading tab)
+    syms = sorted({p.symbol for p in positions} | ({L.risk_off_trend_symbol} if gauge else set()))
     try:
         quotes = c.market_data.quotes(syms) if syms else {}
     except Exception:  # noqa: BLE001 - no prices: sector exposure at cost, no trend trigger
@@ -421,7 +437,7 @@ def refresh_learning(c: Components, state: AccountState, now: datetime) -> None:
 
     trend_q = quotes.get(L.risk_off_trend_symbol)
     trend_avg = c.trend.get(c.market_data, L.risk_off_trend_symbol, L.risk_off_trend_days,
-                            market_hours.trading_date(now)) if L.risk_off_trend_days > 0 else None
+                            market_hours.trading_date(now)) if gauge else None
     why = risk_mode.reasons(L, state.equity, state.day_start_equity, state.peak_equity,
                             trend_q.last if trend_q else None, trend_avg)
     if why != state.risk_off:
@@ -438,9 +454,21 @@ def manage_positions(c: Components, state: AccountState, now: datetime) -> None:
     strategies, the ensemble and Claude."""
     if c.settings.respect_market_hours and not market_hours.session_open(now):
         return
+    load_modes(c)
     today = market_hours.trading_date(now)
     positions = {p.symbol: p for p in c.executor.positions()}
     quotes = c.market_data.quotes(list(positions)) if positions else {}  # one call for every position
+    for sym in trading_modes.to_flatten(c.modes, positions.values(), state.brackets, now):
+        sig = Signal("risk", sym, Direction.EXIT, 1.0, 0, {"reason": "eod_flatten"})
+        verdict = c.risk.check_exit(Candidate(sym, Direction.EXIT, -1.0, (sig,)), positions[sym], state,
+                                    quotes.get(sym), today)
+        if not verdict.allowed:
+            log.warning("eod_flatten blocked for %s: %s", sym, ", ".join(verdict.reasons))
+            continue
+        log.info("eod_flatten %s: aggressive mode sells intraday positions at market by %s ET", sym, c.modes.flatten_at)
+        for order in verdict.orders:
+            _submit(c, state, replace(order, limit_price=None), positions, today, tag="eod_flatten")
+        positions.pop(sym)
     for sym, pos in list(positions.items()):
         quote = quotes.get(sym)
         if quote:
@@ -515,6 +543,8 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
     allow_entries = not c.settings.respect_market_hours or (
         market_hours.minutes_to_close(now) > c.settings.risk.no_entries_last_minutes
     )
+    load_modes(c)
+    allow_entries = allow_entries and not trading_modes.flatten_due(c.modes, now)  # cash at the close
     halt = halted(c)
     if hasattr(c.market_data, "warm"):
         c.market_data.warm(c.universe)
@@ -556,7 +586,11 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
         buyers = tuple(sorted({s.strategy for s in cand.signals if s.direction is Direction.LONG}))
         return (today, cand.symbol, buyers) in c.reviewed or _earnings_block(c, cand, now) is not None
 
-    candidates = combine(signals, weights, c.settings.ensemble, standalone, stale_or_blocked)
+    ens, review_cap = c.settings.ensemble, c.settings.max_claude_reviews_per_day
+    if c.modes.aggressive:  # higher volume, inside the tuning bounds; never lowers what is set
+        ens = replace(ens, max_candidates=max(ens.max_candidates, trading_modes.MAX_CANDIDATES))
+        review_cap = max(review_cap, trading_modes.MAX_REVIEWS)
+    candidates = combine(signals, weights, ens, standalone, stale_or_blocked)
     log.info("%d events, %d signals, %d candidates", len(events), len(signals), len(candidates))
 
     snap: dict[str, dict[str, Any]] = {}
@@ -652,7 +686,7 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                 continue
             used = c.reviews_today.get(today, 0)
             per_model = [c.reviews_today.get((today, m), 0) for m in buyers]
-            if used >= c.settings.max_claude_reviews_per_day or (
+            if used >= review_cap or (
                 per_model and min(per_model) >= c.settings.max_reviews_per_model_per_day
             ):
                 log.info("skipping review of %s (%s): daily Claude budget used", cand.symbol, ",".join(buyers))

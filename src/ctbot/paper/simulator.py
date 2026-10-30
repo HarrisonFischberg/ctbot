@@ -19,6 +19,7 @@ from ctbot.market_data.base import MarketDataProvider
 from ctbot.market_hours import next_business_day, trading_date
 from ctbot.models import Fill, OrderRequest, Position, Side
 
+SLIPPAGE_BPS = 5.0            # every paper fill pays this past the bid/ask
 MARGIN_MIN_EQUITY = 2_000.0   # FINRA: no borrowing below this equity
 MAINTENANCE_PCT = 0.25        # FINRA baseline for long, margin-eligible stock (brokers may ask more)
 
@@ -44,7 +45,7 @@ class PaperBroker:
         market_data: MarketDataProvider,
         starting_cash: float,
         ledger_path: Path,
-        slippage_bps: float = 5.0,
+        slippage_bps: float = SLIPPAGE_BPS,
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
         instant_settlement: bool = False,
         margin: float = 1.0,
