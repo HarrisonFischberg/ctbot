@@ -139,7 +139,7 @@ def metrics(r: pd.Series, trades: list[dict[str, Any]], lo: str, hi: str) -> dic
 def run(holdout: bool = False, registry=None) -> dict[str, Any]:
     from ctbot.research import factors as fx
     from ctbot.research.ranker import fingerprint
-    from ctbot.research.validation import benjamini_hochberg, sharpe_pvalue
+    from ctbot.research.validation import benjamini_hochberg, sharpe_pvalue, spa_pvalue
 
     spy = fx.load_panel(["SPY"]).get("SPY")
     if spy is None:
@@ -171,6 +171,9 @@ def run(holdout: bool = False, registry=None) -> dict[str, Any]:
                                             "max_loss": MAX_LOSS, "giveback": GIVEBACK, "atr_mult": ATR_MULT},
                                     periods={"from": SPLITS[k][0], "to": SPLITS[k][1]}, metrics=rows[name][k])
     survivors = benjamini_hochberg(pvals, 0.10) if pvals else {}
+    val = pd.DataFrame(daily)
+    val = val[(val.index >= SPLITS["validation"][0]) & (val.index <= SPLITS["validation"][1])]
+    spa = round(spa_pvalue(val.to_numpy()), 4) if len(val.columns) else None
     admitted = []
     for name, row in rows.items():
         dev, val = row["dev"], row["validation"]
@@ -184,7 +187,8 @@ def run(holdout: bool = False, registry=None) -> dict[str, Any]:
     return {"generated": datetime.now(UTC).isoformat(timespec="seconds"), "splits": SPLITS, "holdout_scored": holdout,
             "data_fingerprints": fps, "rules": {"max_pos": MAX_POS, "slot": SLOT, "max_loss": MAX_LOSS,
                                                 "giveback": GIVEBACK, "atr_mult": ATR_MULT},
-            "benchmark_spy": bench, "entries": rows, "admitted": sorted(admitted), "n_trials": len(rows)}
+            "benchmark_spy": bench, "entries": rows, "admitted": sorted(admitted), "n_trials": len(rows),
+            "spa_pvalue": spa}
 
 
 def reason(report: dict[str, Any] | None, name: str) -> tuple[bool, str]:
@@ -227,7 +231,8 @@ def main() -> None:
         print(f"{name:34} {d.get('cagr', 0):>+9.1%} {d.get('sharpe', 0):>5.2f} {v.get('cagr', 0):>+9.1%} "
               f"{v.get('sharpe', 0):>5.2f} {v.get('max_dd', 0):>7.1%} {v.get('trades', 0):>6} {r['validation_pvalue']:>7.4f}  "
               f"{'YES' if r['admitted'] else ''}")
-    print(f"admitted {len(rep['admitted'])} of {rep['n_trials']} (BH q=10% on 2018-22, dev Sharpe > 0, 20+ trades)")
+    print(f"admitted {len(rep['admitted'])} of {rep['n_trials']} (BH q=10% on 2018-22, dev Sharpe > 0, 20+ trades); "
+          f"SPA p={rep['spa_pvalue']} that no entry beats cash in 2018-22")
     print(f"written: {REPORT}")
 
 

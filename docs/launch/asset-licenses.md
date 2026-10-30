@@ -31,6 +31,7 @@ No new Python dependency was added.
 | pydantic | 2.14.1 | MIT | Decision schema |
 | numpy | 2.5.4 | BSD-3-Clause and others | Math |
 | pandas | 3.0.6 | BSD-3-Clause | Data frames |
+| arch (+ scipy, statsmodels) | 8.0.0 | NCSA (BSD-style); scipy BSD-3, statsmodels BSD-3 | SPA data-snooping test in research jobs |
 | pytest (dev) | 9.1.1 | MIT | Tests |
 | quantstats (optional `research`) | 0.0.86 | Apache-2.0 | Tearsheets |
 | vectorbt (optional `research`) | 1.1.2 | **Apache-2.0 with Commons Clause** | Parameter sweeps |

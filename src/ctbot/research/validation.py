@@ -1,8 +1,8 @@
-"""Overfitting controls for strategy selection: PBO (CSCV) and Benjamini-Hochberg.
+"""Overfitting controls for strategy selection: PBO (CSCV), Benjamini-Hochberg and Hansen's SPA.
 
 Idea and test design follow Vibe-Trading's `agent/src/quantlib/multipletesting.py` (MIT,
 HKUDS/Vibe-Trading) and the papers it cites; the code here is a small numpy rewrite so CTbot
-needs no scipy:
+needs no scipy (SPA alone uses the `arch` package, imported only when called):
 
 * Bailey, Borwein, Lopez de Prado & Zhu (2017), "The Probability of Backtest Overfitting":
   split the history into S blocks, and for every way of choosing half of them as in-sample,
@@ -69,3 +69,15 @@ def benjamini_hochberg(pvalues: dict[str, float], q: float = 0.10) -> dict[str, 
             cutoff = k
     keep = {name for name, _ in items[:cutoff]}
     return {name: name in keep for name in pvalues}
+
+
+def spa_pvalue(returns: np.ndarray, block: int = 10, reps: int = 1000, seed: int = 0) -> float:
+    """Hansen's (2005) Superior Predictive Ability test via `arch`: p-value that none of the N
+    columns (T x N daily returns) beats cash, after accounting for having tried all N. A stationary
+    block bootstrap keeps volatility clustering and the trials' correlation."""
+    from arch.bootstrap import SPA  # research jobs only: the trading process never imports arch
+
+    r = np.nan_to_num(np.asarray(returns, dtype=float))
+    spa = SPA(np.zeros(len(r)), -r, block_size=block, reps=reps, seed=seed)  # losses: cash 0, trials -return
+    spa.compute()
+    return float(spa.pvalues["consistent"])

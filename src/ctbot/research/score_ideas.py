@@ -82,6 +82,20 @@ def summarize(scores: list[dict[str, Any]]) -> dict[str, Any]:
     return {m: {k: stat(v) for k, v in g.items()} for m, g in groups.items()}
 
 
+def calibration(scores: list[dict[str, Any]], width: float = 0.1) -> list[dict[str, Any]]:
+    """Is Claude's confidence a real win probability? Reviewed ideas bucketed by confidence: the
+    average stated confidence against the share that actually made money (the MAPIE review's
+    reliability check; a bucket needs ~30 ideas before its win rate means much)."""
+    buckets: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for s in scores:
+        if s.get("confidence") is not None:
+            buckets[min(int(s["confidence"] / width), round(1 / width) - 1)].append(s)
+    return [{"from": round(k * width, 2), "to": round((k + 1) * width, 2), "n": len(b),
+             "stated": statistics.mean(x["confidence"] for x in b),
+             "win_rate": sum(x["net_ret"] > 0 for x in b) / len(b),
+             "avg_bps": statistics.mean(x["net_ret"] for x in b) * 1e4} for k, b in sorted(buckets.items())]
+
+
 def run(ideas_path: Path, out: Path, fetch=None) -> dict[str, Any]:
     """`fetch(symbol, start_date, end_date)` caches missing 5-minute bars (scanner symbols are
     outside the universe the scheduled job downloads); None skips fetching."""
@@ -113,7 +127,7 @@ def run(ideas_path: Path, out: Path, fetch=None) -> dict[str, Any]:
         else:
             scores.append(s)
     report = {"generated_at": datetime.now(timezone.utc).isoformat(), "scored": len(scores),
-              "pending": pending, "summary": summarize(scores), "scores": scores[-500:]}
+              "pending": pending, "summary": summarize(scores), "calibration": calibration(scores), "scores": scores[-500:]}
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2, default=str))
     return report
@@ -138,6 +152,9 @@ def main() -> None:
         a, r = g["approved"], g["rejected"]
         fmt = lambda x: "—" if x["avg_bps"] is None else f"{x['avg_bps']:+.1f} bps (n={x['n']}, win {x['win_rate'] * 100:.0f}%)"  # noqa: E731
         print(f"  {m:<12} approved {fmt(a):<34} rejected {fmt(r)}")
+    for b in report["calibration"]:
+        print(f"  confidence {b['from']:.1f}-{b['to']:.1f}: n={b['n']:<4} said {b['stated']:.0%}, "
+              f"won {b['win_rate']:.0%}, {b['avg_bps']:+.1f} bps")
 
 
 if __name__ == "__main__":

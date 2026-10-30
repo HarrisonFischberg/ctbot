@@ -7,7 +7,7 @@ on yesterday's completed bars) see the same thing. Exits are shared by every fam
 `library.backtest`): a starting stop at 2x the 14-day average range (capped), a trailing stop, and
 a family-specific longest hold.
 
-The families are standard, published ideas, picked before any test was run; nothing here was
+The families are standard, published ideas, each picked before its first test was run; nothing here was
 tuned on the data. Parameters are the textbook defaults.
 """
 
@@ -49,6 +49,13 @@ def atr(d: pd.DataFrame, n: int = 14) -> pd.Series:
     prev = d["close"].shift()
     tr = pd.concat([d["high"] - d["low"], (d["high"] - prev).abs(), (d["low"] - prev).abs()], axis=1).max(axis=1)
     return tr.rolling(n, min_periods=n).mean()
+
+
+def ewma_vol(d: pd.DataFrame) -> pd.Series:
+    """Daily volatility as of day t: RiskMetrics EWMA (lambda 0.94), i.e. a GARCH(1,1) with fixed weights,
+    so no per-symbol fit (and no look-ahead) is needed."""
+    r = np.log(d["close"]).diff()
+    return np.sqrt((r ** 2).ewm(alpha=0.06, adjust=False, min_periods=20).mean())
 
 
 def high52(d, spy):
@@ -108,6 +115,22 @@ def rsi2(d, spy):
     return (_rsi(d["close"], 2) < 10) & _uptrend(d)
 
 
+def vol_squeeze(d, spy):
+    v = ewma_vol(d)
+    calm = v <= v.rolling(252, min_periods=252).quantile(0.2)
+    return calm & (d["close"] > d["high"].rolling(20, min_periods=20).max().shift()) & _uptrend(d)
+
+
+def shock_dip(d, spy):
+    return (np.log(d["close"]).diff() < -2.5 * ewma_vol(d).shift()) & _uptrend(d)
+
+
+def calm_trend(d, spy):
+    v = ewma_vol(d)
+    calm = (v < v.rolling(252, min_periods=252).median()) & _uptrend(d)
+    return calm & ~calm.shift(fill_value=False)
+
+
 FAMILIES: dict[str, Family] = {f.key: f for f in [
     Family("high52", "52-Week High Breakout", "Buys when the price closes at a new 52-week high in an uptrend.", 40,
            high52, "George & Hwang 2004, 52-week high momentum"),
@@ -133,6 +156,14 @@ FAMILIES: dict[str, Family] = {f.key: f for f in [
            rel_strength, "relative-strength momentum (Jegadeesh & Titman 1993)"),
     Family("rsi2", "2-Day RSI Dip", "Buys when the 2-day RSI drops under 10 while above the 200-day average.", 5,
            rsi2, "Connors & Alvarez 2009, RSI(2)"),
+    # volatility families (2026-10-30), from the arch/GARCH review: all three were fixed before their first
+    # backtest and ship together, the weak ones included, so the library's trial count stays honest
+    Family("vol_squeeze", "Volatility Squeeze Breakout", "Buys a new 20-day high after volatility fell to the quietest fifth of its year, in an uptrend.", 20,
+           vol_squeeze, "volatility contraction then expansion (Bollinger squeeze; Crabel 1990)"),
+    Family("shock_dip", "Volatility-Scaled Dip", "Buys a one-day drop bigger than 2.5x the stock's own recent daily swing, in an uptrend.", 5,
+           shock_dip, "short-term reversal, scaled by EWMA volatility (RiskMetrics 1996)"),
+    Family("calm_trend", "Calm Uptrend", "Buys when a stock above its 200-day average turns calmer than its own yearly median volatility.", 40,
+           calm_trend, "volatility-managed portfolios (Moreira & Muir 2017)"),
 ]}
 
 UNIVERSES = {

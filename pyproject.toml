@@ -19,6 +19,7 @@ dependencies = [
     "pydantic>=2.7",
     "python-dotenv>=1.0",
     "mcp>=2.3",
+    "arch>=7.0",  # Hansen SPA test in the nightly research jobs (pulls scipy + statsmodels)
 ]
 
 [project.optional-dependencies]
@@ -49,7 +50,7 @@ ctbot-sweep = "ctbot.research.sweep:main"
 ctbot-perf = "ctbot.research.perf:main"
 ctbot-rank-research = "ctbot.research.ranker:main"
 ctbot-library-research = "ctbot.library.backtest:main"
-# 864 strategy candidates (library rule x filter x exits x universe), backtested and gated; research only.
+# 1,080 strategy candidates (library rule x filter x exits x universe), backtested and gated; research only.
 ctbot-factory = "ctbot.library.factory:main"
 ctbot-variants = "ctbot.variants:main"
 ctbot-dayplan = "ctbot.dayplan:plan_main"

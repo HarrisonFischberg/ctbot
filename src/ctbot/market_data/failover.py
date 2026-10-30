@@ -28,7 +28,7 @@ from ctbot.net import SourceUnavailable
 
 log = logging.getLogger(__name__)
 
-TRADINGFLOW_LOOKBACK = 300  # trading days; Robinhood's history is ~275, enough for every model
+TRADINGFLOW_LOOKBACK = 550  # trading days, matching Robinhood's ~550 (the volatility rules need two years)
 
 
 def parse_daily_candles(symbol: str, payload: dict[str, Any], max_gap: float = 0.25) -> list[Bar]:

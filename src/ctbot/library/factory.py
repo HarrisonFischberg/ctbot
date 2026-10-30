@@ -1,13 +1,13 @@
 """`ctbot-factory`: hundreds of strategy candidates a run, backtested and confirmed, paper research only.
 
 Each candidate is one library entry rule (ctbot.library.signals) x one market filter x one exit
-setting x one universe, so the grid is 12 x 4 x 9 x 2 = 864 candidates. Every candidate runs
+setting x one universe, so the grid is 15 x 4 x 9 x 2 = 1,080 candidates. Every candidate runs
 through `library.backtest.simulate`, the same fills, stops and costs the autopilot uses. No Claude
 calls and no new dependencies: the run costs CPU time only.
 
 Candidates are judged on the selection years, dev + validation (to 2022), from each one's first
 trade on (the server's stock bars start in 2010). Variants of one rule move almost together, so a
-rule on a universe (24 groups) counts as one trial: only each group's best candidate can pass.
+rule on a universe (30 groups) counts as one trial: only each group's best candidate can pass.
 It passes only if every gate holds:
 * the run's PBO across all candidates is under 0.5 (otherwise picking the best one is luck, and
   nothing passes);
@@ -98,7 +98,7 @@ def _selection(r: pd.Series) -> pd.Series:
 def run(panels: dict[str, dict[str, pd.DataFrame]], spy: pd.DataFrame,
         cands: list[dict[str, Any]] | None = None, progress: bool = False, registry=None) -> dict[str, Any]:
     from ctbot.research.lab import deflated_sharpe
-    from ctbot.research.validation import benjamini_hochberg, pbo, sharpe_pvalue
+    from ctbot.research.validation import benjamini_hochberg, pbo, sharpe_pvalue, spa_pvalue
 
     cands = [c for c in (cands or candidates()) if panels.get(c["universe"])]
     rows, daily, trades_of = {}, {}, {}
@@ -126,6 +126,8 @@ def run(panels: dict[str, dict[str, pd.DataFrame]], spy: pd.DataFrame,
     selection = pd.DataFrame({n: r[r.index <= lbt.SPLITS["validation"][1]] for n, r in daily.items()})
     run_pbo = pbo(selection.to_numpy()) if selection.shape[1] >= 2 and len(selection) >= 10 else None
     lucky = run_pbo is None or run_pbo["pbo"] >= 0.5
+    # a diagnostic, not a gate: can the best of every candidate beat cash once all the tries are counted?
+    spa = round(spa_pvalue(selection.to_numpy()), 4)
 
     passed = []
     for name, c in rows.items():
@@ -154,7 +156,7 @@ def run(panels: dict[str, dict[str, pd.DataFrame]], spy: pd.DataFrame,
             seen.add(key)
             live.append(n)
     return {"generated": datetime.now(UTC).isoformat(timespec="seconds"), "n_candidates": len(rows),
-            "pbo": run_pbo, "splits": {k: lbt.SPLITS[k] for k in ("dev", "validation")},
+            "pbo": run_pbo, "spa_pvalue": spa, "splits": {k: lbt.SPLITS[k] for k in ("dev", "validation")},
             "gates": {"fdr_q": FDR_Q, "min_dsr": MIN_DSR, "cost_stress": COST_STRESS, "groups": len(best)},
             "passed": passed, "live": live, "candidates": rows}
 
@@ -244,6 +246,7 @@ def main() -> None:
     REPORT.write_text(json.dumps(rep, indent=2, default=str))
     p = rep["pbo"]
     print(f"PBO across the run: {p['pbo']:.2f}" if p else "PBO: not enough data")
+    print(f"SPA p-value that no candidate beats cash: {rep['spa_pvalue']}")
     print(f"{'candidate':48} {'val CAGR':>9} {'Sh':>5} {'DSR':>5} {'trades':>6}  fires today")
     for name in rep["passed"][:25]:
         r = rep["candidates"][name]
