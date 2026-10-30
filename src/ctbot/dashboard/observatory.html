@@ -956,6 +956,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     <div class="apsw-wrap" data-tab="trading" style="display:flex;align-items:center;gap:10px">
       <label class="apsw"><input type="checkbox" id="apOn" form="apForm" role="switch"><span class="track"></span><span><b id="apOnLbl">Autopilot</b><small id="apMeta"></small></span></label>
       <button class="info" type="button" data-explain="autopilot" aria-label="How Autopilot works"><svg class="ico"><use href="#i-info"/></svg></button>
+      <label class="apsw" style="margin-left:18px"><input type="checkbox" id="tmAggSw" role="switch" disabled><span class="track"></span><span><b id="tmAggLbl">Aggressive day trading</b><small id="tmAggMeta"></small></span></label>
     </div>
   </div>
 
@@ -1063,8 +1064,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
         <label class="ap-row wide">QQQ as market gauge <input type="checkbox" id="tmQqq"></label>
         <p class="ap-note">On: while QQQ is under its 50-day average, new buys use only cash on hand. The other pull-back rules don't change.</p>
         <p class="alert warn" id="tmQqqWarn" hidden><span class="ic">△</span><span>Buys can happen while the Nasdaq is in a downtrend.</span></p>
-        <label class="ap-row wide">Aggressive day trading <input type="checkbox" id="tmAgg"></label>
-        <p class="ap-note">Day-trading models trade, a stock can be bought again after it's sold, and intraday positions are sold at market by the time below. Every loss limit stays the same. Paper only.</p>
+        <p class="ap-note"><b>Aggressive day trading</b> (switch at the top): day-trading models trade, a stock can be bought again after it's sold, and intraday positions are sold at market by the time below. Every loss limit stays the same. Paper only.</p>
         <label class="ap-row wide">Also trade overnight holds <input type="checkbox" id="tmOvn"></label>
         <label class="ap-row wide" style="grid-template-columns: 1fr 150px">Sell intraday by (ET) <input type="time" class="sel" id="tmAt" min="09:31" max="15:59" required></label>
         <label class="ap-row wide">Commission per order ($) <input type="number" class="sel" id="tmFee" min="0" max="10" step="0.01" required></label>
@@ -2791,10 +2791,13 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
   function renderModes() {
     const T = S.trading_modes; if (!T) return;
     if (!tmDirty) {
-      $("tmQqq").checked = T.qqq_gate; $("tmAgg").checked = T.aggressive; $("tmOvn").checked = T.overnight;
+      $("tmQqq").checked = T.qqq_gate; $("tmOvn").checked = T.overnight;
       $("tmAt").value = T.flatten_at; $("tmAll").checked = T.flatten_all; $("tmFee").value = T.commission_per_order;
     }
-    $("tmSave").disabled = !canTrade();
+    $("tmSave").disabled = $("tmAggSw").disabled = !canTrade();
+    $("tmAggSw").checked = T.aggressive;
+    $("tmAggLbl").textContent = `Aggressive day trading is ${T.aggressive ? "ON" : "OFF"}`;
+    $("tmAggMeta").textContent = T.aggressive ? `High trade count · in cash by ${T.flatten_at} ET · paper only` : "Day-trading models follow your normal rules";
     $("tmQqqWarn").hidden = T.qqq_gate;
     const c = T.costs || {};
     $("tmPnl").textContent = T.aggressive ? `Today after costs: ${sgnUsd(c.net_day_pnl)} · ${c.fills} fills · commissions ${usd(c.commissions)} · `
@@ -2802,10 +2805,18 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     $("tmMeta").textContent = `QQQ gauge ${T.qqq_gate ? "on" : "off"} · aggressive day trading ${T.aggressive ? `on, in cash by ${T.flatten_at} ET` : "off"}`;
     put($("tmLog"), (T.log || []).map((e) => `<li>${fmtTime(e.ts)}: ${esc(TM_NAMES[e.field] || e.field)} ${esc(String(e.from))} → ${esc(String(e.to))}</li>`).join(""));
   }
-  ["tmQqq", "tmAgg", "tmOvn", "tmAt", "tmAll", "tmFee"].forEach((id) => $(id).addEventListener("input", () => (tmDirty = true)));
+  ["tmQqq", "tmOvn", "tmAt", "tmAll", "tmFee"].forEach((id) => $(id).addEventListener("input", () => (tmDirty = true)));
+  async function setAggressive(on) {  // one click: saves at once, no Save button
+    const [ok, j] = await api("/api/trading-modes", { aggressive: on });
+    if (!ok) { renderModes(); return toast(j.error || "could not save", true); }
+    Object.assign(S.trading_modes, j);
+    renderModes(); renderChrome();
+    toast(on ? `Aggressive day trading ON: more trades, in cash by ${j.flatten_at} ET. Paper only. The bot picks it up next cycle.` : "Aggressive day trading OFF. The bot picks it up next cycle.");
+  }
+  $("tmAggSw").addEventListener("change", () => setAggressive($("tmAggSw").checked));
   $("tmForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const [ok, j] = await api("/api/trading-modes", { qqq_gate: $("tmQqq").checked, aggressive: $("tmAgg").checked,
+    const [ok, j] = await api("/api/trading-modes", { qqq_gate: $("tmQqq").checked, aggressive: S.trading_modes.aggressive,
       overnight: $("tmOvn").checked, flatten_at: $("tmAt").value, flatten_all: $("tmAll").checked, commission_per_order: +$("tmFee").value });
     if (!ok) return toast(j.error || "could not save", true);
     tmDirty = false;

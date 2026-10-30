@@ -670,7 +670,7 @@ main:focus { outline: none; }
         <label class="ap-switch"><input type="checkbox" id="tmQqq"> <b>QQQ as market gauge</b></label>
         <p class="lm">On: while QQQ is under its 50-day average, new buys use only cash on hand (no borrowing). The other pull-back rules (down on the day, below the best) don't change.</p>
         <p class="alert warn" id="tmQqqWarn" hidden><span class="ic">△</span><span>Buys can happen while the Nasdaq is in a downtrend.</span></p>
-        <label class="ap-switch"><input type="checkbox" id="tmAgg"> <b>Aggressive day trading</b></label>
+        <div style="flex-basis:100%"><button type="button" class="btn" id="tmAggBtn" aria-pressed="false" disabled>Aggressive day trading</button></div>
         <p class="lm">The day-trading models (opening breakout, VWAP dip, scanner breakout) trade, a stock can be bought again after it's sold the same day, and more ideas get reviewed.
           Intraday positions are sold at market by the time below, so the account is in cash at the close. Every loss limit, stop cap and the trading-capital cap stay the same. Paper only.</p>
         <label class="ap-switch"><input type="checkbox" id="tmOvn"> Also trade the overnight model</label>
@@ -2256,10 +2256,13 @@ main:focus { outline: none; }
   function renderModes() {
     const T = S.trading_modes; if (!T) return;
     if (!tmDirty) {
-      $("tmQqq").checked = T.qqq_gate; $("tmAgg").checked = T.aggressive; $("tmOvn").checked = T.overnight;
+      $("tmQqq").checked = T.qqq_gate; $("tmOvn").checked = T.overnight;
       $("tmAt").value = T.flatten_at; $("tmAll").checked = T.flatten_all; $("tmFee").value = T.commission_per_order;
     }
-    $("tmSave").disabled = !canTrade();
+    $("tmSave").disabled = $("tmAggBtn").disabled = !canTrade();
+    $("tmAggBtn").textContent = T.aggressive ? "Aggressive day trading is ON · turn off" : "Aggressive day trading is OFF · turn on";
+    $("tmAggBtn").className = T.aggressive ? "btn solid" : "btn";
+    $("tmAggBtn").setAttribute("aria-pressed", T.aggressive);
     $("tmQqqWarn").hidden = T.qqq_gate;
     const c = T.costs || {};
     $("tmPnl").textContent = T.aggressive ? `Today after costs: ${sgnUsd(c.net_day_pnl)} · ${c.fills} fills · commissions ${usd(c.commissions)} · `
@@ -2267,10 +2270,18 @@ main:focus { outline: none; }
     $("tmMeta").textContent = `QQQ gauge ${T.qqq_gate ? "on" : "off"} · aggressive day trading ${T.aggressive ? `on, in cash by ${T.flatten_at} ET` : "off"}`;
     $("tmLog").innerHTML = (T.log || []).map((e) => `<li>${fmtTime(e.ts)}: ${esc(TM_NAMES[e.field] || e.field)} ${esc(String(e.from))} → ${esc(String(e.to))}</li>`).join("");
   }
-  ["tmQqq", "tmAgg", "tmOvn", "tmAt", "tmAll", "tmFee"].forEach((id) => $(id).addEventListener("input", () => (tmDirty = true)));
+  ["tmQqq", "tmOvn", "tmAt", "tmAll", "tmFee"].forEach((id) => $(id).addEventListener("input", () => (tmDirty = true)));
+  async function setAggressive(on) {  // one click: saves at once, no Save button
+    const [ok, j] = await api("/api/trading-modes", { aggressive: on });
+    if (!ok) { renderModes(); return toast(j.error || "could not save", true); }
+    Object.assign(S.trading_modes, j);
+    renderModes(); renderChrome();
+    toast(on ? `Aggressive day trading ON: more trades, in cash by ${j.flatten_at} ET. Paper only. The bot picks it up next cycle.` : "Aggressive day trading OFF. The bot picks it up next cycle.");
+  }
+  $("tmAggBtn").addEventListener("click", () => setAggressive(!S.trading_modes.aggressive));
   $("tmForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const [ok, j] = await api("/api/trading-modes", { qqq_gate: $("tmQqq").checked, aggressive: $("tmAgg").checked,
+    const [ok, j] = await api("/api/trading-modes", { qqq_gate: $("tmQqq").checked, aggressive: S.trading_modes.aggressive,
       overnight: $("tmOvn").checked, flatten_at: $("tmAt").value, flatten_all: $("tmAll").checked, commission_per_order: +$("tmFee").value });
     if (!ok) return toast(j.error || "could not save", true);
     tmDirty = false;
