@@ -23,6 +23,9 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+import pandas as pd
+
 from ctbot.research import bars as cache
 from ctbot.research.backtest import cost_bps
 
@@ -48,6 +51,7 @@ class Lab:
         self.days = [d for d in sorted(raw.get("SPY", {})) if d >= date(2010, 1, 1)]  # common history
         self.px: dict[str, list[float | None]] = {s: [raw[s].get(d) for d in self.days] for s in symbols}
         self.state: dict[str, Any] = {}
+        self.cache: dict[Any, Any] = {}
 
     def closes(self, s: str, i: int, n: int) -> list[float] | None:
         w = self.px[s][max(0, i - n + 1): i + 1]
@@ -222,6 +226,32 @@ def rsi2_tom(slot: float = 0.25, max_pos: int = 6, use_rsi2: bool = True, use_to
     return f
 
 
+def turbulence(lab: Lab, i: int, assets: list[str], window: int = 252) -> float | None:
+    """Kritzman & Li (2010) turbulence: Mahalanobis distance of day i's returns for `assets` from
+    their mean and covariance over the previous `window` days. Large = an unusual joint move."""
+    w = [lab.closes(a, i, window + 2) for a in assets]
+    if not all(w):
+        return None
+    r = np.diff(np.log(np.array(w, dtype=float)), axis=1).T  # (window + 1) days x assets
+    hist, today = r[:-1], r[-1]
+    d = today - hist.mean(axis=0)
+    return float(d @ np.linalg.pinv(np.cov(hist, rowvar=False)) @ d)
+
+
+def turbulence_off(inner: Callable[[Lab, int], Weights], assets: list[str] = SECTORS,
+                   q: float = 0.95) -> Callable[[Lab, int], Weights]:
+    """`inner`, but in cash on days whose turbulence is above the q-quantile of all earlier days'
+    (FinRL's ensemble-strategy risk switch). Uses only closes up to day i."""
+    def f(lab: Lab, i: int) -> Weights:
+        key = ("turb", tuple(assets), q)
+        if key not in lab.cache:  # prices only, so it outlives simulate()'s state reset
+            t = pd.Series([turbulence(lab, k, assets) for k in range(len(lab.days))], dtype=float)
+            lab.cache[key] = (t > t.expanding(252).quantile(q).shift(1)).tolist()
+        w = inner(lab, i)  # always called, so the inner strategy's state keeps moving
+        return {} if lab.cache[key][i] else w
+    return f
+
+
 def blend(parts: list[tuple[float, Callable[[Lab, int], Weights]]]) -> Callable[[Lab, int], Weights]:
     def f(lab: Lab, i: int) -> Weights:
         out: Weights = {}
@@ -254,6 +284,8 @@ def catalog() -> dict[str, Callable[[Lab, int], Weights]]:
         "LIVE: 40% QQQ trend + 40% QLD capped (+20% cash)": blend([(0.4, trend("QQQ", 170)),
                                                                   (0.4, vol_capped_trend("QQQ", "QLD", 0.30))]),
         "trend QQQ 100d": trend("QQQ", 100),
+        "trend QQQ 170d, cash on turbulent days": turbulence_off(trend("QQQ", 170)),
+        "lev: trend QQQ 170d -> QLD, cash on turbulent days": turbulence_off(trend("QQQ", 170, hold="QLD")),
         "vol-target QQQ 15% + trend": vol_target_trend("QQQ", 0.15),
         "vol-target QQQ 25% + trend": vol_target_trend("QQQ", 0.25),
         "vol-target QQQ 25% + trend, sized at entry": vol_target_trend_fixed("QQQ", 0.25),
