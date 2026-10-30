@@ -187,7 +187,7 @@ def _observe(c, state, now: datetime) -> None:
 
     q = c.market_data.quotes([sym]).get(sym) if sym else None
     px = q.last if q else None
-    avg = c.trend.avg if L.risk_off_trend_days > 0 else None
+    avg = c.trend.avg if L.risk_off_trend_days > 0 and c.modes.qqq_gate else None
     if px and avg:
         gap = px / avg - 1
         if px < avg:

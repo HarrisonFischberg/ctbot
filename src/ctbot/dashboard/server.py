@@ -4,6 +4,7 @@ Binds to loopback and rejects requests whose Host header is not loopback (blocks
 rebinding), or one of the Tailscale names in CTBOT_DASHBOARD_HOSTS (docs/CLOUD_HOSTING.md). Endpoints:
   GET  /            the page (with a per-run random token embedded)
   GET  /api/state   JSON snapshot of the bot's files
+  POST /api/trading-modes  QQQ market gauge and aggressive day trading (paper only; changes logged)
   POST /api/paper/order   queue a PAPER buy/sell click for the paper loop to execute
   GET  /api/settings      which keys are set and where from (never the values)
   POST /api/settings      save or remove one key in ~/.ctbot/settings.json (secret_store)
@@ -379,8 +380,23 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
         return 200, {"ok": True, "enabled": cfg.enabled, "max_loss_pct": cfg.max_loss_pct, "giveback_pct": cfg.giveback_pct,
                      "min_confidence": cfg.min_confidence}
 
+    def save_trading_modes(body: dict) -> tuple[int, dict]:
+        from ctbot import trading_modes
+
+        if current_settings().mode.value != "paper":
+            return 400, {"error": "trading modes are paper only"}
+        path = current_settings().trading_modes_path
+        try:
+            cfg = trading_modes.validate({**asdict(trading_modes.load(path)), **body})
+        except (TypeError, ValueError) as e:
+            return 400, {"error": str(e)}
+        for ch in trading_modes.save(path, cfg):
+            log.info("trading modes: %s %s -> %s", ch["field"], ch["from"], ch["to"])
+        return 200, {"ok": True, **asdict(cfg), "log": trading_modes.changes(path)}
+
     routes = {
         "/api/autopilot": save_autopilot,
+        "/api/trading-modes": save_trading_modes,
         "/api/assistant/chat": assistant_chat,
         "/api/assistant/apply": assistant_apply,
         "/api/assistant/dismiss": assistant_dismiss,

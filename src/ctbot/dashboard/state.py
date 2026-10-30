@@ -14,14 +14,15 @@ import json
 import logging
 import os
 from collections.abc import Callable
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from ctbot import backtest_check, manual_queue, market_hours, thoughts, track_record, trade_log
+from ctbot import backtest_check, manual_queue, market_hours, thoughts, track_record, trade_log, trading_modes
 from ctbot.config import Settings, load_universe
 from ctbot.models import Quote
-from ctbot.paper.simulator import buying_power, margin_call
+from ctbot.paper.simulator import SLIPPAGE_BPS, buying_power, margin_call
 from ctbot.research import bars as bar_cache
 
 log = logging.getLogger(__name__)
@@ -294,6 +295,18 @@ def _autopilot(settings: Settings, strategies: list[dict[str, Any]], fills: list
             "min_confidence": cfg.min_confidence, "limits": autopilot.LIMITS, "models": models}
 
 
+def _trading_modes(settings: Settings, fills: list[dict[str, Any]], day_pnl: float, today) -> dict[str, Any]:
+    """Trading tab modes, their change log, and today's P&L after costs (aggressive mode)."""
+    cfg = trading_modes.load(settings.trading_modes_path)
+    todays = [f for f in fills if market_hours.trading_date(datetime.fromisoformat(f["ts"])) == today]
+    commissions = len(todays) * cfg.commission_per_order
+    # slippage is already in the fill prices (and the spread, as buys fill at the ask, sells at the bid)
+    slippage = sum(f["quantity"] * f["price"] for f in todays) * SLIPPAGE_BPS / 10_000
+    return {**asdict(cfg), "log": trading_modes.changes(settings.trading_modes_path),
+            "costs": {"fills": len(todays), "commissions": round(commissions, 2), "slippage": round(slippage, 2),
+                      "net_day_pnl": round(day_pnl - commissions, 2)}}
+
+
 def _launcher(settings: Settings, positions: list[dict[str, Any]]) -> dict[str, Any]:
     """Paper launcher runs (ctbot.allocations) with what each one holds now."""
     from ctbot import allocations
@@ -430,6 +443,7 @@ def build_state(
         "halted": settings.halt_path.exists(),  # Pause all: no new buys while the HALT file exists; exits still run
         "ideas": _ideas(settings),
         "autopilot": _autopilot(settings, _strategies(settings.strategies_file), ledger.get("fills", []), now),
+        "trading_modes": _trading_modes(settings, ledger.get("fills", []), equity - day_start, today),
         "variants": _variants(settings),
         "manual_orders": _manual_activity(settings),
         "collective2": _c2(),

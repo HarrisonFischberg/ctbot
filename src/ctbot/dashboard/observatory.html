@@ -1057,6 +1057,23 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
       <p class="ap-note" id="autoOn" hidden><span id="autoOnText"></span> <button class="linkish u" type="button" id="autoOff">Turn off Invest for Me</button></p>
       <div class="ap-side"><button class="btn dark big" type="button" id="pauseAll"><svg class="ico"><use href="#i-pause"/></svg><span>Pause All Strategies</span></button><p id="pauseText" hidden>Paused: no new buys. Stops, targets and sells still run.</p></div>
       <div class="ap-side" id="topup" hidden><button class="btn dark big" type="button" id="topupGo">Add paper cash</button><p id="topupText"></p></div>
+      <div class="ap-div"></div>
+      <h3>Trading Modes</h3>
+      <form class="ap-form" id="tmForm">
+        <label class="ap-row wide">QQQ as market gauge <input type="checkbox" id="tmQqq"></label>
+        <p class="ap-note">On: while QQQ is under its 50-day average, new buys use only cash on hand. The other pull-back rules don't change.</p>
+        <p class="alert warn" id="tmQqqWarn" hidden><span class="ic">△</span><span>Buys can happen while the Nasdaq is in a downtrend.</span></p>
+        <label class="ap-row wide">Aggressive day trading <input type="checkbox" id="tmAgg"></label>
+        <p class="ap-note">Day-trading models trade, a stock can be bought again after it's sold, and intraday positions are sold at market by the time below. Every loss limit stays the same. Paper only.</p>
+        <label class="ap-row wide">Also trade overnight holds <input type="checkbox" id="tmOvn"></label>
+        <label class="ap-row wide" style="grid-template-columns: 1fr 150px">Sell intraday by (ET) <input type="time" class="sel" id="tmAt" min="09:31" max="15:59" required></label>
+        <label class="ap-row wide">Commission per order ($) <input type="number" class="sel" id="tmFee" min="0" max="10" step="0.01" required></label>
+        <label class="ap-row wide">Also flatten trend cores and multi-day holds <input type="checkbox" id="tmAll"></label>
+        <p class="ap-note" id="tmPnl"></p>
+        <button class="btn solid big" type="submit" id="tmSave">Save Modes</button>
+      </form>
+      <p class="ap-note" id="tmMeta"></p>
+      <ul class="ap-note" id="tmLog"></ul>
     </div>
 
     <div data-tab="trading" data-sub="overview" class="card span-12 ovc">
@@ -1618,6 +1635,9 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     $("avatar").title = `${nick || "Account"} · Settings`;
 
     const alerts = [];
+    const TM = S.trading_modes || {};
+    if (TM.aggressive) alerts.push(["warn", "△", "Aggressive mode: high trade count. Paper only."]);
+    if (TM.qqq_gate === false) alerts.push(["warn", "△", "Buys can happen while the Nasdaq is in a downtrend."]);
     if (!S.bot.running) alerts.push(["warn", "△", "The bot is off, so nothing trades. Start it in Terminal with ./run_ctbot.sh."]);
     if (S.halted) alerts.push(["warn", "△", "All strategies are paused: no new buys. Stops and sells still run. Resume them on Autopilot."]);
     if (a.kill_switch) alerts.push(["crit", "!", `Emergency stop is on: the account fell ${pct(S.limits.max_total_drawdown_pct, 0)} or more from its high, so the bot won't buy anything. To let it buy again, delete data/paper_risk_state.json.`]);
@@ -1984,7 +2004,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
       ["Sizes each strategy by its record", L.track_record_sizing ? `${L.track_record_min_mult}x to ${L.track_record_max_mult}x its usual size` : "off"],
       ["Stops borrowing if down today", L.risk_off_day_loss_pct ? pct(L.risk_off_day_loss_pct, 0) : "never"],
       ["Stops borrowing if down from its best", L.risk_off_drawdown_pct ? pct(L.risk_off_drawdown_pct, 0) : "never"],
-      ["Stops borrowing when", L.risk_off_trend_days ? `${L.risk_off_trend_symbol} is under its ${L.risk_off_trend_days}-day average` : "never"],
+      ["Stops borrowing when", L.risk_off_trend_days && (S.trading_modes || {}).qqq_gate !== false ? `${L.risk_off_trend_symbol} is under its ${L.risk_off_trend_days}-day average` : "never"],
       ["Most in any one sector", L.max_sector_pct ? pct(L.max_sector_pct, 0) + " of your money (Claude-picked buys)" : "No limit"],
     ];
     put($("limits"), rows.map((r) => r ? `<dt>${r[0]}</dt><dd>${esc(r[1])}</dd>` : `<div class="divider"></div>`).join(""));
@@ -2765,8 +2785,36 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     renderAutopilot();
     toast(j.enabled ? `Autopilot on: max loss ${pct(j.max_loss_pct, 1)}, give-back ${pct(j.giveback_pct, 1)}, Claude must be ${pct(j.min_confidence, 0)} sure. The bot picks it up next cycle.` : "Autopilot off");
   });
+  let tmDirty = false;  // don't overwrite the trading-modes form while you're editing it
+  const TM_NAMES = { qqq_gate: "QQQ as market gauge", aggressive: "Aggressive day trading", overnight: "Overnight holds",
+    flatten_at: "Sell-by time", flatten_all: "Also flatten cores and multi-day holds", commission_per_order: "Commission per order" };
+  function renderModes() {
+    const T = S.trading_modes; if (!T) return;
+    if (!tmDirty) {
+      $("tmQqq").checked = T.qqq_gate; $("tmAgg").checked = T.aggressive; $("tmOvn").checked = T.overnight;
+      $("tmAt").value = T.flatten_at; $("tmAll").checked = T.flatten_all; $("tmFee").value = T.commission_per_order;
+    }
+    $("tmSave").disabled = !canTrade();
+    $("tmQqqWarn").hidden = T.qqq_gate;
+    const c = T.costs || {};
+    $("tmPnl").textContent = T.aggressive ? `Today after costs: ${sgnUsd(c.net_day_pnl)} · ${c.fills} fills · commissions ${usd(c.commissions)} · `
+      + `est. slippage ${usd(c.slippage)} (already in the fill prices). Paper fills never wait in line or fill partly, so real trading would likely do worse.` : "";
+    $("tmMeta").textContent = `QQQ gauge ${T.qqq_gate ? "on" : "off"} · aggressive day trading ${T.aggressive ? `on, in cash by ${T.flatten_at} ET` : "off"}`;
+    put($("tmLog"), (T.log || []).map((e) => `<li>${fmtTime(e.ts)}: ${esc(TM_NAMES[e.field] || e.field)} ${esc(String(e.from))} → ${esc(String(e.to))}</li>`).join(""));
+  }
+  ["tmQqq", "tmAgg", "tmOvn", "tmAt", "tmAll", "tmFee"].forEach((id) => $(id).addEventListener("input", () => (tmDirty = true)));
+  $("tmForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const [ok, j] = await api("/api/trading-modes", { qqq_gate: $("tmQqq").checked, aggressive: $("tmAgg").checked,
+      overnight: $("tmOvn").checked, flatten_at: $("tmAt").value, flatten_all: $("tmAll").checked, commission_per_order: +$("tmFee").value });
+    if (!ok) return toast(j.error || "could not save", true);
+    tmDirty = false;
+    Object.assign(S.trading_modes, j);
+    renderModes(); renderChrome();
+    toast(`Saved: QQQ gauge ${j.qqq_gate ? "on" : "off"}, aggressive day trading ${j.aggressive ? "on" : "off"}. The bot picks it up next cycle.`);
+  });
   function renderAll() {
-    renderChrome(); renderTicker(); renderAutopilot(); renderVariants(); renderPortfolio(); renderAlloc(); renderIdeas(); renderChart(); renderLimits(); renderPositions();
+    renderChrome(); renderModes(); renderTicker(); renderAutopilot(); renderVariants(); renderPortfolio(); renderAlloc(); renderIdeas(); renderChart(); renderLimits(); renderPositions();
     renderWatchlist(); renderFills(); renderStrategies(); renderLog(); renderC2(); renderModels(); renderPostmortems(); renderThoughts(); renderFilterScore(); renderLab();
     renderRuns(); renderCatalog(); renderCompare(); renderStressWF(); renderSteps(); applySub();
     loadPx();
