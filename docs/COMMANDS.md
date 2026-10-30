@@ -112,6 +112,7 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
 | Cache the last 2 weeks of 5-minute bars | `.venv/bin/ctbot-fetch-bars --interval 5minute --since $(date -v-14d +%Y-%m-%d)` |
 | Score today's reviewed ideas (approved vs rejected) | `.venv/bin/ctbot-score-ideas` |
 | Paper book tearsheet (after ~5 sessions) | `.venv/bin/ctbot-tearsheet` |
+| Tearsheets for every paper book (vs main) and every factory live pick | `.venv/bin/ctbot-tearsheet --all` |
 | Reconcile ledger, brackets and journal; P&L per model today | `.venv/bin/ctbot-reconcile` |
 
 ## Research

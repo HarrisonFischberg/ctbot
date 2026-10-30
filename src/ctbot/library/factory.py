@@ -16,7 +16,8 @@ It passes only if every gate holds:
 * dev Sharpe above 0 and 20+ validation trades (the library's own admission rules);
 * it still makes money over the selection years at 3x the normal costs.
 
-Finalists then get one look at the holdout (2023 on), recorded once per candidate in the trial
+Each group winner also gets a "plateau" share: how many of its neighbouring exit settings were
+profitable too (reported, not a gate). Finalists then get one look at the holdout (2023 on), recorded once per candidate in the trial
 registry. It is a sanity check after selection, never used to rank. The "live" list holds
 finalists that also made money in the holdout, one per rule and universe. Only the `factory`
 paper book (config/variants.toml) trades them, as systematic rules with their own give-back and
@@ -121,6 +122,7 @@ def run(panels: dict[str, dict[str, pd.DataFrame]], spy: pd.DataFrame,
         if sr.get(n, -9) > sr.get(best.get(g), -9):
             best[g] = n
     pvals = {n: sharpe_pvalue(sel[n]) for n in best.values()}
+    plateau = {n: _plateau(rows[n], rows, sr) for n in best.values()}
     survivors = benjamini_hochberg(pvals, FDR_Q)
     sr_var = float(np.var(list(sr.values()), ddof=1)) if len(sr) > 1 else 0.0
     selection = pd.DataFrame({n: r[r.index <= lbt.SPLITS["validation"][1]] for n, r in daily.items()})
@@ -138,7 +140,7 @@ def run(panels: dict[str, dict[str, pd.DataFrame]], spy: pd.DataFrame,
                                        giveback=c["giveback"], cost_mult=COST_STRESS)
             checks["survives_3x_costs"] = float((1 + _selection(stressed)).prod()) > 1
         c.update(pvalue=round(pvals[name], 5) if name in pvals else None, dsr=round(dsr, 4), checks=checks,
-                 passed=all(checks.values()))
+                 plateau=plateau.get(name), passed=all(checks.values()))
         if c["passed"]:
             c["fires_today"] = _fires_today(c, panels[c["universe"]], spy)
             # a sanity check after selection, never a ranking input
@@ -157,6 +159,21 @@ def run(panels: dict[str, dict[str, pd.DataFrame]], spy: pd.DataFrame,
             "pbo": run_pbo, "splits": {k: lbt.SPLITS[k] for k in ("dev", "validation")},
             "gates": {"fdr_q": FDR_Q, "min_dsr": MIN_DSR, "cost_stress": COST_STRESS, "groups": len(best)},
             "passed": passed, "live": live, "candidates": rows}
+
+
+def _plateau(c: dict[str, Any], rows: dict[str, dict[str, Any]], sr: dict[str, float]) -> float | None:
+    """Share of a group winner's exit neighbours (same rule, filter and universe, at most one
+    give-back and one hold step away) that also had a positive selection-years Sharpe. A winner
+    whose neighbours lose is a lone bright cell, likely luck. Reported only, not a gate (yet)."""
+    sib = [r for r in rows.values() if (r["family"], r["filter"], r["universe"]) == (c["family"], c["filter"], c["universe"])]
+    holds = sorted({r["max_hold"] for r in sib})
+
+    def at(r):
+        return GIVEBACKS.index(r["giveback"]), holds.index(r["max_hold"])
+
+    g, h = at(c)
+    nb = [r["name"] for r in sib if r is not c and max(abs(at(r)[0] - g), abs(at(r)[1] - h)) <= 1]
+    return round(sum(sr.get(n, -1) > 0 for n in nb) / len(nb), 2) if nb else None
 
 
 def _record_holdout(registry, c: dict[str, Any]) -> None:
@@ -244,12 +261,12 @@ def main() -> None:
     REPORT.write_text(json.dumps(rep, indent=2, default=str))
     p = rep["pbo"]
     print(f"PBO across the run: {p['pbo']:.2f}" if p else "PBO: not enough data")
-    print(f"{'candidate':48} {'val CAGR':>9} {'Sh':>5} {'DSR':>5} {'trades':>6}  fires today")
+    print(f"{'candidate':48} {'val CAGR':>9} {'Sh':>5} {'DSR':>5} {'plat':>5} {'trades':>6}  fires today")
     for name in rep["passed"][:25]:
         r = rep["candidates"][name]
         v = r["validation"]
         print(f"{name:48} {v.get('cagr', 0):>+9.1%} {v.get('sharpe', 0):>5.2f} {r['dsr']:>5.2f} "
-              f"{v.get('trades', 0):>6}  {', '.join(r['fires_today']) or '-'}")
+              f"{r['plateau'] if r['plateau'] is not None else '-':>5} {v.get('trades', 0):>6}  {', '.join(r['fires_today']) or '-'}")
     print(f"passed {len(rep['passed'])} of {rep['n_candidates']} ({rep['gates']['groups']} rule groups; PBO < 0.5, "
           f"BH q=10%, DSR >= 0.95 on 2010-22, dev Sharpe > 0, 20+ trades, profitable at 3x costs)")
     print(f"factory book trades {len(rep['live'])}: {', '.join(rep['live']) or 'none'} "
