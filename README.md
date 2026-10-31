@@ -55,6 +55,18 @@ step.
     *Strategy library* (every strategy, trading or benched and why), *Testing* (crash test back to
     1999, a no-hindsight walk-forward test, the comparison books), *Backtests* (growth of $5,000
     since 2010, the leaderboard) and *Outside traders*.
+  - **Trading modes** (next to the Autopilot switch, paper only, main book only):
+    - *QQQ as market gauge* (default on): QQQ under its average makes the account stop borrowing.
+      Off skips only that trigger; the bad-day and drawdown pull-backs still apply.
+    - *Aggressive day trading* (default off): the same-day models (opening-range breakout, VWAP
+      reversion, ORB with live quotes) trade, a stock may be bought again after it was sold that
+      day, and more ideas and Claude reviews fit per cycle. Positions opened that day are sold at
+      market at 15:45 ET (or 15 minutes before an early close), and no new buys start after that.
+      The Nasdaq-100 trend cores, holdings from earlier days and trades with a planned exit on a
+      later day are kept, unless you tick *also flatten these*. Every hard limit stays on. The
+      daily Claude spend cap is **not** raised, so heavy days can hit it and stop reviews early.
+      Paper fills are kinder than real ones, so these results overstate fast trading; the page
+      shows today's P&L after an optional per-order commission.
   - **Activity**: the bot's trade ideas and what happened to each, results by strategy, what each
     trade taught, safety limits, trade history, the watchlist and a live log.
   - **Settings**: add your API keys, connect Robinhood, run a health check, review Bub's changes.
