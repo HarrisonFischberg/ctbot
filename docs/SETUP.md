@@ -188,6 +188,13 @@ Open the **Autopilot** tab:
    CTbot picks the strategies itself, funds them, re-picks weekly (only swapping a pick for one that scores 20% better) and tops them up as cash frees.
 4. If the account has less than your limit (for example after losses), **Add paper cash** tops it
    back up. Deposits are recorded and kept out of your P&L.
+5. **Trading modes** (the switches next to Autopilot, paper only):
+   - **QQQ as market gauge**: leave it on (the default). When QQQ is under its average the
+     account stops borrowing; off skips only that trigger.
+   - **Aggressive day trading**: off by default. On, the same-day models trade, a stock can be
+     bought again after it was sold that day, and positions opened that day are sold at 15:45 ET.
+     Holdings from earlier days are kept unless you tick *also flatten these*. Your Claude spend
+     cap is not raised, so busy days can use it up early.
 
 That's it. **Pause All Strategies** stops new buys any time (exits still run).
 
@@ -197,6 +204,10 @@ That's it. **Pause All Strategies** stops new buys any time (exits still run).
   never while the market is open. To take new CTbot releases, press **Sync fork** on GitHub.
 - **Health**: `journalctl -u ctbot-watchdog -n 5` on the server, or just trust ntfy and Healthchecks.
 - **Logs**: `journalctl -u ctbot-paper -f`.
+- **What it learned**: each evening's learning journal is in `data/learning/journal/`, and
+  `.venv/bin/ctbot-learn lessons` lists the reviewer lessons it has proposed so far (expect none in
+  the first weeks; it waits for 15 closed trades or 30 scored ideas per model). The nightly lessons
+  call costs at most `LEARN_MAX_USD_PER_DAY` ($0.25 by default).
 - **Stop all buying fast**: Pause All on the dashboard, or `touch ~ctbot/ctbot/data/HALT`.
 - **Only one bot per paper account**: don't also run it on your laptop.
 
