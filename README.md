@@ -25,9 +25,9 @@ click away in the style menu.
 
 ### Autopilot: the bot picks, funds and trades the strategies for you
 
-| Set three rules, flip it on, give it an amount | Every strategy it may use, and why |
+| Set three rules, pick the trading modes, flip it on, give it an amount | Every strategy it may use, and why |
 |---|---|
-| <img src="docs/images/autopilot.png" alt="Autopilot tab: trading rules (max loss per trade 5%, give back from high 8%, how sure Claude must be 20%), Invest for Me with $10,500, the strategy vs Nasdaq backtest chart, latest decisions, running strategies and the strategy library" width="400"> | <img src="docs/images/library.png" alt="Strategy library: 28 strategies trading and 12 benched, each with the reason, such as no practice trades lately or failed its test because results could be luck" width="400"> |
+| <img src="docs/images/autopilot.png" alt="Autopilot tab: trading rules (max loss per trade 5%, give back from high 8%, how sure Claude must be 20%), Invest for Me with $10,500, the Trading Modes box (QQQ as market gauge on, sell intraday by 3:45 PM) under the rules, the Aggressive day trading switch next to Autopilot, the strategy vs Nasdaq backtest chart, latest decisions and running strategies" width="400"> | <img src="docs/images/library.png" alt="Strategy library: 31 strategies trading and 15 benched, each with the reason, such as no practice trades lately or failed its test because results could be luck" width="400"> |
 | **Activity: every idea, what happened and why** | **Dark mode** |
 | <img src="docs/images/activity.png" alt="Activity tab: the bot's trade ideas with what happened to each and what Claude said, then results by strategy" width="400"> | <img src="docs/images/home-dark.png" alt="Home in Opening Bell dark mode" width="400"> |
 
@@ -55,6 +55,26 @@ step.
     *Strategy library* (every strategy, trading or benched and why), *Testing* (crash test back to
     1999, a no-hindsight walk-forward test, the comparison books), *Backtests* (growth of $5,000
     since 2010, the leaderboard) and *Outside traders*.
+  - **Trading modes** (next to the Autopilot switch, paper only, main book only):
+    - *QQQ as market gauge* (default on): QQQ under its average makes the account stop borrowing.
+      Off skips only that trigger; the bad-day and drawdown pull-backs still apply.
+    - *Aggressive day trading* (default off): the same-day models (opening-range breakout, VWAP
+      reversion, ORB with live quotes) trade, a stock may be bought again after it was sold that
+      day, and more ideas and Claude reviews fit per cycle. Positions opened that day are sold at
+      market at 15:45 ET (or 15 minutes before an early close), and no new buys start after that.
+      The Nasdaq-100 trend cores, holdings from earlier days and trades with a planned exit on a
+      later day are kept, unless you tick *also flatten these*. Every hard limit stays on. The
+      daily Claude spend cap is **not** raised, so heavy days can hit it and stop reviews early.
+      Paper fills are kinder than real ones, so these results overstate fast trading; the page
+      shows today's P&L after an optional per-order commission.
+  - **Learning journal** (new): every evening CTbot writes down what each paper book learned that
+    day (`data/learning/journal/`: each book's day, each model's settled paper record, idea scores,
+    calibration and the factory's picks), in plain code with no Claude call. One small Claude call
+    a night then proposes at most three short *reviewer lessons* from those journals, only once a
+    model has 15 closed trades or 30 scored ideas. Code checks each edit (no lesson may touch money,
+    size, stops or limits), logs it with a hash chain, and any edit can be rolled back. Lessons are
+    recorded only for now: they don't reach the trade reviewer until a separate paper test proves
+    they help.
   - **Activity**: the bot's trade ideas and what happened to each, results by strategy, what each
     trade taught, safety limits, trade history, the watchlist and a live log.
   - **Settings**: add your API keys, connect Robinhood, run a health check, review Bub's changes.
@@ -114,6 +134,7 @@ Run only one bot per paper account: once the server trades, turn Mac autostart o
 | Dashboard | always | `ctbot-dashboard`, `127.0.0.1:8787` |
 | Watchdog: heartbeat ping, phone messages | every minute | `ctbot-watchdog` |
 | Research refresh: bar caches, idea scoring, preflight, day plan, reconciliation | weekdays 08:15 and 16:30 ET | `scripts/c2_track_weekly.sh` |
+| Learning journal and reviewer lessons | weekdays 16:30 ET, after the research refresh | `ctbot-learn`, `data/learning/` |
 | Auto-update from `main` (server only) | weekdays 08:45 and 16:20 ET | `deploy/update.sh` |
 
 The comparison books are how new rules get tried: each starts with $10,000 of paper money and
@@ -186,7 +207,8 @@ CTbot is free. Services you connect may charge you:
 - **Anthropic API**: billed to your key for each Claude review and each assistant message. The
   bot caps reviews per day (`MAX_CLAUDE_REVIEWS_PER_DAY`) and assistant messages separately
   (`MAX_ASSISTANT_MESSAGES_PER_DAY`). On a small account the review cost can exceed the edge it is
-  checking. Strategies that follow a fixed rule never call Claude.
+  checking. Strategies that follow a fixed rule never call Claude. The nightly reviewer-lessons
+  call has its own cap (`LEARN_MAX_USD_PER_DAY`, default $0.25).
 - **Robinhood**: its own fees and rules apply to your account.
 - **Collective2** (optional): research data; some strategies there are paid subscriptions.
 

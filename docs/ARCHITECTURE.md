@@ -81,7 +81,11 @@ src/ctbot/
   track_record.py              size multiplier per strategy from its last 30 days of paper results
   backtest_check.py            live average per trade vs config/backtests.toml ("Vs backtest" column)
   risk_mode.py                 pull back after losses: no borrowing on a bad day, drawdown or QQQ downtrend
+  trading_modes.py             Trading tab modes (data/trading_modes.json): QQQ-gauge toggle, aggressive
+                               day trading with the 15:45 ET flatten
   trade_log.py                 per-trade post-mortems (data/trade_log.jsonl)
+  learn.py                     ctbot-learn: nightly learning journal (code only, data/learning/journal/) and
+                               code-checked reviewer lessons (lessons.json, hash-chained history.jsonl)
   library/                     12 published rule families x 2 universes (lib_*), traded only if
                                ctbot-library-research admits them
   watchdog.py, notify.py       heartbeat ping (HEARTBEAT_URL) and ntfy phone messages (NOTIFY_URL)
