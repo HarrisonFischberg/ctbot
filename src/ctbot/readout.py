@@ -143,7 +143,11 @@ def _learning_line(settings: Any, day: date) -> str:
     from ctbot import learn
 
     lines = learn.changes(learn.previous(learn.journal_dir(settings), day), learn.journal(settings, day))
-    return "What changed: " + ("; ".join(lines) if lines else "no newly settled trades.")
+    folder = learn.learning_dir(settings)
+    edits = [r for r in learn.history(folder) if not r["refused"] and r["ts"][:10] == day.isoformat()]
+    return ("What changed: " + ("; ".join(lines) if lines else "no newly settled trades.")
+            + f" Reviewer lessons: {len(learn.load_lessons(folder))} active, {len(edits)} edited today"
+            + " (not traded yet).")
 
 
 def build(settings: Any, day: date) -> str:

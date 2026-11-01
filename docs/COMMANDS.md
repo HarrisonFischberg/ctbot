@@ -130,6 +130,7 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
 | Strategy library backtest: which `lib_*` entries the autopilot may trade | `.venv/bin/ctbot-library-research` |
 | Strategy factory: 1,080 candidates backtested, kept only past PBO, BH, Deflated Sharpe and 3x costs; the `factory` paper book trades the live list (runs nightly after the close) | `.venv/bin/ctbot-factory` (`--universe etfs` for a quick run) |
 | Learning journal: each book's day, per-model record, idea scores, calibration and factory picks in `data/learning/journal/` (code only, no Claude; runs nightly after the factory) | `.venv/bin/ctbot-learn journal [YYYY-MM-DD]` |
+| Reviewer lessons (paper only, not traded yet): one Claude call a night proposes up to 3 lesson edits, checked by code and logged hash-chained in `data/learning/history.jsonl` (capped by `LEARN_MAX_USD_PER_DAY`, default $0.25; model `LEARN_MODEL`, default Sonnet) | `.venv/bin/ctbot-learn refine` · `ctbot-learn lessons` · `ctbot-learn rollback <event>` |
 | Compare the side-by-side paper books | `.venv/bin/ctbot-variants` |
 | Tests | `.venv/bin/pytest -q` |
 | Known-vulnerability scan of installed packages | `.venv/bin/pip-audit --skip-editable` |
