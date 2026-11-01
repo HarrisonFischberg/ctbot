@@ -139,6 +139,17 @@ def _factory_line() -> str:
             f"({pbo}); factory book trades {', '.join(rep.get('live', [])) or 'none'}.")
 
 
+def _learning_line(settings: Any, day: date) -> str:
+    from ctbot import learn
+
+    lines = learn.changes(learn.previous(learn.journal_dir(settings), day), learn.journal(settings, day))
+    folder = learn.learning_dir(settings)
+    edits = [r for r in learn.history(folder) if not r["refused"] and r["ts"][:10] == day.isoformat()]
+    return ("What changed: " + ("; ".join(lines) if lines else "no newly settled trades.")
+            + f" Reviewer lessons: {len(learn.load_lessons(folder))} active, {len(edits)} edited today"
+            + " (not traded yet).")
+
+
 def build(settings: Any, day: date) -> str:
     """The Markdown readout for `day`."""
     from ctbot.config import Settings
@@ -174,8 +185,8 @@ def build(settings: Any, day: date) -> str:
                    f"{len(r['closes'])} ({wins}/{len(r['closes']) - wins}) | {len(r['buys'])} | {r['positions']} | "
                    f"{r['usd']:.2f} | {_fmt(t.get('return'), '{:+.1%}')} | "
                    f"{vs['verdict'] + ' (' + str(vs['days']) + 'd)' if vs else '-'} |")
-    out += ["", f"Claude spend today, all books: ${sum(r['usd'] for r in rows):.2f}", _factory_line(), "",
-            "## Books", ""]
+    out += ["", f"Claude spend today, all books: ${sum(r['usd'] for r in rows):.2f}", _factory_line(),
+            _learning_line(settings, day), "", "## Books", ""]
     for r in rows:
         eq = "no cycle today" if r["end"] is None else f"equity ${r['end']:,.2f}"
         out.append(f"**{r['name']}** ({r['title']}): {eq}")

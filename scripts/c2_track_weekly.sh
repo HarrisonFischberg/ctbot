@@ -9,7 +9,9 @@
 #    reconciliation (data/day_plan/, data/eod/; read-only)
 # 6) after the close only: the strategy factory (ctbot-factory), whose live list the factory book trades;
 #    it first fetches full daily history once for any symbol whose cache is short; then the library
-#    backtest (ctbot-library-research), which decides the lib_* entries the autopilot may trade
+#    backtest (ctbot-library-research), which decides the lib_* entries the autopilot may trade; then
+#    the learning journal (ctbot-learn journal: code only, no Claude), data/learning/journal/, and
+#    one Claude call proposing reviewer lessons (ctbot-learn refine, capped at LEARN_MAX_USD_PER_DAY)
 set -u -o pipefail
 cd "$(dirname "$0")/.." || exit 1
 LOG=logs/c2-track.log
@@ -34,5 +36,7 @@ days_ago() { .venv/bin/python -c "import datetime, sys; print(datetime.date.toda
   if [ "$(TZ=America/New_York date +%H)" -ge 12 ]; then
     nice -n 10 .venv/bin/ctbot-factory --backfill 2>&1 | grep -v '^  ' | tail -6 || echo "strategy factory failed"
     nice -n 10 .venv/bin/ctbot-library-research 2>&1 | tail -2 || echo "library backtest failed"
+    .venv/bin/ctbot-learn journal 2>&1 || echo "learning journal failed"
+    .venv/bin/ctbot-learn refine 2>&1 | tail -5 || echo "lesson refine failed"
   fi
 } >> "$LOG" 2>&1
