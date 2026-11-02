@@ -664,7 +664,7 @@ main:focus { outline: none; }
       <div id="apDecisions" class="xscroll"></div>
     </div>
 
-    <div data-tab="trading" class="card span-12">
+    <div data-tab="trading" class="card span-12" id="tmCard">
       <h2>Trading modes <span class="count" id="tmMeta"></span></h2>
       <form class="ap-form" id="tmForm">
         <label class="ap-switch"><input type="checkbox" id="tmQqq"> <b>QQQ as market gauge</b></label>
@@ -1223,10 +1223,16 @@ main:focus { outline: none; }
     if (pf.ok === false) alerts.push(["crit", "!", "Start-up check at " + fmtTime(pf.ts) + " found a problem: " +
       (pf.checks || []).filter((c) => !c.ok).map((c) => c.check + " (" + c.detail + ")." + pfHint(c)).join(" ")]);
     if (a.day_pnl_pct <= -S.limits.max_daily_loss_pct) alerts.push(["warn", "△", `Down ${pct(S.limits.max_daily_loss_pct, 0)} today, the most allowed: the bot won't buy anything else until tomorrow.`]);
-    if ((a.pulled_back || []).length) alerts.push(["warn", "△", `Playing it safe: ${a.pulled_back.join(", ")}. New buys use only cash on hand, no borrowing, until that clears.`]);
+    if ((a.pulled_back || []).length) {
+      const qqq = TM.qqq_gate !== false && a.pulled_back.some((r) => r.startsWith(S.limits.risk_off_trend_symbol || "QQQ"));
+      const broke = a.equity - a.deployed < 1;  // cash spent, so a no-borrowing hold blocks every buy
+      alerts.push(["warn", "△", (TM.aggressive && broke ? "Aggressive mode is on but can't buy anything: " : "Playing it safe: ") +
+        `${a.pulled_back.join(", ")}. New buys use only cash on hand, no borrowing, until that clears${broke ? ", and the cash is spent" : ""}.` +
+        (qqq ? " To let it borrow again, untick \"QQQ as market gauge\"." : ""), qqq && "Open Trading modes"]);
+    }
     if (a.margin_call) alerts.push(["crit", "!", "Borrowed too much: your account value is under 25% of what you hold, so buying is paused until it recovers."]);
     if (S.limits.pdt_rule && a.day_trades_5d >= S.limits.max_day_trades_5d) alerts.push(["warn", "△", `Day-trade limit reached (${a.day_trades_5d} of ${S.limits.max_day_trades_5d} in 5 days): the bot can't buy and sell the same stock on the same day.`]);
-    $("alerts").innerHTML = alerts.map(([k, ic, t]) => `<div class="alert ${k}"><span class="ic">${ic}</span><span>${esc(t)}</span></div>`).join("");
+    $("alerts").innerHTML = alerts.map(([k, ic, t, go]) => `<div class="alert ${k}"><span class="ic">${ic}</span><span>${esc(t)}${go ? ` <button type="button" class="btn" data-go="tmCard">${esc(go)}</button>` : ""}</span></div>`).join("");
   }
 
   // ---- KPIs ------------------------------------------------------------------
@@ -2318,6 +2324,11 @@ main:focus { outline: none; }
     cmpScale = b.dataset.scale; document.querySelectorAll("[data-scale]").forEach((x) => x.classList.toggle("on", x === b)); S && renderCompare();
   }));
   applyTab();
+  $("alerts").addEventListener("click", (e) => {  // an alert's button opens the card that changes it
+    const b = e.target.closest("[data-go]"); if (!b) return;
+    tab = "trading"; applyTab();
+    $(b.dataset.go).scrollIntoView({ behavior: "smooth", block: "start" }); $("tmQqq").focus({ preventScroll: true });
+  });
   document.querySelectorAll("[data-c2]").forEach((b) => b.addEventListener("click", () => {
     c2View = b.dataset.c2; document.querySelectorAll("[data-c2]").forEach((x) => x.classList.toggle("on", x === b)); S && renderC2();
   }));
