@@ -170,6 +170,9 @@ main:focus { outline: none; }
 .apsw input:disabled + .track { opacity: .5; }
 .apsw b { display: block; font: 600 16px var(--sans); }
 .apsw small { color: var(--ink-2); font-size: 13px; }
+.tm-key { display: grid; gap: 16px; padding: 16px; border-radius: 14px; border: 2px solid var(--neon); background: rgba(var(--tint), .05); }
+.tm-key .apsw { align-items: flex-start; }
+.tm-key .apsw small { display: block; margin-top: 2px; }
 .info { width: 26px; height: 26px; border: 0; background: transparent; color: var(--muted); cursor: pointer; padding: 0; display: inline-grid; place-items: center; border-radius: 50%; }
 .info .ico { width: 18px; height: 18px; }
 .info:hover { color: var(--ink); } .info:focus-visible { outline: 2px solid var(--neon); }
@@ -1061,14 +1064,18 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
       <div class="ap-div"></div>
       <h3 id="tmModes" tabindex="-1" style="scroll-margin-top:120px">Trading Modes</h3>
       <form class="ap-form" id="tmForm">
-        <label class="ap-row wide">QQQ as market gauge <input type="checkbox" id="tmQqq"></label>
-        <p class="ap-note">On: while QQQ is under its 50-day average, new buys use only cash on hand. The other pull-back rules don't change.</p>
+        <div class="tm-key">
+          <label class="apsw"><input type="checkbox" id="tmQqq" role="switch"><span class="track"></span><span><b>QQQ as market gauge</b>
+            <small>On: while QQQ is under its 50-day average, new buys use only cash on hand. Off: the bot can borrow again.</small></span></label>
+          <label class="apsw"><input type="checkbox" id="tmAll" role="switch"><span class="track"></span><span><b>Also sell the long-term holdings at the close</b>
+            <small>On: the trend cores and multi-day holds are sold at the time below too, so the account is all cash.</small></span></label>
+          <p class="ap-note">Press Save Modes below to apply.</p>
+        </div>
         <p class="alert warn" id="tmQqqWarn" hidden><span class="ic">△</span><span>Buys can happen while the Nasdaq is in a downtrend.</span></p>
         <p class="ap-note"><b>Aggressive day trading</b> (switch at the top): day-trading models trade, a stock can be bought again after it's sold, and intraday positions are sold at market by the time below. Every loss limit stays the same. Paper only.</p>
         <label class="ap-row wide">Also trade overnight holds <input type="checkbox" id="tmOvn"></label>
         <label class="ap-row wide" style="grid-template-columns: 1fr 150px">Sell intraday by (ET) <input type="time" class="sel" id="tmAt" min="09:31" max="15:59" required></label>
         <label class="ap-row wide">Commission per order ($) <input type="number" class="sel" id="tmFee" min="0" max="10" step="0.01" required></label>
-        <label class="ap-row wide">Also flatten trend cores and multi-day holds <input type="checkbox" id="tmAll"></label>
         <p class="ap-note" id="tmPnl"></p>
         <button class="btn solid big" type="submit" id="tmSave">Save Modes</button>
       </form>
