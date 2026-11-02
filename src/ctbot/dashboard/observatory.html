@@ -1059,7 +1059,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
       <div class="ap-side"><button class="btn dark big" type="button" id="pauseAll"><svg class="ico"><use href="#i-pause"/></svg><span>Pause All Strategies</span></button><p id="pauseText" hidden>Paused: no new buys. Stops, targets and sells still run.</p></div>
       <div class="ap-side" id="topup" hidden><button class="btn dark big" type="button" id="topupGo">Add paper cash</button><p id="topupText"></p></div>
       <div class="ap-div"></div>
-      <h3>Trading Modes</h3>
+      <h3 id="tmModes" tabindex="-1" style="scroll-margin-top:120px">Trading Modes</h3>
       <form class="ap-form" id="tmForm">
         <label class="ap-row wide">QQQ as market gauge <input type="checkbox" id="tmQqq"></label>
         <p class="ap-note">On: while QQQ is under its 50-day average, new buys use only cash on hand. The other pull-back rules don't change.</p>
@@ -1648,10 +1648,16 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     if (pf.ok === false) alerts.push(["crit", "!", "Start-up check at " + fmtTime(pf.ts) + " found a problem: " +
       (pf.checks || []).filter((c) => !c.ok).map((c) => c.check + " (" + c.detail + ")." + pfHint(c)).join(" ")]);
     if (a.day_pnl_pct <= -S.limits.max_daily_loss_pct) alerts.push(["warn", "△", `Down ${pct(S.limits.max_daily_loss_pct, 0)} today, the most allowed: the bot won't buy anything else until tomorrow.`]);
-    if ((a.pulled_back || []).length) alerts.push(["warn", "△", `Playing it safe: ${a.pulled_back.join(", ")}. New buys use only cash on hand, no borrowing, until that clears.`]);
+    if ((a.pulled_back || []).length) {
+      const qqq = TM.qqq_gate !== false && a.pulled_back.some((r) => r.startsWith(S.limits.risk_off_trend_symbol || "QQQ"));
+      const broke = a.equity - a.deployed < 1;  // cash spent, so a no-borrowing hold blocks every buy
+      alerts.push(["warn", "△", (TM.aggressive && broke ? "Aggressive mode is on but can't buy anything: " : "Playing it safe: ") +
+        `${a.pulled_back.join(", ")}. New buys use only cash on hand, no borrowing, until that clears${broke ? ", and the cash is spent" : ""}.` +
+        (qqq ? " To let it borrow again, untick \"QQQ as market gauge\"." : ""), qqq && "Open Trading Modes"]);
+    }
     if (a.margin_call) alerts.push(["crit", "!", "Borrowed too much: your account value is under 25% of what you hold, so buying is paused until it recovers."]);
     if (S.limits.pdt_rule && a.day_trades_5d >= S.limits.max_day_trades_5d) alerts.push(["warn", "△", `Day-trade limit reached (${a.day_trades_5d} of ${S.limits.max_day_trades_5d} in 5 days): the bot can't buy and sell the same stock on the same day.`]);
-    put($("alerts"), alerts.map(([k, ic, t]) => `<div class="alert ${k}"><span class="ic">${ic}</span><span>${esc(t)}</span></div>`).join(""));
+    put($("alerts"), alerts.map(([k, ic, t, go]) => `<div class="alert ${k}"><span class="ic">${ic}</span><span>${esc(t)}${go ? ` <button class="linkish u" type="button" data-goto="trading" data-focus="tmModes">${esc(go)}</button>` : ""}</span></div>`).join(""));
   }
 
   // ---- Home: portfolio value and where the money is ------------------------------
@@ -2637,7 +2643,9 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     const lab = e.target.closest("[data-lab]");
     if (lab && !e.target.closest("a")) return openLab(lab.dataset.lab);
     const go = e.target.closest("[data-goto]");
-    if (go) { tab = go.dataset.goto; try { localStorage.setItem("ctbot.tab", tab); } catch (err) {} applyTab(); scrollTo(0, 0); return; }
+    if (go) { tab = go.dataset.goto; try { localStorage.setItem("ctbot.tab", tab); } catch (err) {} applyTab();
+      if (go.dataset.focus) { $(go.dataset.focus).scrollIntoView({ behavior: "smooth", block: "start" }); $(go.dataset.focus).focus({ preventScroll: true }); } else scrollTo(0, 0);
+      return; }
     const per = e.target.closest("[data-period]");
     if (per) { period = per.dataset.period; try { localStorage.setItem("ctbot.period", period); } catch (err) {} renderCatalog(); return; }
     const b = e.target.closest("[data-stop]");
