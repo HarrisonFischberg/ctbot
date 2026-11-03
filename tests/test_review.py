@@ -101,3 +101,11 @@ def test_outcome_memory_is_as_of(tmp_path):
     late = outcome_memory(ledger, ["rsi2_etf"], "KO", datetime(2026, 10, 9, tzinfo=timezone.utc))
     assert late["models"]["rsi2_etf"]["closed_trades"] == 2 and late["models"]["rsi2_etf"]["win_rate"] == 0.5
     assert [t["exit"] for t in late["symbol_last_trades"]] == ["time_exit", "stop_loss"]
+
+
+def test_stop_given_as_whole_percent_becomes_fraction():
+    from ctbot.decision.engine import DecisionSchema
+
+    d = DecisionSchema(approve=True, confidence=0.5, rationale="", suggested_notional=1.0,
+                       stop_loss_pct=5, take_profit_pct=0.08)
+    assert (d.stop_loss_pct, d.take_profit_pct) == (0.05, 0.08)

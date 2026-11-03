@@ -6,7 +6,7 @@ import json
 import logging
 from dataclasses import asdict
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from ctbot.decision.prompts import DEBATE_PROMPTS, SYSTEM_PROMPT
 from ctbot.models import Candidate, Decision
@@ -22,8 +22,14 @@ class DecisionSchema(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     rationale: str
     suggested_notional: float = Field(ge=0.0)
-    stop_loss_pct: float | None = None
-    take_profit_pct: float | None = None
+    stop_loss_pct: float | None = Field(None, description="fraction of the entry price, 0.05 = 5%")
+    take_profit_pct: float | None = Field(None, description="fraction of the entry price, 0.10 = 10%")
+
+    @field_validator("stop_loss_pct", "take_profit_pct")
+    @classmethod
+    def _as_fraction(cls, v: float | None) -> float | None:
+        # Claude sometimes answers 5 meaning 5%; the risk manager would read that as 500% and cap it
+        return v / 100 if v is not None and v > 1 else v
 
 
 _UNSUPPORTED_KEYWORDS = {"minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf"}
