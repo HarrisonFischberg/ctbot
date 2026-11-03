@@ -302,7 +302,7 @@ def _before_buy(c, state, now, cand, quote, decision, verdict, waiting) -> None:
         parts.append(f"{sym} is {'up' if move > 0 else 'down'} {abs(move):.1%} today")
     stop = getattr(decision, "stop_loss_pct", None)
     if stop:
-        parts.append(f"it sells if it falls {stop:.0%}")
+        parts.append(f"Claude suggests a {stop:.1%} stop")  # the real stop can be tighter (cap, trail)
     if state.risk_off:
         parts.append("cash only while playing it safe")
     text = "; ".join(parts) + "." + (" Waiting for your click." if waiting else "")
