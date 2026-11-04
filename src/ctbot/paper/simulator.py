@@ -92,6 +92,8 @@ class PaperBroker:
                 return None  # no simulated shorting
             price = quote.bid * (1 - slip)
             qty = min(pos.quantity, order.notional / price)
+            if (pos.quantity - qty) * price < 0.01:  # a sub-cent remainder is dust: sell it all
+                qty = pos.quantity
             if self.instant_settlement:
                 self._cash += qty * price
             else:
