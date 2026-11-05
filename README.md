@@ -27,7 +27,7 @@ click away in the style menu.
 
 | Set three rules, flip it on, give it an amount | Every strategy it may use, and why |
 |---|---|
-| <img src="docs/images/autopilot.png" alt="Autopilot tab: trading rules (max loss per trade 5%, give back from high 8%, how sure Claude must be 20%), Invest for Me with $10,500, the strategy vs Nasdaq backtest chart, latest decisions, running strategies and the strategy library" width="400"> | <img src="docs/images/library.png" alt="Strategy library: 28 strategies trading and 12 benched, each with the reason, such as no practice trades lately or failed its test because results could be luck" width="400"> |
+| <img src="docs/images/autopilot.png" alt="Autopilot tab: trading rules (max loss per trade 5%, give back from high 8%, how sure Claude must be 20%), Invest for Me with $10,500, the strategy vs Nasdaq backtest chart, latest decisions, running strategies and the strategy library" width="400"> | <img src="docs/images/library.png" alt="Strategy library: 31 strategies trading and 15 benched, each with the reason, such as no practice trades lately or failed its test because results could be luck" width="400"> |
 | **Activity: every idea, what happened and why** | **Dark mode** |
 | <img src="docs/images/activity.png" alt="Activity tab: the bot's trade ideas with what happened to each and what Claude said, then results by strategy" width="400"> | <img src="docs/images/home-dark.png" alt="Home in Opening Bell dark mode" width="400"> |
 
