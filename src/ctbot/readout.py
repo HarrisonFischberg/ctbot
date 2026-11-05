@@ -150,8 +150,8 @@ def _learning_line(settings: Any, day: date) -> str:
             + " (not traded yet).")
 
 
-def build(settings: Any, day: date) -> str:
-    """The Markdown readout for `day`."""
+def rows(settings: Any, day: date) -> list[dict[str, Any]]:
+    """Every book's day (main + variants), best day P&L first."""
     from ctbot.config import Settings
 
     books = [("main", "Your main account", settings)]
@@ -174,20 +174,25 @@ def build(settings: Any, day: date) -> str:
                      "buys": buys, "closes": closes, "usd": llm_costs.spent(s.llm_usage_path, day),
                      "halts": _halts(s), "total": totals.get(name, {})})
     rows.sort(key=lambda r: -(r["pnl"] if r["pnl"] is not None else -1e18))
+    return rows
 
+
+def build(settings: Any, day: date) -> str:
+    """The Markdown readout for `day`."""
+    rows_ = rows(settings, day)
     out = [f"# CTbot paper readout, {day:%a %Y-%m-%d}", "",
            "| # | book | day P&L | day % | closed (W/L) | buys | open at close | Claude $ | since start | vs main |",
            "|---|---|---:|---:|---|---:|---:|---:|---:|---|"]
-    for i, r in enumerate(rows, 1):
+    for i, r in enumerate(rows_, 1):
         wins = sum(c["pnl"] > 0 for c in r["closes"])
         t, vs = r["total"], r["total"].get("vs_main")
         out.append(f"| {i} | {r['name']} | {_fmt(r['pnl'], '{:+,.2f}')} | {_fmt(r['pct'], '{:+.2%}')} | "
                    f"{len(r['closes'])} ({wins}/{len(r['closes']) - wins}) | {len(r['buys'])} | {r['positions']} | "
                    f"{r['usd']:.2f} | {_fmt(t.get('return'), '{:+.1%}')} | "
                    f"{vs['verdict'] + ' (' + str(vs['days']) + 'd)' if vs else '-'} |")
-    out += ["", f"Claude spend today, all books: ${sum(r['usd'] for r in rows):.2f}", _factory_line(),
+    out += ["", f"Claude spend today, all books: ${sum(r['usd'] for r in rows_):.2f}", _factory_line(),
             _learning_line(settings, day), "", "## Books", ""]
-    for r in rows:
+    for r in rows_:
         eq = "no cycle today" if r["end"] is None else f"equity ${r['end']:,.2f}"
         out.append(f"**{r['name']}** ({r['title']}): {eq}")
         if r["buys"]:
