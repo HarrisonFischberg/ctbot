@@ -85,6 +85,7 @@ src/ctbot/
   library/                     12 published rule families x 2 universes (lib_*), traded only if
                                ctbot-library-research admits them
   watchdog.py, notify.py       heartbeat ping (HEARTBEAT_URL) and ntfy phone messages (NOTIFY_URL)
+  brief.py                     9:45 / 12:45 / after-close phone update with Claude's "why"
   risk/manager.py              check_entry / check_exit
   execution/                   OrderExecutor protocol + paper-process import guard
   paper/                       PaperBroker + `ctbot-paper` entrypoint
