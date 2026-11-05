@@ -5,7 +5,7 @@ trades paper money all day, a private dashboard on your Mac and phone, phone ale
 and Autopilot choosing and funding the strategies. Budget about an hour, most of it waiting for
 installs. **Paper money only**: nothing here can place a real order.
 
-If you only want to try it on your laptop first, the [Quick start](../README.md#quick-start) in the
+If you only want to try it on your laptop first, the [install steps](../README.md#install-on-your-computer) in the
 README takes five minutes. Come back here when you want it running while your laptop is closed.
 
 ## What you need
@@ -18,7 +18,7 @@ README takes five minutes. Come back here when you want it running while your la
 | A small Linux server ([Hetzner](https://www.hetzner.com/cloud) CX23 or a 2 GB [DigitalOcean](https://www.digitalocean.com/) droplet) | runs the bot when your computer is off | ~$7-15/month |
 | [Tailscale](https://tailscale.com/) on the server, your computer and your phone | opens the dashboard privately, nothing on the public internet | free |
 | [Healthchecks.io](https://healthchecks.io/) | tells you if the server stops | free |
-| The [ntfy](https://ntfy.sh/) app on your phone | "market open", the day's summary, and problems | free |
+| The [ntfy](https://ntfy.sh/) app on your phone | updates on the trading day, and problems | free |
 | Optional: an OpenAI API key | Bub's backup if Claude errors | pay per use |
 
 Never paste a key into a GitHub issue, a commit or a screenshot. Keys live only in the server's
@@ -65,8 +65,8 @@ echo "ctbot-$(openssl rand -hex 12)"
 In the ntfy phone app, press **+** and subscribe to that topic on `ntfy.sh`. Keep the name to
 yourself. You will get:
 
-- **Market open**: "CTbot is trading", with the premarket plan's verdict.
-- **After the close**: the day's paper P&L and fills.
+- **During the trading day**: how the paper account is doing, with the premarket plan in the
+  morning and the day's result after the close.
 - **Problems**: the moment the bot turns unhealthy (a failed sign-in, cycles not finishing), and
   again when it recovers.
 

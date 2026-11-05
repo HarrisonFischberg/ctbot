@@ -13,7 +13,7 @@ first.
 
 Free and open source ([MIT](LICENSE)) by [Rare Creatures](https://rarecreatures.app). No accounts,
 no servers of ours, no tracking: your keys and data stay on your machine (or on a server you rent
-yourself, see [Run it on a server](#run-it-on-a-server-recommended-for-all-day-trading)).
+yourself, see [Run it on a server](#run-it-on-a-server-hetzner-or-any-ubuntu-vm)).
 
 **New: Opening Bell.** The dashboard has a new default look: light and blue, a live ticker tape,
 big numbers and a left rail (bottom bar on a phone), in light or dark. The older design is still a
@@ -27,7 +27,7 @@ click away in the style menu.
 
 | Set three rules, flip it on, give it an amount | Every strategy it may use, and why |
 |---|---|
-| <img src="docs/images/autopilot.png" alt="Autopilot tab: trading rules (max loss per trade 5%, give back from high 8%, how sure Claude must be 20%), Invest for Me with $10,500, the strategy vs Nasdaq backtest chart, latest decisions, running strategies and the strategy library" width="400"> | <img src="docs/images/library.png" alt="Strategy library: 28 strategies trading and 12 benched, each with the reason, such as no practice trades lately or failed its test because results could be luck" width="400"> |
+| <img src="docs/images/autopilot.png" alt="Autopilot tab: trading rules (max loss per trade 5%, give back from high 8%, how sure Claude must be 20%), Invest for Me with $10,500, the strategy vs Nasdaq backtest chart, latest decisions, running strategies and the strategy library" width="400"> | <img src="docs/images/library.png" alt="Strategy library: 31 strategies trading and 15 benched, each with the reason, such as no practice trades lately or failed its test because results could be luck" width="400"> |
 | **Activity: every idea, what happened and why** | **Dark mode** |
 | <img src="docs/images/activity.png" alt="Activity tab: the bot's trade ideas with what happened to each and what Claude said, then results by strategy" width="400"> | <img src="docs/images/home-dark.png" alt="Home in Opening Bell dark mode" width="400"> |
 
@@ -54,7 +54,9 @@ step.
     a drawdown or a QQQ downtrend. Its sections: *Overview* (rules, decisions, what's running),
     *Strategy library* (every strategy, trading or benched and why), *Testing* (crash test back to
     1999, a no-hindsight walk-forward test, the comparison books), *Backtests* (growth of $5,000
-    since 2010, the leaderboard) and *Outside traders*.
+    since 2010, the leaderboard) and *Outside traders*. Two **trading mode** switches sit there
+    too: QQQ as the market gauge (on by default; QQQ below its average pulls the account back) and
+    aggressive day trading (off by default; more same-day trades, all sold before the close).
   - **Activity**: the bot's trade ideas and what happened to each, results by strategy, what each
     trade taught, safety limits, trade history, the watchlist and a live log.
   - **Settings**: add your API keys, connect Robinhood, run a health check, review Bub's changes.
@@ -67,43 +69,110 @@ step.
   packs (`.claude/skills/`): risk-per-trade sizing, total open risk, entries per day, minimum
   reward/risk, half off at 1R, a VWAP entry gate and a bear-market gate (see `.env.example`).
 
-## Quick start
+## Install on your computer
 
-You need macOS (tested) or Linux (not tested yet), Python 3.11 or newer, a Robinhood account with agent (MCP) access, and
-optionally an [Anthropic API key](https://console.anthropic.com/) for Claude reviews.
+About ten minutes. You need:
+
+- **macOS or Linux** (Ubuntu 24.04 is what the server setup below uses). Windows isn't supported;
+  WSL2 with Ubuntu may work but is untested.
+- **Python 3.11 or newer** and **git**. macOS: `brew install python git` (the built-in `python3`
+  is too old). Ubuntu/Debian: `sudo apt install git python3-venv`.
+- A **Robinhood account with agent (MCP) access**, for live prices (read-only; CTbot never sends
+  it an order).
+- Optional: an [Anthropic API key](https://console.anthropic.com/) for Claude's trade reviews and
+  Bub, and an OpenAI key as Bub's backup.
 
 ```bash
 git clone https://github.com/HarrisonFischberg/ctbot.git
 cd ctbot
 python3 -m venv .venv
 .venv/bin/pip install -e '.[dev]'
-cp .env.example .env              # optional: you can also add keys in the dashboard
-.venv/bin/pytest -q               # every test should pass
-./run_ctbot.sh                    # dashboard + paper bot; Ctrl+C stops both
+.venv/bin/pytest -q                    # every test should pass
+cp .env.example .env && chmod 600 .env
 ```
 
-Open `http://127.0.0.1:8787`, go to **Settings**, add your keys and press **Connect Robinhood**.
-Then open **Autopilot**, set your rules, flip it on and press **Invest for Me** (or invest in one
-strategy from the library). The bot trades during US market hours while
-`./run_ctbot.sh` is running.
+Open `.env` in any editor and change two lines (everything else can stay as it is):
 
-### Run it on a server (recommended for all-day trading)
+```bash
+MARKET_DATA=robinhood   # live prices; the default "csv" reads bar files from data/bars, and none ship
+ENTRY_MODE=auto         # buys go through on their own; "manual" makes each one wait for your click
+```
+
+Then sign in to Robinhood once (it opens your browser; the token stays in `~/.ctbot/`, mode 600)
+and start the bot:
+
+```bash
+.venv/bin/ctbot-robinhood-login        # prints a test SPY quote when it works
+./run_ctbot.sh                         # dashboard + paper bot; Ctrl+C stops both
+```
+
+The dashboard opens at `http://127.0.0.1:8787`. Go to **Settings**, paste your Anthropic key
+(or put `ANTHROPIC_API_KEY` in `.env`) and press **Run check**. Then open **Autopilot**, set your
+three rules, flip it on and press **Invest for Me** (or invest in one strategy from the library).
+The bot trades paper money during US market hours (9:30 to 16:00 ET, weekdays) for as long as
+`./run_ctbot.sh` runs, and sits idle outside them.
+
+Starting paper money and limits come from `.env`: `STARTING_CAPITAL` and `MAX_TRADING_CAPITAL`
+default to $250, so raise both (for example to `10000`) to try it with a bigger paper account.
+`.env.example` explains every other setting. A Mac can also start the bot at login, see
+[Start at login](#start-at-login-macos-optional).
+
+## Run it on a server (Hetzner or any Ubuntu VM)
 
 A laptop sleeps, travels and loses Wi-Fi. For a bot that trades every session, run it on a small
-Linux server instead (a ~$7/month Hetzner or ~$12 DigitalOcean VM works). Step by step:
-[docs/SETUP.md](docs/SETUP.md). Every file and timer: [docs/CLOUD_HOSTING.md](docs/CLOUD_HOSTING.md). In short:
+Linux server: a Hetzner CX23 (~$7/month) or a 2 GB DigitalOcean droplet (~$12) works. The full
+walkthrough with Tailscale and phone alerts is **[docs/SETUP.md](docs/SETUP.md)**; every file and
+timer is in [docs/CLOUD_HOSTING.md](docs/CLOUD_HOSTING.md). The short version:
 
-- `deploy/setup-server.sh` (Ubuntu 24.04, as root) installs CTbot as systemd services, paper only.
-- `deploy/tailscale.sh` puts the dashboard on your private Tailscale network
-  (`https://ctbot.<tailnet>.ts.net` on your Mac and phone) and can close public SSH.
-- **Updates deploy themselves**: merge to `main` and `ctbot-update.timer` pulls it and restarts
-  the bot at 08:45 or 16:20 ET on the next weekday, never while the market is open.
-- **Alerts**: `ctbot-watchdog` pings a Healthchecks.io URL every minute (`HEARTBEAT_URL`) and,
-  with `NOTIFY_URL` set to an ntfy topic, sends phone messages at the open, after the close and
-  when something breaks.
+1. **Create the server**: Ubuntu 24.04, 2 GB of RAM, your computer's SSH key, password login off.
+2. **Install CTbot** (as root). Use your fork's URL instead if you want to choose when updates
+   arrive:
 
-Run only one bot per paper account: once the server trades, turn Mac autostart off
-(`scripts/autostart.sh uninstall`).
+   ```bash
+   ssh root@<server-ip>
+   curl -fsSLO https://raw.githubusercontent.com/HarrisonFischberg/ctbot/main/deploy/setup-server.sh
+   bash setup-server.sh
+   ```
+
+   It installs packages, creates a `ctbot` user, turns on a firewall (SSH only), clones the repo,
+   installs the systemd services and stops with what is still missing. That is expected.
+3. **Write `.env`**, the same two lines as above plus your keys (`ANTHROPIC_API_KEY`, and
+   optionally `HEARTBEAT_URL` and `NOTIFY_URL` for alerts, see below):
+
+   ```bash
+   cd /home/ctbot/ctbot && sudo -u ctbot cp .env.example .env && chmod 600 .env && nano .env
+   ```
+
+4. **Sign in to Robinhood** through an SSH tunnel, because the sign-in calls back to
+   `localhost:8765`. From your computer:
+
+   ```bash
+   ssh -L 8765:localhost:8765 root@<server-ip>
+   sudo -u ctbot -H bash -c 'cd ~/ctbot && .venv/bin/ctbot-robinhood-login'
+   ```
+
+   Open the link it prints in your computer's browser.
+5. **Start it**: `bash /home/ctbot/ctbot/deploy/setup-server.sh` again. This time it starts the
+   bot, the dashboard and the timers, and prints a health check.
+6. **Open the dashboard**. It listens only on the server's loopback, so either tunnel to it
+   (`ssh -N -L 8787:127.0.0.1:8787 root@<server-ip>`, then `http://127.0.0.1:8787`) or run
+   `bash /home/ctbot/ctbot/deploy/tailscale.sh` on the server to get a private
+   `https://ctbot.<tailnet>.ts.net` address for your computer and phone (it can also close public
+   SSH afterwards).
+
+After that:
+
+- **Updates deploy themselves**: `ctbot-update.timer` pulls `main` and restarts the bot at 08:45
+  or 16:20 ET on the next weekday, never while the market is open.
+- **Alerts** (optional): `ctbot-watchdog` runs every minute. With `HEARTBEAT_URL` set to a
+  [Healthchecks.io](https://healthchecks.io) ping URL you are alerted when the server or bot stops;
+  with `NOTIFY_URL` set to a long, random [ntfy](https://ntfy.sh) topic you get phone updates on
+  the trading day and a message when something breaks.
+- **Logs**: `journalctl -u ctbot-paper -f`. **Pause all buying**: `touch /home/ctbot/ctbot/data/HALT`.
+- **Paper only**: the services pin `LIVE_TRADING_ENABLED=false`, whatever `.env` says.
+
+Run only one bot per paper account: once the server trades, stop the one on your computer (on a
+Mac with autostart, `scripts/autostart.sh uninstall`).
 
 ### What runs, and when
 
@@ -122,7 +191,7 @@ ideas per cycle, the reviewing model, or the trading-skill rules). Compare them 
 page's *Settings test* card or with `.venv/bin/ctbot-variants`. Nothing promotes a book's settings
 to the main book by itself.
 
-### Start at login (macOS, optional)
+## Start at login (macOS, optional)
 
 Not needed if the bot runs on a server (and don't run both). To have the dashboard and paper bot start when you log in and come back if they stop:
 
