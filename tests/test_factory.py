@@ -62,6 +62,18 @@ def test_luck_is_rejected_and_a_real_edge_passes(monkeypatch):
     # the book trades one oracle version per rule and universe, and only if it made money 2023-now
     assert len(rep["live"]) == 1 and rep["live"][0] in rep["passed"]
     assert rep["candidates"][rep["live"][0]]["holdout"]["cagr"] > 0
+    # a real edge works at the neighbouring exit settings too
+    assert rep["candidates"][rep["passed"][0]]["plateau"] >= 0.8
+
+
+def test_plateau_counts_only_neighbouring_exit_settings():
+    rows = {c["name"]: c for c in fy.candidates() if c["family"] == "high52" and c["filter"] == "any"
+            and c["universe"] == "etfs"}
+    grid = sorted(rows.values(), key=lambda r: (r["giveback"], r["max_hold"]))  # 3 x 3
+    corner, centre = grid[0], grid[4]
+    sr = {n: -1.0 for n in rows} | {grid[8]["name"]: 1.0}  # only the far corner is profitable
+    assert fy._plateau(corner, rows, sr) == 0.0  # 3 neighbours, the far corner is not one of them
+    assert fy._plateau(centre, rows, sr) == round(1 / 8, 2)
 
 
 def test_backfill_fetches_only_short_histories(tmp_path, monkeypatch):
