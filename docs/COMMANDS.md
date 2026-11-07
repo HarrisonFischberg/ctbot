@@ -60,6 +60,15 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
   backtested exits. The page also lists the latest decisions with Claude's reasons, and below it the
   strategy library and research (the old Discover and Research tabs). Autopilot replaces Invest
   runs while it is on. Paper only.
+- **Trading modes** (Autopilot tab, next to the Autopilot switch): *QQQ as market gauge* (default
+  on; off skips only the QQQ-downtrend trigger of the pull-back) and *Aggressive day trading*
+  (default off; `orb`, `vwap_revert` and `orb_sip` trade, plus `overnight` if opted in, same-day
+  round trips allowed, ideas and reviews per cycle raised to the tuning tops, and positions opened
+  today sold at market at 15:45 ET with no new buys after). Kept at the flatten: `trend_core`,
+  `trend_core_qld`, earlier days' holdings and trades with a planned exit on a later day, unless
+  *also flatten these* is ticked. The Claude spend cap and every hard limit are unchanged. Saved
+  in `data/trading_modes.json`, each change logged to `data/trading_modes_log.jsonl`; it
+  applies to the main book only. Paper only.
 - **Settings test**: `config/variants.toml` lists extra $10,000 paper accounts that the paper bot
   runs next to the main one, each changing one setting (trail, starting stop, Claude's confidence
   floor, position count, ideas per cycle, reviewer model: `sonnet` and `opus` with their own daily
