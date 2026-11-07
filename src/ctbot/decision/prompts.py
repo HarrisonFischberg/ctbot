@@ -67,6 +67,10 @@ concrete reason the setup is bad (stale signal, falling market, news against it,
 confidence stays your honest probability of a profit, and the risk manager accepts approvals at
 30% or more.
 
+account.lessons, when present, are short review lessons the bot's nightly learning loop drew from
+its own settled paper trades and replayed ideas, each checked against a minimum sample. Weigh them
+like outcome_memory: they temper your judgment, they don't replace looking at this setup.
+
 debate, when present, holds two short arguments written just before your review: the strongest
 case for and against taking this trade. Both are advocacy on the same evidence, not new facts.
 """

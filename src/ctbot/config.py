@@ -116,6 +116,8 @@ class Settings:
     review_outcome_memory: bool = True    # show the reviewer each model's settled paper results (no LLM)
     review_debate: bool = False           # two extra short calls (case for / against) before the verdict
     review_replay_odds: bool = True       # time-machine odds for intraday plans in reviews (no LLM)
+    review_lessons: bool = False          # show the reviewer the learning loop's lessons (the learner book)
+    lessons_file: Path = Path("data/learning/lessons.json")  # main's, also for variant books
     starting_capital: float = 250.0
     risk: RiskLimits = RiskLimits()
     ensemble: EnsembleParams = EnsembleParams()
@@ -296,6 +298,8 @@ class Settings:
             review_outcome_memory=_bool(env, "REVIEW_OUTCOME_MEMORY", True),
             review_debate=_bool(env, "REVIEW_DEBATE", False),
             review_replay_odds=_bool(env, "REVIEW_REPLAY_ODDS", True),
+            review_lessons=_bool(env, "REVIEW_LESSONS", False),
+            lessons_file=Path(env.get("LESSONS_FILE", "data/learning/lessons.json")),
             starting_capital=_float(env, "STARTING_CAPITAL", 250.0),
             risk=risk,
             ensemble=ensemble,

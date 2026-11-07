@@ -235,6 +235,19 @@ def _idea(
     }
 
 
+EARNINGS_MIN_HOLD_DAYS = 7
+
+
+def cut_before_earnings(evidence: dict[str, Any], report: datetime | None, now: datetime) -> None:
+    """A long rule-based hold (the factory's 60-80 days) that would run into an earnings report sells
+    10 minutes before the last close ahead of it instead, if that still leaves a week's hold."""
+    if report is None or not evidence.get("exit_at") or not now < report < datetime.fromisoformat(evidence["exit_at"]):
+        return
+    cut = market_hours.last_close(report) - timedelta(minutes=10)
+    if cut - now >= timedelta(days=EARNINGS_MIN_HOLD_DAYS):
+        evidence["exit_at"] = cut.isoformat()
+
+
 def _earnings_block(c: Components, cand: Candidate, now: datetime) -> datetime | None:
     """The earnings report that falls before this long's planned exit (the hard rule refuses it)."""
     report = c.context.next_earnings(cand.symbol) if c.context else None
@@ -577,6 +590,10 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                 {"symbol": g.symbol, "direction": g.direction.value, "strength": g.strength,
                  "horizon_days": g.horizon_days, "evidence": g.evidence, "ts": g.ts.isoformat()}
                 for g in produced]))
+    if c.context:
+        for g in signals:
+            if g.direction is Direction.LONG and g.evidence.get("systematic"):
+                cut_before_earnings(g.evidence, c.context.next_earnings(g.symbol), now)
     weights = {ws.strategy.name: ws.weight for ws in c.strategies}
     standalone = frozenset(ws.strategy.name for ws in c.strategies if ws.standalone)
     shadow_models = frozenset(ws.strategy.name for ws in c.strategies if ws.mode == "shadow")
@@ -708,6 +725,10 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                         c.settings.ideas_path.with_name("idea_scores.json"))
                 except Exception:  # noqa: BLE001 - memory is optional context, never a blocker
                     log.exception("outcome memory failed for %s", cand.symbol)
+            if c.settings.review_lessons:
+                from ctbot.learn import lessons_for  # lazy: learn imports the readout and variants
+
+                account["lessons"] = lessons_for(c.settings.lessons_file, buyers)
             decision = (c.engine.evaluate(cand, account, debate=True) if c.settings.review_debate
                         else c.engine.evaluate(cand, account))
             adv = avg_dollar_volume(c.market_data, cand.symbol)
