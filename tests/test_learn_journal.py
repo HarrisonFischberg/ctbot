@@ -1,7 +1,7 @@
 """Daily learning journal: each book's day and per-model record, and the "what changed" line."""
 
 import json
-from datetime import date
+from datetime import UTC, date
 
 from test_readout import DAY, _settings
 
@@ -109,3 +109,31 @@ def test_refine_applies_checked_edits_records_spend_and_stops_at_the_daily_cap(t
     row = json.loads(s.llm_usage_path.read_text().splitlines()[-1])
     assert row["purpose"] == "learn" and row["day"] == "2026-10-21" and row["usd"] == 2.0
     assert learn.refine(s, DAY, c) is None and c.calls == 1  # $2 is past the $0.25 cap
+
+
+# ---- stage 3: the learner book ----
+
+def test_lessons_for_picks_the_reviewed_models_and_all(tmp_path):
+    learn.apply(tmp_path, [_edit(), _edit(text="vwap_revert: prefer the morning", models=["vwap_revert"])], LATEST)
+    assert learn.lessons_for(tmp_path / "lessons.json", ["orb"]) == [_edit()["text"]]
+    assert learn.lessons_for(tmp_path / "missing.json", ["orb"]) == []
+
+
+def test_guard_undoes_the_newest_recent_edit_when_the_learner_trails_base(tmp_path):
+    from datetime import datetime, timedelta
+
+    learn.apply(tmp_path, [_edit()], LATEST, now=datetime(2026, 10, 1, tzinfo=UTC))
+    new = learn.apply(tmp_path, [_edit(text="orb: skip after 15:00")], LATEST, now=datetime(2026, 11, 3, tzinfo=UTC))[0]
+    days = [date(2026, 10, 27) + timedelta(days=i) for i in range(10)]
+
+    def journals(learner):
+        return [{"day": d.isoformat(), "books": {"base": {"day_pnl": 0.0}, "learner": {"day_pnl": learner}}}
+                for d in days]
+
+    assert learn.guard(tmp_path, journals(-5.0)) is None  # $50 behind over 10 days: within the band
+    assert learn.guard(tmp_path, journals(-20.0)[:9]) is None  # not 10 days yet
+    row = learn.guard(tmp_path, journals(-20.0))
+    assert row["trigger"] == f"rollback {new['event']}"
+    assert [x["text"] for x in learn.load_lessons(tmp_path)] == [_edit()["text"]]
+    assert learn.guard(tmp_path, journals(-20.0)) is None  # the older lesson predates the window
+    assert learn.verify(tmp_path)

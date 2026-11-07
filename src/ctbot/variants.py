@@ -43,7 +43,7 @@ ALLOWED_ENV = frozenset({
     "MIN_LONG_SCORE", "MAX_CLAUDE_REVIEWS_PER_DAY", "MAX_REVIEWS_PER_MODEL_PER_DAY",
     "MAX_CLAUDE_USD_PER_DAY", "MAX_DAILY_LOSS_PCT", "MAX_TOTAL_DRAWDOWN_PCT", "MAX_SPREAD_PCT",
     "SWING_MAX_DAYS", "MODEL_MAX_LOSING_STREAK", "REVIEW_DEBATE", "REVIEW_OUTCOME_MEMORY",
-    "PARTIAL_PROFIT_R", "VWAP_ENTRY_GATE", "REGIME_GATE",
+    "PARTIAL_PROFIT_R", "VWAP_ENTRY_GATE", "REGIME_GATE", "REVIEW_LESSONS",
 })
 NAME_OK = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_")
 
@@ -88,7 +88,8 @@ def book_env(base: dict[str, str], main_ledger: Path, v: Variant) -> dict[str, s
     d = main_ledger.parent / ROOT_NAME / v.name
     return {**base, **v.env, "CTBOT_MODE": "paper", "LIVE_TRADING_ENABLED": "false", "ENTRY_MODE": "auto",
             "PAPER_LEDGER_PATH": str(d / "paper_ledger.json"),
-            "PAPER_RISK_STATE_PATH": str(d / "paper_risk_state.json"), "LOG_DIR": str(d / "logs")}
+            "PAPER_RISK_STATE_PATH": str(d / "paper_risk_state.json"), "LOG_DIR": str(d / "logs"),
+            "LESSONS_FILE": str(main_ledger.parent / "learning" / "lessons.json")}
 
 
 class CachedProvider:
@@ -173,7 +174,7 @@ class SharedReviews:
     def evaluate(self, candidate, account, debate: bool = False):
         day = datetime.now().date()
         key = (day, getattr(self.inner, "model", None), getattr(self.inner, "effort", None), candidate.symbol,
-               tuple(sorted(candidate.strategies)), debate)
+               tuple(sorted(candidate.strategies)), debate, json.dumps(account.get("lessons")))  # learner differs
         for k in [k for k in self.cache if k[0] != day]:
             del self.cache[k]
         if key not in self.cache:
