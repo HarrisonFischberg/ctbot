@@ -155,7 +155,7 @@ Run `install` again after moving the project folder.
 only), `deploy/tailscale.sh` (dashboard on your tailnet), the Robinhood sign-in over an SSH tunnel,
 auto-updates from `main` (`ctbot-update.timer`), and `ctbot-watchdog`, which pings `HEARTBEAT_URL`
 every minute so you're alerted when the bot stops and, with `NOTIFY_URL`, sends ntfy phone
-messages at the open, after the close and on problems. Without those URLs
+updates at 9:45, 12:45 and after the close, and on problems. Without those URLs
 `.venv/bin/ctbot-watchdog` just prints a one-line health verdict.
 
 | On the server | Command |

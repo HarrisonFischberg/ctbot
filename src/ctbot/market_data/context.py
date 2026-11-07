@@ -105,7 +105,7 @@ class MarketContext:
         return {s.upper(): self._ratings.get(s.upper(), {}) for s in symbols}
 
     # ---- per review --------------------------------------------------------------
-    def _day_change(self, sym: str) -> float | None:
+    def day_change(self, sym: str) -> float | None:
         if self.md is None:
             return None
         try:
@@ -151,9 +151,9 @@ class MarketContext:
         out: dict[str, Any] = {
             "now_et": now.astimezone(ET).strftime("%Y-%m-%d %H:%M ET (%A)"),
             "minutes_to_close": round(market_hours.minutes_to_close(now)) if market_hours.session_open(now) else None,
-            "spy_change_today": self._day_change("SPY"),
-            "qqq_change_today": self._day_change("QQQ"),
-            "symbol_change_today": self._day_change(sym),
+            "spy_change_today": self.day_change("SPY"),
+            "qqq_change_today": self.day_change("QQQ"),
+            "symbol_change_today": self.day_change(sym),
         }
         out["market_regime"] = self.market_regime()
         if self.snapshot is not None:
