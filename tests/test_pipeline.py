@@ -306,3 +306,17 @@ def test_a_fill_saves_its_bracket_at_once():
         run_cycle(c, _state(broker), NOW)  # nobody calls save_account_state after the cycle here
         saved = json.loads(c.settings.paper_risk_state_path.read_text())
     assert "KO" in saved["brackets"]
+
+
+def test_long_rule_based_hold_sells_before_earnings_instead_of_never_buying():
+    from datetime import UTC
+
+    from ctbot.pipeline import cut_before_earnings
+
+    now = datetime(2026, 11, 6, 15, tzinfo=UTC)
+    ev = {"exit_at": "2027-03-05T15:50:00-05:00"}
+    cut_before_earnings(ev, datetime(2026, 12, 10, 12, tzinfo=UTC), now)  # Thu, before the open
+    assert ev["exit_at"] == "2026-12-09T15:50:00-05:00"
+    near = {"exit_at": "2027-03-05T15:50:00-05:00"}
+    cut_before_earnings(near, datetime(2026, 11, 10, 12, tzinfo=UTC), now)  # under a week: unchanged
+    assert near["exit_at"] == "2027-03-05T15:50:00-05:00"

@@ -22,6 +22,7 @@ import logging
 import os
 import re
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -140,7 +141,8 @@ late in the day"), tied to the models it concerns ("all" for every review), and 
 numbers behind it. Only propose a lesson when the sample is large (15+ closed trades or 30+ scored
 ideas for that model) and the pattern is clear; small samples are noise. Update or delete lessons
 the newer data contradicts. Never write about position size, stops, loss limits, leverage, spend
-or live trading: those are fixed rules outside your remit. Returning no edits is a good answer."""
+or live trading: those are fixed rules outside your remit. Returning no edits is a good answer.
+Keep each lesson's text under 300 characters, updates included: longer text is refused."""
 
 EDITS_SCHEMA = {
     "type": "object", "additionalProperties": False, "required": ["edits"],
@@ -163,6 +165,16 @@ def load_lessons(folder: Path) -> list[dict[str, Any]]:
         return json.loads((folder / "lessons.json").read_text()).get("lessons", [])
     except (OSError, ValueError):
         return []
+
+
+def lessons_for(path: Path, models: Iterable[str]) -> list[str]:
+    """The lesson texts a review of these models should see (lessons for "all" included)."""
+    try:
+        lessons = json.loads(path.read_text()).get("lessons", [])
+    except (OSError, ValueError):
+        return []
+    want = set(models) | {"all"}
+    return [x["text"] for x in lessons if want & set(x.get("models", []))]
 
 
 def history(folder: Path) -> list[dict[str, Any]]:
@@ -271,6 +283,26 @@ def rollback(folder: Path, event: str, now: datetime | None = None) -> dict[str,
                             "after": row["before"], "evidence": "", "refused": None})
 
 
+GUARD_BOOK, GUARD_DAYS, GUARD_GAP_USD = "learner", 10, 100.0
+
+
+def guard(folder: Path, journals: list[dict[str, Any]], now: datetime | None = None) -> dict[str, Any] | None:
+    """Stage 3's A/B check: when the learner book (base plus lessons) trails base by more than
+    GUARD_GAP_USD over the last GUARD_DAYS journals, undo the newest lesson edit made in that window."""
+    both = [j for j in journals if GUARD_BOOK in j.get("books", {}) and "base" in j.get("books", {})]
+    recent = both[-GUARD_DAYS:]
+    if len(recent) < GUARD_DAYS:
+        return None
+    gap = sum((j["books"][GUARD_BOOK].get("day_pnl") or 0) - (j["books"]["base"].get("day_pnl") or 0) for j in recent)
+    if gap >= -GUARD_GAP_USD:
+        return None
+    rows = history(folder)
+    undone = {r["trigger"].split()[-1] for r in rows if r["action"] == "rollback"}
+    edits = [r for r in rows if r["action"] in ("create", "update", "delete") and not r["refused"]
+             and r["event"] not in undone and r["ts"][:10] >= recent[0]["day"]]
+    return rollback(folder, edits[-1]["event"], now) if edits else None
+
+
 def _compact(j: dict[str, Any]) -> dict[str, Any]:
     ideas = j.get("ideas") or {}
     return {"day": j["day"], "main_models": j["books"].get("main", {}).get("models", {}),
@@ -291,6 +323,7 @@ def refine(settings: Any, day: date, client: Any = None, now: datetime | None = 
     if spent >= cap:
         return None
     journals = [json.loads(p.read_text()) for p in paths]
+    undone = guard(folder, journals, now)  # code, before any spend: lessons that hurt go first
     msg = json.dumps({"journals": [_compact(j) for j in journals], "lessons": load_lessons(folder)}, default=str)
     if client is None:
         import anthropic
@@ -304,7 +337,7 @@ def refine(settings: Any, day: date, client: Any = None, now: datetime | None = 
     text = next((b.text for b in r.content if b.type == "text"), "")
     if r.stop_reason != "end_turn":
         raise ValueError(f"stop_reason {r.stop_reason}")
-    return apply(folder, json.loads(text).get("edits", []), journals[-1], now)
+    return ([undone] if undone else []) + apply(folder, json.loads(text).get("edits", []), journals[-1], now)
 
 
 def _usage_rows(path: Path) -> list[dict[str, Any]]:

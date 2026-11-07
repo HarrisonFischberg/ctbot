@@ -53,10 +53,13 @@ title = "Trading-skill rules: half off at 1R, VWAP gate, no buys in a bear regim
 autopilot = { max_loss_pct = 0.08, giveback_pct = 0.08, min_confidence = 0.20 }
 env = { PARTIAL_PROFIT_R = "1.0", VWAP_ENTRY_GATE = "true", REGIME_GATE = "true" }
 
-[opus]
-title = "Opus 5.5 reviews instead of Haiku"
+# [opus] (Opus 5.5 reviews) paused 2026-11-07: $11.25 in two weeks for -7.1%, worse than the
+# code-only books. Its folder data/variants/opus/ is kept; restore this table to resume it.
+
+[learner]
+title = "Learner: base plus the learning loop's lessons in every review"
 autopilot = { max_loss_pct = 0.08, giveback_pct = 0.08, min_confidence = 0.20 }
-env = { CLAUDE_MODEL = "claude-opus-5-5", CLAUDE_EFFORT = "medium", MAX_CLAUDE_USD_PER_DAY = "4.00" }
+env = { REVIEW_LESSONS = "true" }
 
 [factory]
 title = "Strategy factory: only rules that passed the nightly backtest gates, no Claude review"

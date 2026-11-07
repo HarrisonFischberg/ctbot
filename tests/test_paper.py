@@ -48,6 +48,14 @@ def test_instant_settlement_frees_proceeds_immediately():
         assert (b.cash(), b.unsettled_cash()) == (100.0, 0.0)
 
 
+def test_sell_with_dust_remainder_closes_the_position():
+    with tempfile.TemporaryDirectory() as d:
+        b = PaperBroker(_FixedQuotes(), 100.0, Path(d) / "l.json", slippage_bps=0)
+        b.submit(OrderRequest("QLD", Side.BUY, 0.002))  # 0.00004 shares, worth $0.002
+        fill = b.submit(OrderRequest("QLD", Side.SELL, 0.0))  # a stop exit's notional rounds to $0.00
+    assert fill.quantity == 0.00004 and b.positions() == []
+
+
 class _MovableQuotes:
     def __init__(self, px):
         self.px = px

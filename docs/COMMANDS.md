@@ -114,6 +114,7 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
 | Score today's reviewed ideas (approved vs rejected) | `.venv/bin/ctbot-score-ideas` |
 | Paper book tearsheet (after ~5 sessions) | `.venv/bin/ctbot-tearsheet` |
 | Reconcile ledger, brackets and journal; P&L per model today | `.venv/bin/ctbot-reconcile` |
+| Zip the last 2 weeks of saved data for a review (keys left out) | `.venv/bin/ctbot-export` (`--days 30`, `--out -` for stdout) |
 
 ## Research
 
