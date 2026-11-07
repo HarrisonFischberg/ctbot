@@ -29,7 +29,7 @@ script: you put them in place. After that first setup, merges to `main` deploy t
 | `ctbot-paper` | always on; 5-minute cycles in market hours, stops every 30 s | the main book, then every book in `config/variants.toml` in the same process (shared data and Claude verdicts) |
 | `ctbot-dashboard` | always on | dashboard on 127.0.0.1:8787, served on the tailnet by `tailscale serve` |
 | `ctbot-watchdog.timer` | every minute | heartbeat ping; open/close/health phone messages |
-| `ctbot-research.timer` | Mon-Fri 08:15, 16:30 | `scripts/c2_track_weekly.sh`: bar caches, idea scoring, performance figures, preflight, premarket plan, reconciliation |
+| `ctbot-research.timer` | Mon-Fri 08:15, 16:30 | `scripts/c2_track_weekly.sh`: bar caches, idea scoring, performance figures, preflight, premarket plan, reconciliation; at 16:30 also the learning journal and reviewer lessons (`ctbot-learn`) |
 | `ctbot-update.timer` | Mon-Fri 08:45, 16:20 | `deploy/update.sh`: pull `main` if it changed and rerun the setup; skipped while the market is open |
 
 `systemctl list-timers 'ctbot-*'` shows the next runs; `journalctl -u <unit>` shows what each did.
@@ -76,9 +76,11 @@ cycle 31 min ago"), never a key, a balance or a position.
 ## Phone messages (optional)
 
 Set `NOTIFY_URL=https://ntfy.sh/<long-random-topic>` in the server's `.env` and subscribe to the
-same topic in the free ntfy app. The watchdog then sends "Market open: CTbot is trading" after the
-first cycle of each session (with the premarket plan's verdict), a summary 15 minutes after the
-close (paper equity change, fills), and a message when the bot turns unhealthy or recovers.
+same topic in the free ntfy app. The watchdog then sends an update at 9:45, 12:45 and 15 minutes
+after the close (ET): main's day P&L next to SPY/QQQ, its rank among the books, closed trades, any
+stock re-bought after a stop-out, the premarket plan (morning), and a short "why" from Claude Haiku
+(`ctbot.brief`; counts against `MAX_CLAUDE_USD_PER_DAY`, skipped once that is spent). It also sends a
+message when the bot turns unhealthy or recovers.
 Healthchecks still covers the server itself going down.
 
 At the same time it sends a per-book readout (every paper book's day P&L, trades, Claude spend,

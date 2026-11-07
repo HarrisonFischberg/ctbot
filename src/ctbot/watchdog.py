@@ -124,14 +124,18 @@ def main(argv: list[str] | None = None) -> int:
     healthy, reason = check(settings.heartbeat_path, settings.equity_history_path, settings.paper_log_path)
     print(reason)
     notify_url = os.environ.get("NOTIFY_URL", "").strip()
-    if notify_url:  # phone messages: market open / day summary / problem (ctbot.notify)
+    if notify_url:  # phone messages: problem / recovered (ctbot.notify)
         from ctbot import notify
 
-        for title in notify.run(notify_url, settings.paper_ledger_path.with_name("notify_state.json"), None,
-                                healthy, reason, settings.equity_history_path, settings.paper_ledger_path):
+        for title in notify.run(notify_url, settings.paper_ledger_path.with_name("notify_state.json"), healthy, reason):
             print(f"notified: {title}")
-        from ctbot import readout
+        from ctbot import brief, readout
 
+        try:  # 9:45 / 12:45 / after-close update with Claude's "why" (ctbot.brief)
+            if title := brief.run(notify_url, settings, settings.paper_ledger_path.with_name("brief_state.json")):
+                print(f"notified: {title}")
+        except Exception as e:  # noqa: BLE001 - retried on the next run; never blocks the heartbeat
+            print(f"brief failed: {type(e).__name__}", file=sys.stderr)
         try:  # every book's day, to a side topic the phone doesn't subscribe to (ctbot.readout)
             if readout.run(notify_url.rstrip("/") + "-readout", settings,
                            settings.paper_ledger_path.with_name("readout_state.json")):

@@ -282,7 +282,7 @@ def main() -> None:
         now = datetime.now(timezone.utc)
         run_cycle(components, state, now)
         save_account_state(state, settings.paper_risk_state_path)
-        _record_equity(settings, broker)
+        _record_equity(settings, broker, _market_moves(components))
         variants.run(books, components, now, _record_equity)
 
     def wait_for_open() -> None:
@@ -358,7 +358,15 @@ def _heartbeat(settings: Settings, interval: int, asleep_until: datetime | None 
     tmp.replace(settings.heartbeat_path)
 
 
-def _record_equity(settings: Settings, broker: PaperBroker) -> None:
+def _market_moves(components) -> dict[str, float]:
+    """SPY/QQQ moves today, for the phone updates (ctbot.brief); empty without a market context."""
+    ctx = components.context
+    if ctx is None:
+        return {}
+    return {s: round(m, 4) for s in ("SPY", "QQQ") if (m := ctx.day_change(s)) is not None}
+
+
+def _record_equity(settings: Settings, broker: PaperBroker, market: dict[str, float] | None = None) -> None:
     snap = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "equity": round(broker.equity(), 4),
@@ -367,6 +375,8 @@ def _record_equity(settings: Settings, broker: PaperBroker) -> None:
         "positions": len(broker.positions()),
         "deposits": round(broker.deposits, 2),
     }
+    if market:
+        snap["market"] = market
     settings.equity_history_path.parent.mkdir(parents=True, exist_ok=True)
     with settings.equity_history_path.open("a") as fh:
         fh.write(json.dumps(snap) + "\n")

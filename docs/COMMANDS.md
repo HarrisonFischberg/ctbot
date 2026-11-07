@@ -60,6 +60,15 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
   backtested exits. The page also lists the latest decisions with Claude's reasons, and below it the
   strategy library and research (the old Discover and Research tabs). Autopilot replaces Invest
   runs while it is on. Paper only.
+- **Trading modes** (Autopilot tab, next to the Autopilot switch): *QQQ as market gauge* (default
+  on; off skips only the QQQ-downtrend trigger of the pull-back) and *Aggressive day trading*
+  (default off; `orb`, `vwap_revert` and `orb_sip` trade, plus `overnight` if opted in, same-day
+  round trips allowed, ideas and reviews per cycle raised to the tuning tops, and positions opened
+  today sold at market at 15:45 ET with no new buys after). Kept at the flatten: `trend_core`,
+  `trend_core_qld`, earlier days' holdings and trades with a planned exit on a later day, unless
+  *also flatten these* is ticked. The Claude spend cap and every hard limit are unchanged. Saved
+  in `data/trading_modes.json`, each change logged to `data/trading_modes_log.jsonl`; it
+  applies to the main book only. Paper only.
 - **Settings test**: `config/variants.toml` lists extra $10,000 paper accounts that the paper bot
   runs next to the main one, each changing one setting (trail, starting stop, Claude's confidence
   floor, position count, ideas per cycle, reviewer model: `sonnet` and `opus` with their own daily
@@ -113,6 +122,7 @@ sudo pmset repeat wakeorpoweron MTWRF 06:55:00
 | Cache the last 2 weeks of 5-minute bars | `.venv/bin/ctbot-fetch-bars --interval 5minute --since $(date -v-14d +%Y-%m-%d)` |
 | Score today's reviewed ideas (approved vs rejected) | `.venv/bin/ctbot-score-ideas` |
 | Paper book tearsheet (after ~5 sessions) | `.venv/bin/ctbot-tearsheet` |
+| Tearsheets for every paper book (vs main) and every factory live pick | `.venv/bin/ctbot-tearsheet --all` |
 | Reconcile ledger, brackets and journal; P&L per model today | `.venv/bin/ctbot-reconcile` |
 | Zip the last 2 weeks of saved data for a review (keys left out) | `.venv/bin/ctbot-export` (`--days 30`, `--out -` for stdout) |
 
@@ -154,7 +164,7 @@ Run `install` again after moving the project folder.
 only), `deploy/tailscale.sh` (dashboard on your tailnet), the Robinhood sign-in over an SSH tunnel,
 auto-updates from `main` (`ctbot-update.timer`), and `ctbot-watchdog`, which pings `HEARTBEAT_URL`
 every minute so you're alerted when the bot stops and, with `NOTIFY_URL`, sends ntfy phone
-messages at the open, after the close and on problems. Without those URLs
+updates at 9:45, 12:45 and after the close, and on problems. Without those URLs
 `.venv/bin/ctbot-watchdog` just prints a one-line health verdict.
 
 | On the server | Command |
