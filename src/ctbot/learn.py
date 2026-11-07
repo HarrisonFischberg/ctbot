@@ -140,7 +140,8 @@ late in the day"), tied to the models it concerns ("all" for every review), and 
 numbers behind it. Only propose a lesson when the sample is large (15+ closed trades or 30+ scored
 ideas for that model) and the pattern is clear; small samples are noise. Update or delete lessons
 the newer data contradicts. Never write about position size, stops, loss limits, leverage, spend
-or live trading: those are fixed rules outside your remit. Returning no edits is a good answer."""
+or live trading: those are fixed rules outside your remit. Returning no edits is a good answer.
+Keep each lesson's text under 300 characters, updates included: longer text is refused."""
 
 EDITS_SCHEMA = {
     "type": "object", "additionalProperties": False, "required": ["edits"],
