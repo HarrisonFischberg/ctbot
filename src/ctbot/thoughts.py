@@ -302,7 +302,9 @@ def _before_buy(c, state, now, cand, quote, decision, verdict, waiting) -> None:
         parts.append(f"{sym} is {'up' if move > 0 else 'down'} {abs(move):.1%} today")
     stop = getattr(decision, "stop_loss_pct", None)
     if stop:
-        parts.append(f"Claude suggests a {stop:.1%} stop")  # the real stop can be tighter (cap, trail)
+        r = c.risk  # set_bracket caps Claude's stop at the max loss and the autopilot give-back
+        cap = min(x for x in (r.max_loss_pct or r.limits.max_stop_loss_pct, r.trail_giveback, 1.0) if x)
+        parts.append(f"Claude suggests a {stop:.1%} stop" + (f", capped at {cap:.1%}" if stop > cap else ""))
     if state.risk_off:
         parts.append("cash only while playing it safe")
     text = "; ".join(parts) + "." + (" Waiting for your click." if waiting else "")

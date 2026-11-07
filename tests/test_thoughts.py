@@ -140,3 +140,29 @@ def test_dashboard_shows_the_latest_thoughts():
         thoughts.note(s.thoughts_path, NOW, "caution", "k", "QQQ under its trend")
         st = build_state(s, now=NOW)
     assert st["thoughts"][0]["text"] == "QQQ under its trend" and st["thoughts"][0]["kind"] == "caution"
+
+
+def test_buy_note_says_when_the_stop_is_capped():
+    from types import SimpleNamespace as NS
+
+    from ctbot.models import Decision, OrderRequest, Side
+    from ctbot.risk.manager import RiskVerdict
+    with tempfile.TemporaryDirectory() as d:
+        c = _components(PaperBroker(_MD(), 250.0, Path(d) / "l.json", clock=lambda: NOW), [])
+        c.market_data, c.risk.trail_giveback = _MD(), 0.035
+        cand = NS(symbol="KO", signals=(Signal("momentum", "KO", Direction.LONG, 1.0, 30),), strategies=("momentum",))
+        verdict = RiskVerdict(True, (), (OrderRequest("KO", Side.BUY, 100.0, 51.0),))
+        decision = Decision(True, 0.5, "why", 100.0, stop_loss_pct=0.05)
+        thoughts._before_buy(c, NS(risk_off=None), NOW, cand, None, decision, verdict, False)
+        texts = [t["text"] for t in thoughts.read(c.settings.thoughts_path)]
+    assert "Claude suggests a 5.0% stop, capped at 3.5%" in texts[0]
+
+
+def test_selling_leaves_no_dust_position():
+    from ctbot.models import OrderRequest, Side
+    with tempfile.TemporaryDirectory() as d:
+        broker = PaperBroker(_MD(), 250.0, Path(d) / "l.json", slippage_bps=0, clock=lambda: NOW)
+        broker.submit(OrderRequest("KO", Side.BUY, 100.0, 51.0))
+        qty = broker.positions()[0].quantity
+        fill = broker.submit(OrderRequest("KO", Side.SELL, round(qty * 51.0, 2) - 0.004, 51.0))
+        assert broker.positions() == [] and fill.quantity == qty
