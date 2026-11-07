@@ -29,7 +29,7 @@ script: you put them in place. After that first setup, merges to `main` deploy t
 | `ctbot-paper` | always on; 5-minute cycles in market hours, stops every 30 s | the main book, then every book in `config/variants.toml` in the same process (shared data and Claude verdicts) |
 | `ctbot-dashboard` | always on | dashboard on 127.0.0.1:8787, served on the tailnet by `tailscale serve` |
 | `ctbot-watchdog.timer` | every minute | heartbeat ping; open/close/health phone messages |
-| `ctbot-research.timer` | Mon-Fri 08:15, 16:30 | `scripts/c2_track_weekly.sh`: bar caches, idea scoring, performance figures, preflight, premarket plan, reconciliation |
+| `ctbot-research.timer` | Mon-Fri 08:15, 16:30 | `scripts/c2_track_weekly.sh`: bar caches, idea scoring, performance figures, preflight, premarket plan, reconciliation; at 16:30 also the learning journal and reviewer lessons (`ctbot-learn`) |
 | `ctbot-update.timer` | Mon-Fri 08:45, 16:20 | `deploy/update.sh`: pull `main` if it changed and rerun the setup; skipped while the market is open |
 
 `systemctl list-timers 'ctbot-*'` shows the next runs; `journalctl -u <unit>` shows what each did.
