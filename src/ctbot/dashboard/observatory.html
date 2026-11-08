@@ -970,7 +970,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     </nav>
 
     <div data-tab="home" class="card span-8 pv">
-      <h2>Portfolio Value <span class="count" id="eqCount"></span></h2>
+      <h2>Portfolio value <span class="count" id="eqCount"></span></h2>
       <div class="pv-big" id="pvBig"></div>
       <div class="pv-ctl">
         <span class="seg" role="group" aria-label="Range">
@@ -983,7 +983,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
       <div class="chart" id="chart"></div>
     </div>
     <div data-tab="home" class="card span-4">
-      <h2>Account Allocation</h2>
+      <h2>Account allocation</h2>
       <div class="alloc-b" id="alloc"></div>
     </div>
     <div data-tab="home" class="card span-4 take">
@@ -994,7 +994,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
   <rect class="visor" x="14" y="25" width="36" height="23" rx="11.5"/><rect class="rim" x="14" y="25" width="36" height="23" rx="11.5" stroke-width="1.2"/>
   <g class="eyes"><ellipse class="eye" cx="25" cy="36.5" rx="4" ry="4.6"/><ellipse class="eye" cx="39" cy="36.5" rx="4" ry="4.6"/></g>
   <g class="pupils"><circle class="glint" cx="26.2" cy="34.8" r="1.3"/><circle class="glint" cx="40.2" cy="34.8" r="1.3"/></g>
-  <path d="M17.5 21.5a19 19 0 0 1 10-7" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="2.6" stroke-linecap="round"/></g></svg>Bub's Take<span class="spacer"></span><span class="count" id="bubCount"></span></h2>
+  <path d="M17.5 21.5a19 19 0 0 1 10-7" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="2.6" stroke-linecap="round"/></g></svg>Bub's take<span class="spacer"></span><span class="count" id="bubCount"></span></h2>
       <div class="take-art" aria-hidden="true"><svg viewBox="0 0 400 140" preserveAspectRatio="xMidYMid slice"><defs>
         <radialGradient id="tkSky" cx="50%" cy="100%" r="95%"><stop offset="0" stop-color="#1d4178"/><stop offset=".55" stop-color="#0b1829"/><stop offset="1" stop-color="#0b1829"/></radialGradient>
         <radialGradient id="tkPlanet" cx="50%" cy="0%" r="75%"><stop offset="0" stop-color="#3a6fbf"/><stop offset=".18" stop-color="#173a6e"/><stop offset=".6" stop-color="#081325"/><stop offset="1" stop-color="#040a14"/></radialGradient>
@@ -1012,7 +1012,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
       <ul class="thoughts" id="thoughts" hidden></ul>
     </div>
     <div data-tab="home" class="card span-12 setup">
-      <h2>Setup Progress <span class="segs" id="stepBars" aria-hidden="true"></span><span class="spacer"></span>
+      <h2>Setup progress <span class="segs" id="stepBars" aria-hidden="true"></span><span class="spacer"></span>
         <button class="tog" type="button" id="stepsTog" aria-expanded="false" aria-controls="steps"><span id="stepsMeta"></span><svg class="ico"><use href="#i-right"/></svg></button></h2>
       <ol class="steps" id="steps" hidden></ol>
     </div>
@@ -1021,7 +1021,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
       <div class="scroll" id="positions"></div>
     </div>
     <div data-tab="home trading" class="card span-12 runs" data-sub="overview">
-      <h2>Running Strategies <span class="count" id="runMeta"></span><span class="spacer"></span>
+      <h2>Running strategies <span class="count" id="runMeta"></span><span class="spacer"></span>
         <button class="link" type="button" data-goto="trading">View all strategies <svg class="ico"><use href="#i-arrow"/></svg></button></h2>
       <div id="runs" class="xscroll"></div>
     </div>
@@ -1037,39 +1037,39 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     </div>
 
     <div data-tab="trading" class="card span-12 ap-rules">
-      <h2>Trading Rules</h2>
+      <h2>Trading rules</h2>
       <form class="ap-form" id="apForm">
         <label class="ap-row">Max loss per trade <select class="sel" id="apLoss" required></select>
           <button class="info" type="button" title="The most a new trade can fall below its buy price before the bot sells it" aria-label="About max loss per trade" data-explain="loss"><svg class="ico"><use href="#i-info"/></svg></button></label>
         <label class="ap-row">Give back from high <select class="sel" id="apGive" required></select>
           <button class="info" type="button" title="Once a stock rises, the bot sells it if it falls this much from its highest price" aria-label="About give back from high" data-explain="give"><svg class="ico"><use href="#i-info"/></svg></button></label>
         <label class="ap-row">How sure Claude must be <select class="sel" id="apConf" required></select>
-          <button class="info" type="button" title="Lower = MORE aggressive: more buys, including ideas Claude is less sure of. Higher = MORE conservative: fewer buys, only ideas Claude is surer of." aria-label="About how sure Claude must be" data-explain="conf"><svg class="ico"><use href="#i-info"/></svg></button></label>
+          <button class="info" type="button" title="Lower means more buys, including ideas Claude is less sure of. Higher means fewer buys, only ideas Claude is surer of." aria-label="About how sure Claude must be" data-explain="conf"><svg class="ico"><use href="#i-info"/></svg></button></label>
         <p class="ap-note"><b>Lower = more aggressive</b> (more buys) · <b>higher = more conservative</b> (fewer, surer buys)</p>
-        <button class="btn solid big" type="submit" id="apSave">Save Rules</button>
+        <button class="btn solid big" type="submit" id="apSave">Save rules</button>
       </form>
       <div class="ap-div"></div>
       <h3>Invest for Me <button class="info" type="button" data-explain="invest" aria-label="About Invest for me"><svg class="ico"><use href="#i-info"/></svg></button></h3>
       <form class="ap-form" id="autoForm">
         <label class="money"><span aria-hidden="true">$</span><input type="text" inputmode="decimal" id="autoAmt" required autocomplete="off" aria-label="Amount to invest, in dollars"></label>
-        <p class="ap-note" id="autoNote">Deploy across approved strategies.</p>
+        <p class="ap-note" id="autoNote">Split between the strategies that passed their tests.</p>
         <label class="ap-row wide">Max loss per strategy <select class="sel" id="autoLoss"><option value="0.1">10%</option><option value="0.15" selected>15%</option>
           <option value="0.2">20%</option><option value="0.25">25%</option></select></label>
         <p class="ap-note">Each strategy the bot picks gets its own share of the amount. If one is down this much of its share, the bot sells it and stops it.</p>
         <button class="btn solid big" type="submit" id="autoGo">Invest for Me</button>
       </form>
       <p class="ap-note" id="autoOn" hidden><span id="autoOnText"></span> <button class="linkish u" type="button" id="autoOff">Turn off Invest for Me</button></p>
-      <div class="ap-side"><button class="btn dark big" type="button" id="pauseAll"><svg class="ico"><use href="#i-pause"/></svg><span>Pause All Strategies</span></button><p id="pauseText" hidden>Paused: no new buys. Stops, targets and sells still run.</p></div>
+      <div class="ap-side"><button class="btn dark big" type="button" id="pauseAll"><svg class="ico"><use href="#i-pause"/></svg><span>Pause all strategies</span></button><p id="pauseText" hidden>Paused: no new buys. Stops, targets and sells still run.</p></div>
       <div class="ap-side" id="topup" hidden><button class="btn dark big" type="button" id="topupGo">Add paper cash</button><p id="topupText"></p></div>
       <div class="ap-div"></div>
-      <h3 id="tmModes" tabindex="-1" style="scroll-margin-top:120px">Trading Modes</h3>
+      <h3 id="tmModes" tabindex="-1" style="scroll-margin-top:120px">Trading modes</h3>
       <form class="ap-form" id="tmForm">
         <div class="tm-key">
           <label class="apsw"><input type="checkbox" id="tmQqq" role="switch"><span class="track"></span><span><b>QQQ as market gauge</b>
             <small>On: while QQQ is under its 50-day average, new buys use only cash on hand. Off: the bot can borrow again.</small></span></label>
           <label class="apsw"><input type="checkbox" id="tmAll" role="switch"><span class="track"></span><span><b>Also sell the long-term holdings at the close</b>
             <small>On: the trend cores and multi-day holds are sold at the time below too, so the account is all cash.</small></span></label>
-          <p class="ap-note">Press Save Modes below to apply.</p>
+          <p class="ap-note">Press Save modes below to apply.</p>
         </div>
         <p class="alert warn" id="tmQqqWarn" hidden><span class="ic">△</span><span>Buys can happen while the Nasdaq is in a downtrend.</span></p>
         <p class="ap-note"><b>Aggressive day trading</b> (switch at the top): day-trading models trade, a stock can be bought again after it's sold, and intraday positions are sold at market by the time below. Every loss limit stays the same. Paper only.</p>
@@ -1077,24 +1077,24 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
         <label class="ap-row wide" style="grid-template-columns: 1fr 150px">Sell intraday by (ET) <input type="time" class="sel" id="tmAt" min="09:31" max="15:59" required></label>
         <label class="ap-row wide">Commission per order ($) <input type="number" class="sel" id="tmFee" min="0" max="10" step="0.01" required></label>
         <p class="ap-note" id="tmPnl"></p>
-        <button class="btn solid big" type="submit" id="tmSave">Save Modes</button>
+        <button class="btn solid big" type="submit" id="tmSave">Save modes</button>
       </form>
       <p class="ap-note" id="tmMeta"></p>
       <ul class="ap-note" id="tmLog"></ul>
     </div>
 
     <div data-tab="trading" data-sub="overview" class="card span-12 ovc">
-      <h2>Strategy vs. Nasdaq (Simulated Backtest)<span class="spacer"></span><span class="badge">Simulated backtest</span></h2>
+      <h2>Strategy vs. Nasdaq<span class="spacer"></span><span class="badge">Simulated backtest</span></h2>
       <div class="legend" id="ovLegend"></div>
       <div class="chart" id="ovChart"></div>
       <p class="foot" id="ovNote"></p>
     </div>
     <div data-tab="trading" data-sub="overview" class="card span-12 decs">
-      <h2>Latest Decisions<span class="spacer"></span><button class="link" type="button" data-goto="activity">View all activity <svg class="ico"><use href="#i-arrow"/></svg></button></h2>
+      <h2>Latest decisions<span class="spacer"></span><button class="link" type="button" data-goto="activity">View all activity <svg class="ico"><use href="#i-arrow"/></svg></button></h2>
       <ul id="apDecisions" class="dec-list"></ul>
     </div>
     <div data-tab="trading" data-sub="overview" class="card span-12 full">
-      <h2>Strategy Library <span class="count" id="libN"></span><span class="spacer"></span>
+      <h2>Strategy library <span class="count" id="libN"></span><span class="spacer"></span>
         <button class="link" type="button" data-sub-go="library">View all strategies <svg class="ico"><use href="#i-arrow"/></svg></button></h2>
       <div class="libstrip" id="libStrip"></div>
     </div>
@@ -1436,7 +1436,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
   applyTheme(theme);
   $("theme").addEventListener("click", () => applyTheme({ auto: "light", light: "dark", dark: "auto" }[theme]));
   const tabsOf = (el) => (el.dataset.tab || "").split(" ").filter(Boolean);  // a card can sit on several tabs
-  const PAGE = { trading: ["Autopilot", "Let CTbot run proven strategies with your rules and risk limits."],
+  const PAGE = { trading: ["Autopilot", "CTbot picks and trades strategies for you, inside your rules and risk limits."],
     activity: ["Activity", "Every idea the bot had, what it did with it, and why."],
     settings: ["Settings", "Your keys, broker connections, and every change Bub made."] };
   let sub = "overview";
@@ -1630,7 +1630,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     $("realMoney").setAttribute("aria-label", `Real-money trading is ${S.live_trading_enabled ? "ON" : "off"}`);
     const mins = Math.round(m.minutes_to_close);
     $("mkt").classList.toggle("open", m.open);
-    $("mktWord").textContent = m.open ? `Market Open · ${Math.floor(mins / 60)}h ${mins % 60}m to close` : "Market Closed";
+    $("mktWord").textContent = m.open ? `Market open · ${Math.floor(mins / 60)}h ${mins % 60}m to close` : "Market closed";
     $("sub").textContent = (!m.open && m.prices_as_of ? m.prices_as_of : m.et_time).replace(/(\d\d:\d\d):\d\d/, "$1");
     const prices = !m.open && m.prices_as_of ? `prices as of ${m.prices_as_of}` : `prices ${m.data_source === "robinhood" ? "live" : "from " + m.data_source}`;
     const bot = S.bot.running && S.bot.asleep_until ? "bot on · resting until the open"
@@ -1660,7 +1660,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
       const broke = a.equity - a.deployed < 1;  // cash spent, so a no-borrowing hold blocks every buy
       alerts.push(["warn", "△", (TM.aggressive && broke ? "Aggressive mode is on but can't buy anything: " : "Playing it safe: ") +
         `${a.pulled_back.join(", ")}. New buys use only cash on hand, no borrowing, until that clears${broke ? ", and the cash is spent" : ""}.` +
-        (qqq ? " To let it borrow again, untick \"QQQ as market gauge\"." : ""), qqq && "Open Trading Modes"]);
+        (qqq ? " To let it borrow again, untick \"QQQ as market gauge\"." : ""), qqq && "Open trading modes"]);
     }
     if (a.margin_call) alerts.push(["crit", "!", "Borrowed too much: your account value is under 25% of what you hold, so buying is paused until it recovers."]);
     if (S.limits.pdt_rule && a.day_trades_5d >= S.limits.max_day_trades_5d) alerts.push(["warn", "△", `Day-trade limit reached (${a.day_trades_5d} of ${S.limits.max_day_trades_5d} in 5 days): the bot can't buy and sell the same stock on the same day.`]);
@@ -2419,7 +2419,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     $("autoOnText").textContent = L.auto ? `On: ${usd(L.auto.amount, 0)} across ${P.length || "its"} strateg${P.length === 1 ? "y" : "ies"}, re-picked weekly.` : "";
     $("autoOn").hidden = !L.auto;
     $("pauseAll").querySelector("use").setAttribute("href", S.halted ? "#i-play" : "#i-pause");
-    $("pauseAll").lastChild.textContent = S.halted ? "Resume All Strategies" : "Pause All Strategies";
+    $("pauseAll").lastChild.textContent = S.halted ? "Resume all strategies" : "Pause all strategies";
     $("pauseAll").title = S.halted ? "Let strategies buy again" : "Stop all new buys. What you own stays, and its stops and sells keep running.";
     $("pauseText").hidden = !S.halted;
     $("autoOnText").title = L.auto ? `Invest for me is on: ${usd(L.auto.amount, 0)}` + (P.length ? ` in ${P.map(([n, c]) => `${plainOf(n).title} ${usd(c, 0)}`).join(", ")}` : "") +
@@ -2859,11 +2859,11 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
       <p class="dp">Winners have no fixed sell price: when the price goes up, the safety sell point moves up with it, and the bot sells
       when the price falls back to it. Strategies that failed testing, or lost money over their last 10+ trades, are benched: they aren't allowed to trade.</p>
       <p class="dp">The switch turns Autopilot on or off at once. When it's off, only strategies you invested in trade.</p>`],
-    loss: ["Max loss per trade", `<p class="dp">The most a new trade can fall below its buy price before the bot sells it. Press Save Rules to use a new value.</p>`],
+    loss: ["Max loss per trade", `<p class="dp">The most a new trade can fall below its buy price before the bot sells it. Press Save rules to use a new value.</p>`],
     conf: ["How sure Claude must be", `<p class="dp">Before the autopilot buys an idea, Claude says how likely it is to work. The bot buys only when Claude is at least this sure.</p>
       <p class="dp"><b>Lower = more aggressive:</b> more buys, including ideas Claude is less sure of.<br><b>Higher = more conservative:</b> fewer buys, only ideas Claude is surer of.</p>
-      <p class="dp">Every trade still keeps its max loss and trailing stop. Press Save Rules to use a new value.</p>`],
-    give: ["Give back from high", `<p class="dp">Once a stock rises, the bot sells it if it falls this much from its highest price. Press Save Rules to use a new value.</p>`],
+      <p class="dp">Every trade still keeps its max loss and trailing stop. Press Save rules to use a new value.</p>`],
+    give: ["Give back from high", `<p class="dp">Once a stock rises, the bot sells it if it falls this much from its highest price. Press Save rules to use a new value.</p>`],
     invest: ["Invest for Me", `<p class="dp">Type one amount. The bot picks the best strategies in the library, splits this between them, keeps them funded and re-picks every week.</p>
       <p class="dp">Max loss per strategy: if one strategy is down this much of its own share, the bot sells it and stops it. It is not a limit on the whole amount, and each single trade still keeps its max loss per trade. Practice money only.</p>`],
   };

@@ -98,7 +98,7 @@ def decide(models: list[str], fills: list[dict[str, Any]], now: datetime,
             out[m] = {**rec, "status": "benched",
                       "reason": f"lost ${-pnl:,.2f} over its last {closed} practice trades ({BENCH_WINDOW_DAYS} days)"}
         else:
-            why = (f"{closed} practice trades in the last {BENCH_WINDOW_DAYS} days, {'+' if pnl >= 0 else '-'}${abs(pnl):,.2f} in total"
+            why = (f"{closed} practice trade{'' if closed == 1 else 's'} in the last {BENCH_WINDOW_DAYS} days, {'+' if pnl >= 0 else '-'}${abs(pnl):,.2f} in total"
                    if closed else "no practice trades lately: it's trading to build a record")
             out[m] = {**rec, "status": "trading", "reason": why}
     return out

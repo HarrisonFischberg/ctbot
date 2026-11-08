@@ -4,7 +4,7 @@ Goal: the paper bot keeps trading during market hours when the Mac is off (a fli
 battery), and you get a phone alert within a few minutes if it stops. Paper only: nothing here
 enables live trading (see the last section).
 
-**Status (2026-10-26): this is how CTbot runs.** The paper bot lives on a Hetzner CX23 (Ubuntu
+As of 2026-10-26 this is how CTbot runs. The paper bot lives on a Hetzner CX23 (Ubuntu
 24.04) set up with the files below, reached over Tailscale only, with Healthchecks.io and ntfy
 alerts. The Mac no longer runs the bot (its autostart is uninstalled), so don't reinstall it.
 
@@ -51,9 +51,9 @@ the variant books and the daily Cboe download. Prices are approximate (late 2026
 | Oracle Cloud free tier | $0 | Variable | Fiddly signup | Idle free VMs can be reclaimed; capacity often unavailable |
 | GitHub Actions / cron services | $0 | n/a | n/a | Not suitable: jobs are short-lived, no persistent ledger |
 
-**Recommendation: a 2 GB DigitalOcean droplet in NYC with weekly backups (~$15/month),
-Tailscale for private access, and Healthchecks.io (free tier) for the heartbeat alert.**
-It is a plain VM, so the same systemd setup works on Hetzner if you'd rather save ~$6/month.
+For most people I'd pick a 2 GB DigitalOcean droplet in NYC with weekly backups (~$15/month),
+Tailscale for private access, and Healthchecks.io (free tier) for the heartbeat alert. It is a
+plain VM, so the same systemd setup works on Hetzner if you'd rather save ~$6/month.
 CTbot's own server is a Hetzner CX23 (~$7/month); it has run this setup since 2026-10-24.
 
 ## Alerts: how the heartbeat works
