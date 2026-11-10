@@ -75,9 +75,6 @@ class _MD:
     def quotes(self, symbols):
         return {s: Quote(s, self.px, self.px, self.px, ts=NOW) for s in symbols}
 
-    def is_market_open(self):
-        return True
-
 
 def test_manage_positions_sells_half_then_keeps_the_rest_at_break_even():
     with tempfile.TemporaryDirectory() as d:

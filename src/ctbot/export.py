@@ -83,7 +83,7 @@ def build(root: Path, days: int = 14, home: Path | None = None, now: datetime | 
                 continue
             if path.suffix not in TEXT:
                 continue
-            if path.stat().st_size > MAX_BYTES:
+            if path.suffix != ".jsonl" and path.stat().st_size > MAX_BYTES:
                 manifest["skipped"][arc] = f"over {MAX_BYTES // 1_000_000} MB"
                 continue
             dated = DATE_IN_NAME.search(path.name)
@@ -96,6 +96,9 @@ def build(root: Path, days: int = 14, home: Path | None = None, now: datetime | 
                 if not kept:
                     continue
                 text = "\n".join(kept) + "\n"
+                if len(text) > MAX_BYTES:  # a log is judged by the days kept, not its whole life
+                    manifest["skipped"][arc] = f"over {MAX_BYTES // 1_000_000} MB"
+                    continue
                 manifest["files"][arc] = {"rows": len(kept), "of": len(lines)}
             else:
                 manifest["files"][arc] = {"bytes": len(text)}

@@ -37,9 +37,6 @@ class _MD:
     def quotes(self, symbols):
         return {s: Quote(s, self.px, self.px, self.px) for s in symbols}
 
-    def is_market_open(self):
-        return True
-
 
 def _ctx(now, held=frozenset(), day=DAY):
     return StrategyContext(_MD(), ("KO",), (), day, held, now)

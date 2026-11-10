@@ -316,9 +316,10 @@ def _submit(c: Components, state: AccountState, order, positions, today, decisio
         pos = positions[order.symbol]
         bracket = dict(state.brackets.get(order.symbol) or {})
         _book_sleeve_gain(c, state, order.symbol, pos.avg_cost, fill)
-        if tag == "partial_profit" and any(p.symbol == order.symbol for p in c.executor.positions()):
+        still = any(p.symbol == order.symbol for p in c.executor.positions())
+        if tag == "partial_profit" and still:
             c.risk.partial_taken(state, order.symbol, pos.avg_cost)  # the rest keeps its bracket
-        else:
+        elif not still:  # a piece left by a price tick keeps its bracket and sells at the next check
             c.risk.record_exit_fill(state, pos, today, fill.price)
         try:
             trade_log.append(c.settings.trade_log_path, trade_log.close_record(
@@ -390,6 +391,7 @@ def _maybe_top_up(c: Components, state: AccountState, cand: Candidate, pos, quot
     if gap < -band and quote.bid:
         trim = OrderRequest(cand.symbol, Side.SELL, round(-gap, 2), limit_price=quote.bid, candidate_ref="rebalance")
         fill = c.executor.submit(trim)
+        _journal_direct(c, state, trim, fill)
         if fill:  # partial: bracket and day-trade count untouched
             _book_sleeve_gain(c, state, cand.symbol, pos.avg_cost, fill)
             log.info("trim %s: -$%.2f to its target $%.0f", cand.symbol, -gap, target)
@@ -413,6 +415,20 @@ def _maybe_top_up(c: Components, state: AccountState, cand: Candidate, pos, quot
             state.sleeve_reserve[owner] = max(0.0, sleeve - state.sleeve_used[owner])
         log.info("top-up %s: +$%.2f to its target $%.0f", cand.symbol, order.notional, target)
         sync_cash(c.executor, state)
+    _journal_direct(c, state, order, fill)
+
+
+def _journal_direct(c: Components, state: AccountState, order, fill) -> None:
+    """Top-ups and trims skip _submit (no bracket or day-trade change) but still leave its record."""
+    _journal(c, ProposedOrder(order.client_order_id, order.symbol, order.side.value, order.notional,
+                              order.limit_price, order.candidate_ref))
+    if fill is None:
+        _journal(c, ExecutionOutcome(order.client_order_id, order.symbol, "no_fill"))
+        return
+    c.fills += 1
+    _journal(c, ExecutionOutcome(order.client_order_id, order.symbol, "filled", fill.quantity, fill.price,
+                                 simulated=fill.simulated))
+    save_account_state(state, c.settings.paper_risk_state_path)
 
 
 def refresh_learning(c: Components, state: AccountState, now: datetime) -> None:
@@ -788,6 +804,7 @@ def process_manual_order(
     quote = c.market_data.quotes([sym]).get(sym)
     names = order.get("strategies") or ["manual"]
 
+    plan = None
     if order["side"] == "sell":
         sig = Signal("manual", sym, Direction.EXIT, 1.0, 0, {"source": "dashboard"})
         verdict = c.risk.check_exit(Candidate(sym, Direction.EXIT, -1.0, (sig,)),
@@ -800,7 +817,15 @@ def process_manual_order(
             market_hours.minutes_to_close(now) <= c.settings.risk.no_entries_last_minutes
         ):
             return "rejected", ["too_close_to_close"], None
-        sigs = tuple(Signal(n, sym, Direction.LONG, 1.0, 0, {"source": "dashboard"}) for n in names)
+        # an approved idea keeps its strategy's own signals, so the fill gets that exit plan
+        sigs = tuple(Signal(s["strategy"], sym, Direction.LONG, s.get("strength", 1.0),
+                            s.get("horizon_days", 0), s.get("evidence") or {})
+                     for s in order.get("signals") or [] if s.get("direction") == Direction.LONG.value
+                     ) or tuple(Signal(n, sym, Direction.LONG, 1.0, 0, {"source": "dashboard"}) for n in names)
+        cand = Candidate(sym, Direction.LONG, 1.0, sigs)
+        plan = c.risk.exit_plan(cand)
+        if plan and datetime.fromisoformat(plan["exit_at"]) <= now:
+            return "rejected", ["idea_expired"], None  # its planned sell time has already passed
         notional = order.get("notional") or state.equity * c.settings.risk.max_position_pct
         decision = Decision(
             approve=True, confidence=1.0, rationale="approved by you on the dashboard",
@@ -810,7 +835,7 @@ def process_manual_order(
         adv = avg_dollar_volume(c.market_data, sym)
         report = c.context.next_earnings(sym) if c.context else None
         flags = c.context.red_flags(sym) if c.context and hasattr(c.context, "red_flags") else []
-        verdict = c.risk.check_entry(Candidate(sym, Direction.LONG, 1.0, sigs), decision, state,
+        verdict = c.risk.check_entry(cand, decision, state,
                                      quote, adv, frozenset(positions), today, report, now,
                                      live_quotes(c.market_data), red_flags=flags)
     else:
@@ -821,7 +846,8 @@ def process_manual_order(
     fill = None
     for o in verdict.orders:
         before = len(state.day_trade_dates)
-        if _submit(c, state, o, positions, today, decision, tag="manual"):
+        tag = ",".join(names) if o.side is Side.BUY else "manual"
+        if _submit(c, state, o, positions, today, decision, plan, tag):
             fill = {"symbol": o.symbol, "side": o.side.value, "notional": o.notional,
                     "day_trade": len(state.day_trade_dates) > before}
     if fill is None:

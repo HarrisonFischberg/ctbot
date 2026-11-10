@@ -488,6 +488,8 @@ class RiskManager:
             reasons.append("no_position")
         if quote is None:
             reasons.append("no_quote")
+        elif quote.bid <= 0:  # a quote with no bid is not a price to sell at
+            reasons.append("bad_quote")
         if position is not None and trading_date(position.opened_at) == today and self.pdt_limit_hit(state, today):
             reasons.append("pdt_guard")
         if reasons:

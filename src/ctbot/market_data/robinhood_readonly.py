@@ -189,9 +189,6 @@ class RobinhoodReadOnlyMarketData:
                     self._quotes.pop(s, None)
         return {s: self._quotes[s][1] for s in syms if s in self._quotes}
 
-    def is_market_open(self) -> bool:
-        return market_hours.session_open(self.clock())
-
     # ---- intraday ----------------------------------------------------------
     def today_bars(self, symbols: list[str], ttl_s: float = 60.0) -> dict[str, list[Bar]]:
         """Today's regular-session 5-minute bars, cached briefly so several strategies share

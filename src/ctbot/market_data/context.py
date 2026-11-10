@@ -15,7 +15,7 @@ and skipped when unavailable.
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timezone
 from typing import Any, Callable
 
 from ctbot import market_hours
@@ -185,14 +185,3 @@ class MarketContext:
                 "mean_target": mean, "upside_to_mean_target": (mean / last - 1) if mean and last else None,
             }
         return {k: (round(v, 4) if isinstance(v, float) else v) for k, v in out.items()}
-
-
-def holds_through_earnings(entry: datetime, exit_at: datetime, report: datetime | None) -> bool:
-    return report is not None and entry < report < exit_at
-
-
-def plan_exit(plan: dict | None, now: datetime) -> datetime:
-    """Planned exit for a candidate; daily-horizon trades without a plan count as 30 days."""
-    if plan and plan.get("exit_at"):
-        return datetime.fromisoformat(plan["exit_at"])
-    return now + timedelta(days=30)
