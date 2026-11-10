@@ -20,9 +20,6 @@ class _MD:
     def quotes(self, symbols):
         return {s: Quote(s, 50.0, 50.01, 50.0, ts=NOW) for s in symbols}
 
-    def is_market_open(self):
-        return True
-
 
 def _components(d):
     settings = Settings.from_env({"PAPER_LEDGER_PATH": str(Path(d) / "l.json"), "RESPECT_MARKET_HOURS": "false"})

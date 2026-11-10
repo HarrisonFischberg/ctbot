@@ -84,11 +84,6 @@ def family_of(c: dict[str, Any]) -> sg.Family:
     return replace(base, key=c["name"], rule=rule, max_hold=c["max_hold"])
 
 
-def _split(r: pd.Series, k: str) -> pd.Series:
-    lo, hi = lbt.SPLITS[k]
-    return r[(r.index >= lo) & (r.index <= hi)]
-
-
 def _selection(r: pd.Series) -> pd.Series:
     """Dev + validation returns from the first day with a position (no data, no trades before it)."""
     x = r[r.index <= lbt.SPLITS["validation"][1]]

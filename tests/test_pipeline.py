@@ -23,9 +23,6 @@ class _MD:
     def quotes(self, symbols):
         return {s: Quote(s, 50.0, 50.0, 50.0) for s in symbols}
 
-    def is_market_open(self):
-        return True
-
 
 class _Strategy:
     event_kinds = frozenset()
@@ -320,3 +317,69 @@ def test_long_rule_based_hold_sells_before_earnings_instead_of_never_buying():
     near = {"exit_at": "2027-03-05T15:50:00-05:00"}
     cut_before_earnings(near, datetime(2026, 11, 10, 12, tzinfo=UTC), now)  # under a week: unchanged
     assert near["exit_at"] == "2027-03-05T15:50:00-05:00"
+
+
+def test_a_sell_that_leaves_a_piece_keeps_its_bracket():
+    from ctbot.models import OrderRequest, Side
+    from ctbot.pipeline import _submit
+
+    class _Tick(_MD):
+        bid = 106.0
+
+        def quotes(self, symbols):
+            return {s: Quote(s, self.bid, self.bid, self.bid) for s in symbols}
+
+    with tempfile.TemporaryDirectory() as d:
+        md = _Tick()
+        broker = PaperBroker(md, 1000.0, Path(d) / "l.json", slippage_bps=0, clock=lambda: NOW)
+        broker.submit(OrderRequest("KO", Side.BUY, 530.0))  # 5 shares
+        c = _components(broker, [])
+        state = _state(broker)
+        state.brackets["KO"] = {"stop": 100.0, "model": "orb"}
+        positions = {p.symbol: p for p in broker.positions()}
+        md.bid = 106.2  # the price ticks up between the exit check and the fill
+        assert _submit(c, state, OrderRequest("KO", Side.SELL, 530.0, limit_price=106.0), positions, TODAY,
+                       tag="take_profit")
+        assert broker.positions() and state.brackets["KO"]["model"] == "orb"
+        positions = {p.symbol: p for p in broker.positions()}
+        _submit(c, state, OrderRequest("KO", Side.SELL, 10.0, limit_price=106.2), positions, TODAY, tag="take_profit")
+        assert broker.positions() == [] and "KO" not in state.brackets
+
+
+def test_approving_an_idea_keeps_the_strategys_exit_plan():
+    from ctbot.pipeline import process_manual_order
+
+    def order(exit_at):
+        sig = {"strategy": "orb", "direction": "long", "strength": 0.8, "horizon_days": 0,
+               "evidence": {"stop": 48.0, "target": 54.0, "exit_at": exit_at, "ref_price": 50.0}}
+        return {"id": "x", "ts": NOW.isoformat(), "side": "buy", "symbol": "KO", "notional": 50.0,
+                "idea_id": "i1", "strategies": ["orb"], "signals": [sig]}
+
+    with tempfile.TemporaryDirectory() as d:
+        broker = PaperBroker(_MD(), 250.0, Path(d) / "l.json", slippage_bps=0, clock=lambda: NOW)
+        c = _components(broker, [], entry_mode="manual")
+        state = _state(broker)
+        gone = NOW.replace(hour=14).isoformat()
+        assert process_manual_order(c, state, order(gone), NOW)[1] == ["idea_expired"]
+        exit_at = NOW.replace(hour=19, minute=50).isoformat()
+        st, reasons, _ = process_manual_order(c, state, order(exit_at), NOW)
+        assert st == "filled", reasons
+        b = state.brackets["KO"]
+        assert (b["stop"], b["exit_at"], b["model"]) == (48.0, exit_at, "orb")
+
+def test_a_top_up_is_counted_as_a_fill():
+    from ctbot.models import Candidate, OrderRequest, Side
+    from ctbot.pipeline import _maybe_top_up
+    from ctbot.strategies.registry import WeightedStrategy
+
+    with tempfile.TemporaryDirectory() as d:
+        broker = PaperBroker(_MD(), 500.0, Path(d) / "ledger.json", slippage_bps=0, clock=lambda: NOW)
+        broker.submit(OrderRequest("QQQ", Side.BUY, 50.0))  # the trend core, under its $150 target
+        c = _components(broker, [WeightedStrategy(_Strategy("core", []), 1.0)])
+        state = AccountState(equity=500, cash=broker.cash(), peak_equity=500, day_start_equity=500,
+                             open_positions=1, brackets={"QQQ": {"stop": 40.0, "model": "core"}})
+        sig = Signal("core", "QQQ", Direction.LONG, 1.0, 30, {"rebalance": True, "size_pct": 0.6})
+        before = c.fills
+        _maybe_top_up(c, state, Candidate("QQQ", Direction.LONG, 1.0, (sig,)),
+                      broker.positions()[0], Quote("QQQ", 50.0, 50.0, 50.0), NOW)
+        assert broker.market_value() > 50.0 and c.fills == before + 1

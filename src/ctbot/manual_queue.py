@@ -46,12 +46,13 @@ def enqueue(
     orders_path: Path, *, side: str, symbol: str, notional: float | None = None,
     idea_id: str | None = None, strategies: list[str] | None = None,
     stop_loss_pct: float | None = None, take_profit_pct: float | None = None,
+    signals: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     order = {
         "id": uuid4().hex, "ts": datetime.now(timezone.utc).isoformat(), "side": side,
         "symbol": symbol.upper(), "notional": notional, "idea_id": idea_id,
         "strategies": strategies or [], "stop_loss_pct": stop_loss_pct,
-        "take_profit_pct": take_profit_pct,
+        "take_profit_pct": take_profit_pct, "signals": signals or [],
     }
     _append(orders_path, order)
     return order

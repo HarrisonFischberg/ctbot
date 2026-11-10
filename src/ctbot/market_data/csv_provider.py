@@ -61,5 +61,3 @@ class CsvMarketData:
                 out[s.upper()] = Quote(symbol=s.upper(), bid=px, ask=px, last=px, ts=bars[-1].ts)
         return out
 
-    def is_market_open(self) -> bool:
-        return True

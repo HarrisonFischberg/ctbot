@@ -229,3 +229,10 @@ def test_account_state_save_is_atomic_and_round_trips(tmp_path):
     assert not path.with_suffix(".tmp").exists()
     back = load_account_state(AccountState(1000, 1000, 1000, 1000, 0), path)
     assert back.kill_switch and back.peak_equity == 1200
+
+
+def test_exit_refuses_a_quote_with_no_bid():
+    rm = RiskManager(RiskLimits())
+    pos = Position("KO", 0.5, 55.0, datetime(2026, 10, 1, tzinfo=timezone.utc))
+    v = rm.check_exit(_cand(Direction.EXIT), pos, _state(), Quote("KO", 0.0, 60.02, 60.01), date(2026, 10, 13))
+    assert not v.allowed and v.reasons == ("bad_quote",)

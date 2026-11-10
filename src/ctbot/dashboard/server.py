@@ -133,6 +133,7 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
             settings.manual_orders_path, side=side, symbol=symbol, notional=notional,
             idea_id=(idea or {}).get("id"), strategies=(idea or {}).get("strategies"),
             stop_loss_pct=d.get("stop_loss_pct"), take_profit_pct=d.get("take_profit_pct"),
+            signals=(idea or {}).get("signals"),
         )
         log.info("queued paper %s %s (%s)", side, symbol, order["id"])
         return 202, {"queued": order["id"]}

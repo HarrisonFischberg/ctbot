@@ -22,9 +22,6 @@ class _MD:
     def quotes(self, symbols):
         return {s: Quote(s, 50.0, 50.01, 50.0, ts=NOW) for s in symbols}
 
-    def is_market_open(self):
-        return True
-
 
 class _Rule:
     name = "rule"

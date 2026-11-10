@@ -131,8 +131,10 @@ class PaperBroker:
 
     def market_value(self) -> float:
         quotes = self.md.quotes(list(self._positions))
+        # no price (halt, stale quote) is not a loss: value it at cost, as the dashboard does
         return sum(
-            p.quantity * quotes[p.symbol].mid for p in self._positions.values() if p.symbol in quotes
+            p.quantity * (quotes[p.symbol].mid if p.symbol in quotes else p.avg_cost)
+            for p in self._positions.values()
         )
 
     def equity(self) -> float:

@@ -143,9 +143,6 @@ class BookMarketData:
     def daily_bars(self, symbol, lookback_days):
         return self.inner.daily_bars(symbol, lookback_days)
 
-    def is_market_open(self):
-        return self.inner.is_market_open()
-
     def __getattr__(self, name):
         attr = getattr(self.inner, name)  # AttributeError when the client lacks it, as before
         if name not in self.CACHED:

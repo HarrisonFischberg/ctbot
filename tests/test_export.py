@@ -41,3 +41,13 @@ def test_export_window_and_no_keys(tmp_path):
     assert "abc123" not in lessons and "sk-ant-" not in lessons and "[redacted]" in lessons
     manifest = json.loads(z.read("manifest.json"))
     assert manifest["since"] == "2026-10-24" and "data/robinhood_oauth.json" in manifest["skipped"]
+
+
+def test_a_long_log_keeps_its_recent_days(tmp_path, monkeypatch):
+    monkeypatch.setattr(export, "MAX_BYTES", 200)
+    data = tmp_path / "data"
+    data.mkdir()
+    old = json.dumps({"ts": "2026-01-01T15:00:00+00:00", "pad": "x" * 300}) + "\n"
+    (data / "journal.jsonl").write_text(old + json.dumps({"ts": "2026-11-06T15:00:00+00:00"}) + "\n")
+    z = zipfile.ZipFile(io.BytesIO(export.build(tmp_path, 14, home=tmp_path, now=NOW)))
+    assert z.read("data/journal.jsonl").decode().count("\n") == 1

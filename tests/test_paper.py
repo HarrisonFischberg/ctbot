@@ -97,3 +97,18 @@ def test_margin_needs_2000_equity_and_maintenance():
         assert b.margin_status() == (0.0, True)
         assert b.submit(OrderRequest("PEP", Side.BUY, 100.0)) is None
         assert b.submit(OrderRequest("KO", Side.SELL, 3_200.0)) is not None  # sells still work
+
+
+def test_a_position_with_no_price_is_valued_at_cost_not_zero():
+    class _Gone(_FixedQuotes):
+        halted = False
+
+        def quotes(self, symbols):
+            return {} if self.halted else super().quotes(symbols)
+
+    with tempfile.TemporaryDirectory() as d:
+        md = _Gone()
+        b = PaperBroker(md, 1000.0, Path(d) / "ledger.json", slippage_bps=0)
+        b.submit(OrderRequest("KO", Side.BUY, 200.0))
+        md.halted = True  # a halt or stale quote: no price this cycle
+        assert b.equity() == 1000.0  # not 800, which would trip the kill switch
