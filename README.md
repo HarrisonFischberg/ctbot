@@ -15,9 +15,8 @@ Free and open source ([MIT](LICENSE)) by [Rare Creatures](https://rarecreatures.
 no servers of ours, no tracking: your keys and data stay on your machine (or on a server you rent
 yourself, see [Run it on a server](#run-it-on-a-server-recommended-for-all-day-trading)).
 
-**New: Opening Bell.** The dashboard has a new default look: light and blue, a live ticker tape,
-big numbers and a left rail (bottom bar on a phone), in light or dark. The older design is still a
-click away in the style menu.
+The dashboard's default look is Opening Bell: light blue, a live ticker tape, big numbers and a
+left rail (a bottom bar on a phone), in light or dark. The older design is in the style menu.
 
 <p align="center">
   <img src="docs/images/home.png" alt="CTbot Home in Opening Bell: portfolio value $10,107.59 with today's gain, drawdown and gain since starting, a value chart, account allocation, Bub's take, holdings and running strategies" width="800">
@@ -27,16 +26,15 @@ click away in the style menu.
 
 | Set three rules, pick the trading modes, flip it on, give it an amount | Every strategy it may use, and why |
 |---|---|
-| <img src="docs/images/autopilot.png" alt="Autopilot tab: trading rules (max loss per trade 5%, give back from high 8%, how sure Claude must be 20%), Invest for Me with $10,500, the Trading Modes box (QQQ as market gauge on, sell intraday by 3:45 PM) under the rules, the Aggressive day trading switch next to Autopilot, the strategy vs Nasdaq backtest chart, latest decisions and running strategies" width="400"> | <img src="docs/images/library.png" alt="Strategy library: 31 strategies trading and 15 benched, each with the reason, such as no practice trades lately or failed its test because results could be luck" width="400"> |
+| <img src="docs/images/autopilot.png" alt="Autopilot tab: trading rules (max loss per trade 5%, give back from high 8%, how sure Claude must be 20%), Invest for Me with $10,500, the trading modes box (QQQ as market gauge on, sell intraday by 3:45 PM) under the rules, the Aggressive day trading switch next to Autopilot, the strategy vs Nasdaq backtest chart, latest decisions and running strategies" width="400"> | <img src="docs/images/library.png" alt="Strategy library: 31 strategies trading and 15 benched, each with the reason, such as no practice trades lately or failed its test because results could be luck" width="400"> |
 | **Activity: every idea, what happened and why** | **Dark mode** |
 | <img src="docs/images/activity.png" alt="Activity tab: the bot's trade ideas with what happened to each and what Claude said, then results by strategy" width="400"> | <img src="docs/images/home-dark.png" alt="Home in Opening Bell dark mode" width="400"> |
 
-<sub>Screenshots: Opening Bell with made-up demo data (generated prices and a paper account; no real account). Every number comes from those made-up prices, so none of it is a real result or a promise of anything.</sub>
+<sub>The screenshots use made-up demo data: generated prices and a paper account, not a real one. None of these numbers is a real result or a promise.</sub>
 
-**Want it running all day like mine, with phone alerts?** Follow
-**[Set up CTbot exactly like mine](docs/SETUP.md)**: a ~$7/month server, a private dashboard on
-your Mac and phone over Tailscale, ntfy phone messages, and Autopilot investing for you, step by
-step.
+To run it all day the way I do, with phone alerts, follow
+[Set up CTbot exactly like mine](docs/SETUP.md). It walks through a ~$7/month server, a private
+dashboard on your Mac and phone over Tailscale, ntfy phone messages, and turning on Autopilot.
 
 ## What you get
 
@@ -44,17 +42,21 @@ step.
   [SETUP.md](docs/SETUP.md)), in the Opening Bell style by default, light or dark:
   - **Home**: portfolio value and its chart, account allocation, Bub's take on the market, a
     4-step setup checklist, holdings (with each stop), running strategies and a stock chart.
-  - **Autopilot**: switch it on and set three rules: max loss per trade, how much of a run-up to
-    give back before selling, and how sure Claude must be before a buy. CTbot then picks trades
+  - **Autopilot**: set three rules (max loss per trade, how much of a run-up to give back before
+    selling, and how sure Claude must be before a buy) and switch it on. CTbot then picks trades
     from every strategy by itself, with trailing stops and no fixed profit cap. **Invest for Me**
-    takes one dollar amount, picks and funds the strategies itself, re-picks weekly and tops them
-    up as cash frees. It learns from its own paper record: each closed trade gets a post-mortem
-    (`data/trade_log.jsonl`), a strategy's size grows or shrinks with its last 30 days of results,
-    a strategy losing over 10+ trades is benched, and the account stops borrowing after a bad day,
-    a drawdown or a QQQ downtrend. Its sections: *Overview* (rules, decisions, what's running),
-    *Strategy library* (every strategy, trading or benched and why), *Testing* (crash test back to
-    1999, a no-hindsight walk-forward test, the comparison books), *Backtests* (growth of $5,000
-    since 2010, the leaderboard) and *Outside traders*.
+    takes one dollar amount, picks and funds the strategies, re-picks weekly and tops them up as
+    cash frees.
+
+    It adjusts from its own paper record. Each closed trade gets a post-mortem
+    (`data/trade_log.jsonl`). A strategy's size grows or shrinks with its last 30 days of results,
+    and a strategy that is down over 10 or more trades is benched. The account stops borrowing
+    after a bad day, a drawdown or a QQQ downtrend.
+
+    The tab has five sections: *Overview* (rules, decisions, what's running), *Strategy library*
+    (every strategy, trading or benched and why), *Testing* (a crash test back to 1999, a
+    no-hindsight walk-forward test, the comparison books), *Backtests* (growth of $5,000 since
+    2010, the leaderboard) and *Outside traders*.
   - **Trading modes** (next to the Autopilot switch, paper only, main book only):
     - *QQQ as market gauge* (default on): QQQ under its average makes the account stop borrowing.
       Off skips only that trigger; the bad-day and drawdown pull-backs still apply.
@@ -64,17 +66,18 @@ step.
       market at 15:45 ET (or 15 minutes before an early close), and no new buys start after that.
       The Nasdaq-100 trend cores, holdings from earlier days and trades with a planned exit on a
       later day are kept, unless you tick *also flatten these*. Every hard limit stays on. The
-      daily Claude spend cap is **not** raised, so heavy days can hit it and stop reviews early.
+      daily Claude spend cap stays the same, so heavy days can hit it and stop reviews early.
       Paper fills are kinder than real ones, so these results overstate fast trading; the page
       shows today's P&L after an optional per-order commission.
-  - **Learning journal** (new): every evening CTbot writes down what each paper book learned that
-    day (`data/learning/journal/`: each book's day, each model's settled paper record, idea scores,
-    calibration and the factory's picks), in plain code with no Claude call. One small Claude call
-    a night then proposes at most three short *reviewer lessons* from those journals, only once a
-    model has 15 closed trades or 30 scored ideas. Code checks each edit (no lesson may touch money,
-    size, stops or limits), logs it with a hash chain, and any edit can be rolled back. Only the
-    separate `learner` paper book's reviewer uses the lessons, and an edit is rolled back if that
-    book falls behind; the main book gets them only after you approve.
+  - **Learning journal**: every evening CTbot writes a journal for each paper book in
+    `data/learning/journal/`: the book's day, each model's settled paper record, idea scores,
+    calibration and the factory's picks. Plain code writes it; Claude isn't called.
+
+    Once a model has 15 closed trades or 30 scored ideas, one small Claude call a night reads the
+    journals and proposes up to three short *reviewer lessons*. Code checks each one (no lesson may
+    touch money, size, stops or limits) and logs it with a hash chain, and any lesson can be rolled
+    back. Only the separate `learner` paper book uses them, and a lesson is rolled back if that
+    book falls behind. The main book gets a lesson only after you approve it.
   - **Activity**: the bot's trade ideas and what happened to each, results by strategy, what each
     trade taught, safety limits, trade history, the watchlist and a live log.
   - **Settings**: add your API keys, connect Robinhood, run a health check, review Bub's changes.
@@ -116,9 +119,9 @@ Linux server instead (a ~$7/month Hetzner or ~$12 DigitalOcean VM works). Step b
 - `deploy/setup-server.sh` (Ubuntu 24.04, as root) installs CTbot as systemd services, paper only.
 - `deploy/tailscale.sh` puts the dashboard on your private Tailscale network
   (`https://ctbot.<tailnet>.ts.net` on your Mac and phone) and can close public SSH.
-- **Updates deploy themselves**: merge to `main` and `ctbot-update.timer` pulls it and restarts
+- Updates deploy themselves: merge to `main` and `ctbot-update.timer` pulls it and restarts
   the bot at 08:45 or 16:20 ET on the next weekday, never while the market is open.
-- **Alerts**: `ctbot-watchdog` pings a Healthchecks.io URL every minute (`HEARTBEAT_URL`) and,
+- Alerts: `ctbot-watchdog` pings a Healthchecks.io URL every minute (`HEARTBEAT_URL`) and,
   with `NOTIFY_URL` set to an ntfy topic, sends phone messages at the open, after the close and
   when something breaks.
 
@@ -171,8 +174,8 @@ How it fits together: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Assistant
 
-**Bub**, the little creature at the bottom of the left rail (bottom bar on a phone), answers questions about what
-the paper bot is doing and why ("Why so few trades today?", "Anything broken?"), in plain language
+Bub, the little creature at the bottom of the left rail (in the bottom bar on a phone), answers
+questions about what the paper bot is doing and why ("Why so few trades today?", "Anything broken?"), in plain language
 with the bot's own numbers, and suggests changes when you ask for them ("Take more trades").
 
 <p align="center"><img src="docs/images/assistant.png" alt="Bub's chat panel: why only 2 trades were taken today, and a card proposing Min Claude confidence 0.65 to 0.55 with its reason, risk, and Apply and Dismiss buttons" width="360"></p>
@@ -187,14 +190,14 @@ with the bot's own numbers, and suggests changes when you ask for them ("Take mo
   the review budgets, `MAX_SPREAD_PCT`, `NO_ENTRIES_LAST_MINUTES`, `MAX_POSITION_PCT`,
   `ENTRY_MODE`), a strategy's shadow/trade mode, investing in or stopping a strategy, and paper
   orders, including approving a recommended idea.
-- **Every change needs your click.** Bub only proposes; each suggestion is a card with the
-  change, why, and the risk. Nothing happens until you press **Apply**, and the server checks it
-  again then. Knob changes go to `~/.ctbot/tuning.json` and reach the running paper bot within
+- **Every change needs your click**: Bub only proposes. Each suggestion is a card with the
+  change, the reason and the risk. Nothing happens until you press **Apply**, and the server checks
+  it again at that point. Knob changes go to `~/.ctbot/tuning.json` and reach the running paper bot within
   seconds, no restart.
-- **Everything is logged** in `data/assistant_audit.jsonl`: what you asked, what was proposed, the
+- **Everything is logged** to `data/assistant_audit.jsonl`: what you asked, what was proposed, the
   value before and after, and whether you applied or dismissed it. Settings → *Assistant
   changes* lists them, each with a one-click **Revert** (orders can't be reverted).
-- **Paper only.** No action can turn on live trading, touch the Robinhood account settings, raise
+- **Paper only**: no action can turn on live trading, touch the Robinhood account settings, raise
   `MAX_TRADING_CAPITAL`, loosen the loss or stop limits, or allow shorting. It has no Robinhood
   access at all.
 - It uses the Anthropic key from the Settings tab, with its own daily cap
@@ -220,7 +223,7 @@ and how to delete everything: [PRIVACY.md](PRIVACY.md).
 
 ## Safety design
 
-- Paper and real-money code run as separate programs. A paper process cannot even import the
+- Paper and real-money code run as separate programs. A paper process can't import the
   real-money module, and tests fail if anything else names an order-placing tool.
 - Real money would need three separate settings to agree, plus an exact confirmation phrase, and
   would refuse any account except the one you name by full number and nickname. That code is not

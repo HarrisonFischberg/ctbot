@@ -1,12 +1,12 @@
 # Set up CTbot exactly like mine
 
-This is the whole setup CTbot's author runs every day, start to finish: a small cloud server that
-trades paper money all day, a private dashboard on your Mac and phone, phone alerts through ntfy,
+This is the setup I run every day, start to finish: a small cloud server that trades paper money
+all day, a private dashboard on your Mac and phone, phone alerts through ntfy,
 and Autopilot choosing and funding the strategies. Budget about an hour, most of it waiting for
 installs. **Paper money only**: nothing here can place a real order.
 
-If you only want to try it on your laptop first, the [install steps](../README.md#install-on-your-computer) in the
-README takes five minutes. Come back here when you want it running while your laptop is closed.
+If you only want to try it on your laptop first, the [quick start](../README.md#quick-start) in the
+README takes about five minutes. Come back here when you want it running while your laptop is closed.
 
 ## What you need
 
@@ -175,7 +175,7 @@ with a **Revert** button, and it can never turn on real money or raise your loss
 
 Open the **Autopilot** tab:
 
-1. **Trading rules** (left column), then **Save Rules**. Mine:
+1. **Trading rules** (left column), then **Save rules**. Mine:
    - **Max loss per trade: 7%**. Each position's starting stop.
    - **Give back from high: 3.5%**. Once a trade is up, the stop trails 3.5% below its best
      price, so winners keep running with no fixed profit cap but gains are locked in quickly.
@@ -196,7 +196,7 @@ Open the **Autopilot** tab:
      Holdings from earlier days are kept unless you tick *also flatten these*. Your Claude spend
      cap is not raised, so busy days can use it up early.
 
-That's it. **Pause All Strategies** stops new buys any time (exits still run).
+**Pause all strategies** stops new buys at any time (exits still run).
 
 ## Keeping it running
 
