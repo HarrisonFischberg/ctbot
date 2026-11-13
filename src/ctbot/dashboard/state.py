@@ -370,6 +370,9 @@ def build_state(
             quotes = quotes_fn(symbols)
         except Exception as e:  # noqa: BLE001 - shown in the UI, never fatal
             data_error = data_error or f"{type(e).__name__}: {e}"
+    if risk_state.get("no_quote"):  # the bot's own stop check had no price for these
+        data_error = data_error or (f"the bot has no fresh price for {', '.join(risk_state['no_quote'])}, "
+                                    "so its stop isn't being checked")
 
     cash = float(ledger.get("cash", settings.starting_capital))
     unsettled = sum(float(u["amount"]) for u in ledger.get("unsettled", []))

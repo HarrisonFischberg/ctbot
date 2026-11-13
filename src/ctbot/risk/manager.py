@@ -46,6 +46,9 @@ class AccountState:
     # Pull back after losses (ctbot.risk_mode): why buys may not borrow right now; empty = full
     # risk. Set by the pipeline each cycle; persisted only for the dashboard.
     risk_off: list[str] = field(default_factory=list)
+    # Held symbols with no fresh quote on the last stop check: their stop, target and exit time
+    # can't fire. Set by manage_positions; persisted only for the dashboard.
+    no_quote: list[str] = field(default_factory=list)
     # sector -> dollars held (leverage included), for the sector cap. Set by the pipeline.
     sector_exposure: dict[str, float] = field(default_factory=dict)
     # Dollars lost if every open position sold at its stop, from today's prices (max_open_risk_pct).
@@ -66,6 +69,7 @@ def save_account_state(state: AccountState, path: Path) -> None:
         "brackets": state.brackets,
         "model_losing_streak": state.model_losing_streak,
         "risk_off": state.risk_off,
+        "no_quote": state.no_quote,
         "entry_dates": [d.isoformat() for d in state.entry_dates],
     }
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -486,11 +486,15 @@ def manage_positions(c: Components, state: AccountState, now: datetime) -> None:
     cycle and, from the paper loop, every ~30 s in between (tight stops need it). Bypasses
     strategies, the ensemble and Claude."""
     if c.settings.respect_market_hours and not market_hours.session_open(now):
+        state.no_quote = []
         return
     load_modes(c)
     today = market_hours.trading_date(now)
     positions = {p.symbol: p for p in c.executor.positions()}
     quotes = c.market_data.quotes(list(positions)) if positions else {}  # one call for every position
+    state.no_quote = sorted(s for s in positions if not quotes.get(s))  # halted, or left out of the reply
+    for sym in state.no_quote:
+        log.warning("no fresh quote for held %s: its stop, target and exit time are not checked", sym)
     for sym in trading_modes.to_flatten(c.modes, positions.values(), state.brackets, now):
         sig = Signal("risk", sym, Direction.EXIT, 1.0, 0, {"reason": "eod_flatten"})
         verdict = c.risk.check_exit(Candidate(sym, Direction.EXIT, -1.0, (sig,)), positions[sym], state,

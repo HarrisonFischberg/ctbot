@@ -98,3 +98,38 @@ def test_manage_positions_sells_half_then_keeps_the_rest_at_break_even():
         md.px = 49.9  # back through break-even: the rest goes
         manage_positions(c, state, NOW)
         assert broker.positions() == [] and "KO" not in state.brackets
+
+
+def test_held_symbol_without_a_quote_is_flagged_and_logged(caplog):
+    """B7: a held stock with no fresh quote can't hit its stop; say so in the log and the risk state
+    the dashboard reads, instead of skipping it silently."""
+    import json
+
+    from ctbot.dashboard.state import build_state
+    from ctbot.risk.manager import save_account_state
+
+    with tempfile.TemporaryDirectory() as d:
+        md = _MD()
+        broker = PaperBroker(md, 250.0, Path(d) / "ledger.json", slippage_bps=0, clock=lambda: NOW,
+                             instant_settlement=True)
+        settings = Settings.from_env({"PAPER_LEDGER_PATH": str(broker.ledger_path),
+                                      "PAPER_RISK_STATE_PATH": str(Path(d) / "risk.json")})
+        c = Components(settings=settings, market_data=md, providers=[], strategies=[], engine=None,
+                       risk=RiskManager(settings.risk), executor=broker, universe=[])
+        from ctbot.models import OrderRequest, Side
+
+        broker.submit(OrderRequest("KO", Side.BUY, 100.0, 50.0))
+        state = _state(cash=broker.cash(), open_positions=1)
+        md.quotes = lambda symbols: {}  # halted, or left out of the quote reply
+        with caplog.at_level("WARNING", logger="ctbot.pipeline"):
+            manage_positions(c, state, NOW)
+        assert state.no_quote == ["KO"] and "no fresh quote for held KO" in caplog.text
+        save_account_state(state, settings.paper_risk_state_path)
+        assert json.loads(settings.paper_risk_state_path.read_text())["no_quote"] == ["KO"]
+        shown = build_state(settings, lambda syms: {}, NOW)["market"]["data_error"]
+        assert "no fresh price for KO" in shown
+        del md.quotes  # prices back: the flag clears
+        manage_positions(c, state, NOW)
+        assert state.no_quote == []
+        manage_positions(c, state, datetime(2026, 10, 13, 21, tzinfo=timezone.utc))  # closed: cleared too
+        assert state.no_quote == []
