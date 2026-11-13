@@ -437,3 +437,42 @@ def test_intraday_exit_before_early_close(monkeypatch):
                           datetime(2026, 11, 25, 20, 40, tzinfo=timezone.utc))
     assert datetime.fromisoformat(st.brackets["KO"]["exit_at"]) == latest
 
+
+
+def test_spend_cap_counts_every_book():
+    """B2: MAX_CLAUDE_USD_PER_DAY caps the main book and every side-by-side book in total; a
+    book's own (here larger) cap only limits that book."""
+    import json
+
+    from ctbot import llm_costs
+
+    exit_at = datetime(2026, 10, 13, 19, 50, tzinfo=timezone.utc).isoformat()
+    now = datetime(2026, 10, 13, 15, tzinfo=timezone.utc)
+
+    def usage(path, usd):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"day": "2026-10-13", "usd": usd}) + "\n")
+
+    def reviewed(settings, total_spend=None):
+        md, engine = _MD(100.0), _Engine()
+        broker = PaperBroker(md, 250.0, settings.paper_ledger_path, clock=lambda: now)
+        c = Components(settings, md, [], [WeightedStrategy(_Fixed(exit_at), 1.0, standalone=True)],
+                       engine, RiskManager(settings.risk), broker, ["KO"], total_spend=total_spend)
+        run_cycle(c, AccountState(250, 250, 250, 250, 0), now)
+        return engine.calls == 1
+
+    with tempfile.TemporaryDirectory() as d:
+        main = Settings.from_env({"ENTRY_MODE": "auto", "PAPER_LEDGER_PATH": str(Path(d) / "paper_ledger.json"),
+                                  "MAX_CLAUDE_USD_PER_DAY": "1.0"})
+        book = Settings.from_env({"ENTRY_MODE": "auto", "MAX_CLAUDE_USD_PER_DAY": "3.0",
+                                  "PAPER_LEDGER_PATH": str(Path(d) / "variants" / "sonnet" / "paper_ledger.json")})
+        total = (main.llm_usage_path, main.max_claude_usd_per_day)
+        usage(main.llm_usage_path, 0.2)
+        usage(book.llm_usage_path, 0.3)
+        assert llm_costs.spent_all_books(main.llm_usage_path, date(2026, 10, 13)) == 0.5
+        assert reviewed(book, total)  # $0.50 of $1 in total: still reviewing
+        usage(book.llm_usage_path, 0.6)  # the book alone is still well under its own $3 cap
+        usage(main.llm_usage_path, 0.4)
+        assert llm_costs.spent_all_books(main.llm_usage_path, date(2026, 10, 13)) == 1.0
+        assert not reviewed(book, total)
+        assert not reviewed(main)  # the main book counts the books' spend too

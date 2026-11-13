@@ -97,7 +97,7 @@ def plan(settings: Settings, day: date, now: datetime | None = None) -> dict[str
         reasons.append(f"HALT file present: {settings.halt_path}")
     if len(held) >= settings.risk.max_open_positions:
         reasons.append(f"already holding the maximum {settings.risk.max_open_positions} positions")
-    spent = llm_costs.spent(settings.llm_usage_path, day)
+    spent = llm_costs.spent_all_books(settings.llm_usage_path, day)  # what the cap counts: every book
     freshness = {}
     spy = Path("data/bars_cache/day/SPY.csv")
     if spy.exists():
@@ -178,7 +178,7 @@ def reconcile(settings: Settings, day: date) -> dict[str, Any]:
         "fills_today": len(todays_fills), "realized_pnl_by_model": realized_today,
         "open_positions": ledger_pos, "cash": ledger.get("cash"),
         "cycles": len(cycles), "no_trade_cycles": sum(r.get("outcome") == "no_trade" for r in cycles),
-        "claude_spend_usd": round(llm_costs.spent(settings.llm_usage_path, day), 4),
+        "claude_spend_usd": round(llm_costs.spent_all_books(settings.llm_usage_path, day), 4),  # every book
     }
 
 

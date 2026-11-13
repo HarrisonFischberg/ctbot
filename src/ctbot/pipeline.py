@@ -12,6 +12,7 @@ from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -85,6 +86,9 @@ class Components:
     trend: Any = field(default_factory=risk_mode.TrendCache)  # pull-back trend average, once a day
     think: bool = True  # Bub's thoughts (ctbot.thoughts): notes only, never changes a trade
     modes: Any = field(default_factory=trading_modes.TradingModes)  # Trading tab modes, re-read each cycle
+    # side-by-side book: (main book's usage file, main MAX_CLAUDE_USD_PER_DAY), the cap on all books
+    # together; None for the main book, whose own file and cap are the total
+    total_spend: tuple[Path, float] | None = None
 
 
 DUPLICATE_WINDOW_S = 120.0
@@ -712,9 +716,11 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                 log.info("shadow long %s (%s): not reviewed (REVIEW_SHADOW_IDEAS=false)", cand.symbol, ",".join(buyers))
                 c.recorder(_idea(now, cand, quote, None, None, "shadow_unreviewed"))
                 continue
-            if llm_costs.spent(c.settings.llm_usage_path, today) >= c.settings.max_claude_usd_per_day:
-                log.info("skipping review of %s: daily Claude spend cap $%.2f reached", cand.symbol,
-                         c.settings.max_claude_usd_per_day)
+            total_path, total_cap = c.total_spend or (c.settings.llm_usage_path, c.settings.max_claude_usd_per_day)
+            if (llm_costs.spent(c.settings.llm_usage_path, today) >= c.settings.max_claude_usd_per_day
+                    or llm_costs.spent_all_books(total_path, today) >= total_cap):
+                log.info("skipping review of %s: daily Claude spend cap reached (this book $%.2f, all books $%.2f)",
+                         cand.symbol, c.settings.max_claude_usd_per_day, total_cap)
                 c.recorder(_idea(now, cand, quote, None, None, "review_budget_used"))
                 continue
             used = c.reviews_today.get(today, 0)
