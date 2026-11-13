@@ -12,6 +12,7 @@ from ctbot.decision.prompts import DEBATE_PROMPTS, SYSTEM_PROMPT
 from ctbot.models import Candidate, Decision
 
 log = logging.getLogger(__name__)
+MAX_PCT = 0.5  # a stop or target further than this from the entry is a bad answer: the review is rejected
 
 
 class DecisionSchema(BaseModel):
@@ -22,15 +23,19 @@ class DecisionSchema(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     rationale: str
     suggested_notional: float = Field(ge=0.0)
-    stop_loss_pct: float | None = Field(None, description="fraction of the entry price, 0.05 = 5%")
-    take_profit_pct: float | None = Field(None, description="fraction of the entry price, 0.10 = 10%")
+    # ge=0: a negative stop/target would sit on the wrong side of the fill and sell at once
+    stop_loss_pct: float | None = Field(None, ge=0.0, description="fraction of the entry price, 0.05 = 5%")
+    take_profit_pct: float | None = Field(None, ge=0.0, description="fraction of the entry price, 0.10 = 10%")
 
     @field_validator("stop_loss_pct", "take_profit_pct")
     @classmethod
     def _as_fraction(cls, v: float | None) -> float | None:
         # Claude sometimes answers 5 meaning 5% (and 1 meaning 1%); the risk manager would read that
         # as 500% (100%) and widen the stop to the cap
-        return v / 100 if v is not None and v >= 1 else v
+        v = v / 100 if v is not None and v >= 1 else v
+        if v is not None and v > MAX_PCT:
+            raise ValueError(f"more than {MAX_PCT:.0%} of the entry price")
+        return v
 
 
 _UNSUPPORTED_KEYWORDS = {"minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf"}
