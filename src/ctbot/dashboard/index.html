@@ -1215,7 +1215,7 @@ main:focus { outline: none; }
     const TM = S.trading_modes || {};
     if (TM.aggressive) alerts.push(["warn", "△", "Aggressive mode: high trade count. Paper only."]);
     if (TM.qqq_gate === false) alerts.push(["warn", "△", "Buys can happen while the Nasdaq is in a downtrend."]);
-    if (a.kill_switch) alerts.push(["crit", "!", `Emergency stop is on: the account fell ${pct(S.limits.max_total_drawdown_pct, 0)} or more from its high, so the bot won't buy anything. To let it buy again, delete data/paper_risk_state.json.`]);
+    if (a.kill_switch) alerts.push(["crit", "!", `Emergency stop is on: the account fell ${pct(S.limits.max_total_drawdown_pct, 0)} or more from its high, so the bot won't buy anything. To let it buy again, use Clear emergency stop on Autopilot in the main dashboard (/). Stops and sells keep running either way.`]);
     if (S.live_trading_enabled) alerts.push(["crit", "!", "Real-money trading is switched on (LIVE_TRADING_ENABLED is true)."]);
     if (m.data_error) alerts.push(["warn", "△", "Can't get stock prices right now: " + m.data_error]);
     const pf = S.preflight || {};

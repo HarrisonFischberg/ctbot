@@ -29,6 +29,7 @@ from ctbot.providers.registry import build_providers  # noqa: E402
 from ctbot.risk.manager import (  # noqa: E402
     AccountState,
     RiskManager,
+    apply_kill_reset as apply_kill_reset_request,
     load_account_state,
     save_account_state,
 )
@@ -267,6 +268,12 @@ def main() -> None:
             _record_equity(settings, broker)
             log.info("top up: added $%.2f of paper cash (deposits now $%.2f)", amount, broker.deposits)
 
+    def apply_kill_reset() -> None:
+        """Dashboard "Clear emergency stop" (the bot owns the risk state, so it applies it)."""
+        if apply_kill_reset_request(settings.paper_ledger_path.with_name("paper_kill_reset.json"), state,
+                                    settings.paper_risk_state_path, refresh_state):
+            log.warning("emergency stop cleared from the dashboard: drawdown now counts from $%.2f", state.equity)
+
     def guarded(fn, what: str) -> None:
         """One failed cycle (data outage, expired sign-in, API error) must not end the loop."""
         try:
@@ -295,6 +302,7 @@ def main() -> None:
                  asleep_until.strftime("%a %b %d %H:%M ET"))
         while datetime.now(timezone.utc) < asleep_until:
             guarded(apply_topup, "top up")
+            guarded(apply_kill_reset, "clear emergency stop")
             guarded(handle_clicks, "dashboard clicks")
             time.sleep(2)
         asleep_until = None
@@ -302,6 +310,7 @@ def main() -> None:
 
     while True:
         guarded(apply_topup, "top up")
+        guarded(apply_kill_reset, "clear emergency stop")
         guarded(handle_clicks, "dashboard clicks")
         guarded(cycle, "cycle")  # after the close this one only records the closing equity
         if not args.loop:
@@ -314,6 +323,7 @@ def main() -> None:
         next_check = time.monotonic() + 30
         while time.monotonic() < deadline and market_open():  # dashboard clicks run within ~2s
             guarded(apply_topup, "top up")
+            guarded(apply_kill_reset, "clear emergency stop")
             guarded(handle_clicks, "dashboard clicks")
             if time.monotonic() >= next_check:
                 if broker.positions():

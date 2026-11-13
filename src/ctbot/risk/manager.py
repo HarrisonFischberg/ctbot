@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -83,17 +84,32 @@ def load_account_state(state: AccountState, path: Path) -> AccountState:
     if not path.exists():
         return state
     data = json.loads(path.read_text())
-    state.peak_equity = max(state.peak_equity, float(data["peak_equity"]))
+    state.peak_equity = float(data["peak_equity"])  # saved, so a cleared emergency stop stays cleared
     state.day_start_equity = float(data["day_start_equity"])
     raw_day = data.get("day_start_date")
     state.day_start_date = date.fromisoformat(raw_day) if raw_day else None
     state.day_trade_dates = [date.fromisoformat(d) for d in data.get("day_trade_dates", [])]
-    # Latched: once tripped, only a human deleting the state file clears it.
+    # Latched: once tripped, only the owner clears it (dashboard "Clear emergency stop").
     state.kill_switch = state.kill_switch or bool(data.get("kill_switch", False))
     state.brackets = data.get("brackets", {})
     state.model_losing_streak = data.get("model_losing_streak", {})
     state.entry_dates = [date.fromisoformat(d) for d in data.get("entry_dates", [])]
     return state
+
+
+def apply_kill_reset(request: Path, state: AccountState, state_path: Path, refresh: Callable[[], None]) -> bool:
+    """Handle a dashboard "Clear emergency stop" request file. Clears the latch only while it is
+    on, so a stray request can't re-base the drop limit; the file is removed only after the save,
+    so a failed refresh leaves it for the next try. True if the switch was cleared."""
+    if not request.exists():
+        return False
+    cleared = state.kill_switch
+    if cleared:
+        refresh()
+        RiskManager.clear_kill_switch(state)
+        save_account_state(state, state_path)
+    request.unlink()
+    return cleared
 
 
 # The only limits a strategy may relax (via a [<name>.risk] table in strategies.toml).
@@ -227,6 +243,13 @@ class RiskManager:
         if not r0 or quote.bid < position.avg_cost + R * r0:
             return 0.0
         return position.quantity / 2
+
+    @staticmethod
+    def clear_kill_switch(state: AccountState) -> None:
+        """Owner's "Clear emergency stop": buys may resume, and the drawdown limit counts from
+        today's equity so it doesn't trip again at once. Stops and exit plans are untouched."""
+        state.kill_switch = False
+        state.peak_equity = state.equity
 
     @staticmethod
     def partial_taken(state: AccountState, symbol: str, entry: float) -> None:

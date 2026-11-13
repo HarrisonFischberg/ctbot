@@ -291,6 +291,17 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
         log.info("top up requested: paper equity to $%.0f", settings.risk.max_trading_capital)
         return 202, {"to": settings.risk.max_trading_capital}
 
+    def paper_kill_reset(_body: dict) -> tuple[int, dict]:
+        """Ask the paper bot to clear its emergency stop (it holds the latch in memory)."""
+        risk = settings.paper_risk_state_path
+        if not (risk.exists() and json.loads(risk.read_text()).get("kill_switch")):
+            return 409, {"error": "the emergency stop is not on"}
+        req = settings.paper_ledger_path.with_name("paper_kill_reset.json")
+        req.parent.mkdir(parents=True, exist_ok=True)
+        req.write_text("{}")
+        log.info("clear emergency stop requested (paper)")
+        return 202, {}
+
     def pause_all(body: dict) -> tuple[int, dict]:
         """Pause all strategies: the HALT file stops new buys; stops, targets and sells keep running."""
         halt = settings.halt_path
@@ -409,6 +420,7 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
         "/api/launch/auto": launch_auto,
         "/api/launch/auto/off": launch_auto_off,
         "/api/paper/topup": paper_topup,
+        "/api/paper/kill_reset": paper_kill_reset,
         "/api/paper/order": queue_order,
         "/api/settings": save_setting,
         "/api/settings/test": test_connections,

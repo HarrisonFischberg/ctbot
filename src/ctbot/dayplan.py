@@ -92,7 +92,7 @@ def plan(settings: Settings, day: date, now: datetime | None = None) -> dict[str
     held = [p["symbol"] for p in ledger.get("positions", [])]
     window = [d for d in risk.get("day_trade_dates", []) if date.fromisoformat(d) > day - timedelta(days=7)]
     if risk.get("kill_switch"):
-        reasons.append("drawdown kill switch is latched (delete the risk state file to clear)")
+        reasons.append("drawdown kill switch is latched (clear it with Clear emergency stop on Autopilot)")
     if settings.halt_path.exists():
         reasons.append(f"HALT file present: {settings.halt_path}")
     if len(held) >= settings.risk.max_open_positions:
