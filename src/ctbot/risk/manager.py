@@ -46,6 +46,9 @@ class AccountState:
     # Pull back after losses (ctbot.risk_mode): why buys may not borrow right now; empty = full
     # risk. Set by the pipeline each cycle; persisted only for the dashboard.
     risk_off: list[str] = field(default_factory=list)
+    # Held symbols with no fresh quote on the last stop check: their stop, target and exit time
+    # can't fire. Set by manage_positions; persisted only for the dashboard.
+    no_quote: list[str] = field(default_factory=list)
     # sector -> dollars held (leverage included), for the sector cap. Set by the pipeline.
     sector_exposure: dict[str, float] = field(default_factory=dict)
     # Dollars lost if every open position sold at its stop, from today's prices (max_open_risk_pct).
@@ -66,6 +69,7 @@ def save_account_state(state: AccountState, path: Path) -> None:
         "brackets": state.brackets,
         "model_losing_streak": state.model_losing_streak,
         "risk_off": state.risk_off,
+        "no_quote": state.no_quote,
         "entry_dates": [d.isoformat() for d in state.entry_dates],
     }
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -250,10 +254,10 @@ class RiskManager:
     def maybe_swing(self, state: AccountState, position: Position, quote: Quote,
                     now: datetime, next_earnings: datetime | None = None) -> bool:
         """Let a winner run: within 15 minutes before a model's exit time, if the position is up
-        at least swing_min_profit_pct, push the exit to the next session's 15:50 ET close and
+        at least swing_min_profit_pct, push the exit to the next session's exit time (10 min before its close) and
         raise the stop to lock in a small gain (entry +0.2%). Limited to swing_max_days, except
         for autopilot positions with a trailing stop, which keep rolling while they are up."""
-        from ctbot.market_hours import ET, next_business_day
+        from ctbot.market_hours import ET, exit_by, next_business_day
 
         L, b = self.limits, state.brackets.get(position.symbol)
         if not b or not b.get("exit_at") or L.swing_max_days <= 0 or state.kill_switch:
@@ -269,7 +273,7 @@ class RiskManager:
         et = exit_at.astimezone(ET)
         # a morning exit (overnight model) extends to that day's close; a closing exit to tomorrow's
         new_day = et.date() if et.hour < 12 else next_business_day(et.date())
-        new_exit = datetime.combine(new_day, datetime.min.time().replace(hour=15, minute=50), tzinfo=ET)
+        new_exit = exit_by(new_day)
         if next_earnings is not None and exit_at < next_earnings < new_exit:
             return False  # would hold through an earnings report
         b["exit_at"] = new_exit.isoformat()

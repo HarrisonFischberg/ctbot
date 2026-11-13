@@ -2,7 +2,7 @@
 
 Each morning the scanner picks the most unusually active Russell 1000 names. For each whose
 first 5-minute bar closed green, buy when price trades through that bar's high; stop
-0.10 x ATR(14) below the entry (the paper's rule); exit at 15:50 ET. Entries 9:40-11:00 ET.
+0.10 x ATR(14) below the entry (the paper's rule); exit 10 minutes before the close. Entries 9:40-11:00 ET.
 
 Entries follow the day-trader pack's trader-entry rule (`confirm = "close"`, the default since
 2026-10-23): a breakout counts only once a completed 5-minute bar CLOSES above the first bar's
@@ -17,7 +17,7 @@ a fixed sleeve (size_pct of equity per trade).
 
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta
+from datetime import time, timedelta
 
 from ctbot import market_hours
 from ctbot.market_hours import ET
@@ -57,7 +57,7 @@ class OrbStocksInPlay:
         bars = load_today_bars(md, list(atr), self.name)
         if bars is None:
             return []
-        exit_at = datetime.combine(ctx.today, time(15, 50), tzinfo=ET).isoformat()
+        exit_at = market_hours.exit_by(ctx.today).isoformat()
         out = []
         for sym, raw in bars.items():
             done = [b for b in sorted(raw, key=lambda b: b.ts) if b.ts + BAR <= ctx.now]

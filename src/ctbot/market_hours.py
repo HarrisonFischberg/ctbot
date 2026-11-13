@@ -94,6 +94,12 @@ def close_time(d: date) -> time:
     return EARLY_CLOSE if d in early_closes(d.year) else CLOSE
 
 
+def exit_by(d: date) -> datetime:
+    """When a model's same-day time exit fires: 10 minutes before that day's close (15:50 ET,
+    12:50 ET on an early-close day)."""
+    return datetime.combine(d, close_time(d), tzinfo=ET) - timedelta(minutes=10)
+
+
 def session_open(now: datetime) -> bool:
     et = now.astimezone(ET)
     d = et.date()

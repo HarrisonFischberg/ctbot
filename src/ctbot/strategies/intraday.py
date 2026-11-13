@@ -75,7 +75,7 @@ class _IntradayBase:
 
 class OpeningRangeBreakout(_IntradayBase):
     """Break of the 9:30-10:00 range, 10:00-12:00, above VWAP, on 1.2x+ usual opening volume.
-    Stop: range low (at most 2% away). Target: 2x the risk. Out by 15:50 ET."""
+    Stop: range low (at most 2% away). Target: 2x the risk. Out 10 min before the close."""
 
     name = "orb"
 
@@ -116,14 +116,14 @@ class OpeningRangeBreakout(_IntradayBase):
                 stop = max(lo, last.close * (1 - self.max_risk_pct))
                 target = last.close + self.reward_risk * (last.close - stop)
                 out.append(self._signal(sym, rvol / 3, 0.25, ctx.now, ref_price=last.close, stop=stop, target=target,
-                                        exit_at=_at(ctx.today, 15, 50).isoformat(), range_high=hi,
+                                        exit_at=market_hours.exit_by(ctx.today).isoformat(), range_high=hi,
                                         range_low=lo, rvol=rvol))
         return out
 
 
 class VwapReversion(_IntradayBase):
     """In names above their 50-day average, buy a 0.75%+ dip below VWAP (10:30-15:00).
-    Stop -1.5%. Target: VWAP at signal time. Out by 15:50 ET."""
+    Stop -1.5%. Target: VWAP at signal time. Out 10 min before the close."""
 
     name = "vwap_revert"
 
@@ -132,7 +132,7 @@ class VwapReversion(_IntradayBase):
 
     def generate(self, ctx: StrategyContext) -> list[Signal]:
         today = self._today(ctx)
-        if not today or not (_at(ctx.today, 10, 30) <= ctx.now <= _at(ctx.today, 15, 5)):
+        if not today or not (_at(ctx.today, 10, 30) <= ctx.now <= market_hours.exit_by(ctx.today) - timedelta(minutes=45)):
             return []
         out = []
         for sym, raw in today.items():
@@ -144,7 +144,7 @@ class VwapReversion(_IntradayBase):
             if dist <= -self.min_dip and _uptrend(ctx, sym):
                 out.append(self._signal(sym, -dist / (4 * self.min_dip), 0.2, ctx.now, ref_price=bars[-1].close,
                                         stop=bars[-1].close * (1 - self.stop_pct), target=vw,
-                                        exit_at=_at(ctx.today, 15, 50).isoformat(), vwap=vw, dip=dist))
+                                        exit_at=market_hours.exit_by(ctx.today).isoformat(), vwap=vw, dip=dist))
         return out
 
 
