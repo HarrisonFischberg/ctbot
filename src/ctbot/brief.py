@@ -114,7 +114,7 @@ def explain(settings: Any, day: date, numbers: str, fills: list[dict[str, Any]],
             now: datetime | None = None) -> str | None:
     """Claude's short "why"; None when skipped (no key, today's cap spent) or the call fails."""
     usage = settings.llm_usage_path
-    if llm_costs.spent_all_books(usage, day) >= settings.max_claude_usd_per_day:
+    if llm_costs.spent(usage, day) >= settings.max_claude_usd_per_day:
         return None
     model = os.environ.get("BRIEF_MODEL", MODEL)
     try:

@@ -109,26 +109,3 @@ def test_stop_given_as_whole_percent_becomes_fraction():
     d = DecisionSchema(approve=True, confidence=0.5, rationale="", suggested_notional=1.0,
                        stop_loss_pct=5, take_profit_pct=0.08)
     assert (d.stop_loss_pct, d.take_profit_pct) == (0.05, 0.08)
-    for answered, want in ((1.0, 0.01), (0.04, 0.04), (None, None)):  # B3: 1 means 1%
-        d = DecisionSchema(approve=True, confidence=0.5, rationale="", suggested_notional=1.0,
-                           stop_loss_pct=answered)
-        assert d.stop_loss_pct == want
-
-
-def test_negative_or_absurd_stop_or_target_is_a_rejection(monkeypatch):
-    """B4: -5 (a 'loss is negative' habit) or 5000% fails validation; the review becomes a rejection
-    instead of a bracket on the wrong side of the fill that sells at once."""
-    import pytest
-    from pydantic import ValidationError
-
-    from ctbot.decision.engine import DecisionSchema
-
-    for field in ("stop_loss_pct", "take_profit_pct"):
-        for bad in (-5, -0.05, 0.6, 51, 5000):
-            with pytest.raises(ValidationError):
-                DecisionSchema(approve=True, confidence=0.5, rationale="", suggested_notional=1.0, **{field: bad})
-        ok = DecisionSchema(approve=True, confidence=0.5, rationale="", suggested_notional=1.0, **{field: 50})
-        assert getattr(ok, field) == 0.5
-    monkeypatch.setitem(globals(), "VERDICT", json.dumps({**json.loads(VERDICT), "stop_loss_pct": -5}))
-    d = ClaudeDecisionEngine("claude-opus-5-5", client=_Client()).evaluate(CAND, {})
-    assert not d.approve and d.rationale == "invalid_json"

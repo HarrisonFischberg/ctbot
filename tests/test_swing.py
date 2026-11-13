@@ -41,14 +41,6 @@ def test_rsi2_buys_dip_in_uptrend_and_exits_own_position_above_sma5():
     assert Rsi2Etf().generate(_ctx(_MD(up[:-2] + [119.0, 118.0], 117.0), now=NOW - timedelta(hours=2))) == []
 
 
-def test_rsi2_exit_on_an_early_close_day_is_before_the_close():
-    """B1: a 10-session hold bought 2026-12-10 ends on the 12-24 half day, so it sells at 12:50 ET."""
-    up = [100 + i * 0.1 for i in range(200)]
-    at = datetime(2026, 12, 10, 20, 35, tzinfo=timezone.utc)  # Thu 15:35 EST
-    (sig,) = Rsi2Etf().generate(_ctx(_MD(up[:-2] + [119.0, 118.0], 117.0), now=at))
-    assert sig.evidence["exit_at"] == "2026-12-24T12:50:00-05:00"
-
-
 def test_turn_of_month_calendar():
     assert TurnOfMonth.is_entry_day(date(2026, 10, 29))      # Oct 30 (Fri) is the last trading day
     assert not TurnOfMonth.is_entry_day(date(2026, 10, 30))

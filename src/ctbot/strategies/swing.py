@@ -16,9 +16,9 @@ market only part of the time), so these are edges, not a path to beating the ind
 from __future__ import annotations
 
 import logging
-from datetime import date, time
+from datetime import date, datetime, time
 
-from ctbot.market_hours import ET, exit_by, next_business_day
+from ctbot.market_hours import ET, next_business_day
 from ctbot.models import Direction, EventKind, Signal
 from ctbot.strategies.base import StrategyContext
 
@@ -32,6 +32,10 @@ def _window(ctx: StrategyContext) -> bool:
         return False
     t = ctx.now.astimezone(ET).time()
     return time(15, 30) <= t <= time(15, 44)
+
+
+def _at(d: date, hh: int, mm: int) -> str:
+    return datetime.combine(d, time(hh, mm), tzinfo=ET).isoformat()
 
 
 def _add_bdays(d: date, n: int) -> date:
@@ -96,7 +100,7 @@ class Rsi2Etf(_Swing):
                 out.append(Signal(self.name, sym, Direction.LONG, min(1.0, (self.rsi_below - r) / self.rsi_below + 0.5),
                                   3.0, {"ref_price": round(px, 4), "rsi2": round(r, 2), "sma200": round(sma200, 4),
                                         "sma5": round(sma5, 4), "stop": round(px * (1 - self.disaster_stop), 4),
-                                        "target": None, "exit_at": exit_by(exit_day).isoformat(),
+                                        "target": None, "exit_at": _at(exit_day, 15, 50),
                                         "exit_rule": "sell near the close once price > 5-day average",
                                         "backtest": "14 ETFs 2010-2026: IS +11.3 bps/trade 70% win n=2702; "
                                                     "OOS 2020-26 +16.8 bps 69% win n=1872"}, ts=ctx.now))
@@ -137,7 +141,7 @@ class TurnOfMonth(_Swing):
                 continue
             out.append(Signal(self.name, sym, Direction.LONG, 0.8, 4.0, {
                 "ref_price": round(q.last, 4), "stop": round(q.last * (1 - self.disaster_stop), 4), "target": None,
-                "exit_at": exit_by(self.exit_day(ctx.today)).isoformat(),
+                "exit_at": _at(self.exit_day(ctx.today), 15, 50),
                 "backtest": "2010-2026 per trade: SPY IS +19.0 / OOS +34.3 bps; QQQ IS +33.0 / OOS +47.1 bps"},
                 ts=ctx.now))
         return out
@@ -190,5 +194,5 @@ class TrendCore(_Swing):
             ref = q.last if q and q.last else px
             return [Signal(self.name, self.hold, Direction.LONG, 1.0, 365.0, {
                 **ev, "ref_price": round(ref, 4), "size_pct": round(w, 4), "stop": round(ref * (1 - self.disaster_stop), 4),
-                "target": None, "exit_at": exit_by(_add_bdays(ctx.today, 250)).isoformat()}, ts=ctx.now)]
+                "target": None, "exit_at": _at(_add_bdays(ctx.today, 250), 15, 50)}, ts=ctx.now)]
         return []
