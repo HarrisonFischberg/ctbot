@@ -12,8 +12,6 @@ their stops on the same 30-second schedule:
   CLAUDE_MODEL reuses that verdict, so books differ only in what they do with it;
 * each book applies its own Autopilot settings and risk limits, and has its own kill switch and
   daily loss limit. data/HALT stops new entries in every book.
-* MAX_CLAUDE_USD_PER_DAY from the main settings caps Claude spend of all books together; a book's
-  own value only caps that book inside the total.
 
 Paper only: books are PaperBrokers inside the paper process, and a book can't set live, mode,
 path or key settings (ALLOWED_ENV).
@@ -235,8 +233,7 @@ def build(main: Any, reviews: dict) -> list[Book]:
                                  reviews),
             risk=RiskManager(s.risk, strategy_risk_overrides(strategies)), executor=broker,
             universe=main.universe, recorder=lambda idea, p=s.ideas_path: _append(p, idea),
-            context=main.context, journal=Journal(s.journal_path), think=False,  # Bub speaks for the main book
-            total_spend=(s0.llm_usage_path, s0.max_claude_usd_per_day))
+            context=main.context, journal=Journal(s.journal_path), think=False)  # Bub speaks for the main book
         equity = broker.equity()
         state = AccountState(equity=equity, cash=broker.cash(), peak_equity=max(equity, s.starting_capital),
                              day_start_equity=equity, open_positions=len(broker.positions()))
