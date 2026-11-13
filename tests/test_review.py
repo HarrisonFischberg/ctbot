@@ -109,3 +109,7 @@ def test_stop_given_as_whole_percent_becomes_fraction():
     d = DecisionSchema(approve=True, confidence=0.5, rationale="", suggested_notional=1.0,
                        stop_loss_pct=5, take_profit_pct=0.08)
     assert (d.stop_loss_pct, d.take_profit_pct) == (0.05, 0.08)
+    for answered, want in ((1.0, 0.01), (0.04, 0.04), (None, None)):  # B3: 1 means 1%
+        d = DecisionSchema(approve=True, confidence=0.5, rationale="", suggested_notional=1.0,
+                           stop_loss_pct=answered)
+        assert d.stop_loss_pct == want
