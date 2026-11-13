@@ -131,5 +131,7 @@ def test_held_symbol_without_a_quote_is_flagged_and_logged(caplog):
         del md.quotes  # prices back: the flag clears
         manage_positions(c, state, NOW)
         assert state.no_quote == []
-        manage_positions(c, state, datetime(2026, 10, 13, 21, tzinfo=timezone.utc))  # closed: cleared too
-        assert state.no_quote == []
+        # a flag saved just before the close is not shown overnight (no stop check runs then)
+        save_account_state(replace(state, no_quote=["KO"]), settings.paper_risk_state_path)
+        closed = datetime(2026, 10, 13, 21, tzinfo=timezone.utc)
+        assert build_state(settings, lambda syms: {}, closed)["market"]["data_error"] is None

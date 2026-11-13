@@ -486,7 +486,6 @@ def manage_positions(c: Components, state: AccountState, now: datetime) -> None:
     cycle and, from the paper loop, every ~30 s in between (tight stops need it). Bypasses
     strategies, the ensemble and Claude."""
     if c.settings.respect_market_hours and not market_hours.session_open(now):
-        state.no_quote = []
         return
     load_modes(c)
     today = market_hours.trading_date(now)
