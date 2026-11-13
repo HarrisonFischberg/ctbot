@@ -44,3 +44,15 @@ def test_pct_settings_outside_0_to_1_refuse_to_start():
     book = variants.Variant("loose", "loose", autopilot.validate({"enabled": True}), {"MAX_DAILY_LOSS_PCT": "3"})
     with pytest.raises(ValueError, match="MAX_DAILY_LOSS_PCT"):
         Settings.from_env(variants.book_env({}, Path("data/paper_ledger.json"), book))
+
+
+def test_unknown_entry_mode_or_size_by_refuses_to_start():
+    """B6: ENTRY_MODE=manul must not mean buying without a click, SIZE_BY=claud full size."""
+    import pytest
+
+    for key, bad in (("ENTRY_MODE", "manul"), ("ENTRY_MODE", "approve"), ("SIZE_BY", "claud")):
+        with pytest.raises(ValueError, match=key):
+            Settings.from_env({key: bad})
+    s = Settings.from_env({"ENTRY_MODE": " Auto ", "SIZE_BY": "RISK"})
+    assert (s.entry_mode, s.risk.size_by) == ("auto", "risk")
+    assert (Settings.from_env({}).entry_mode, Settings.from_env({}).risk.size_by) == ("manual", "claude")

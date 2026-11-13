@@ -276,6 +276,11 @@ class Settings:
             v = getattr(risk, f.name)
             if f.name.endswith("_pct") and not 0 <= v <= 1:
                 raise ValueError(f"{f.name.upper()}={v:g} is outside 0-1: write a fraction, e.g. 0.03 for 3%")
+        if risk.size_by not in ("claude", "risk"):  # a typo must not mean full size on every buy
+            raise ValueError(f"SIZE_BY={risk.size_by!r}: use claude or risk")
+        entry_mode = env.get("ENTRY_MODE", "manual").strip().lower()
+        if entry_mode not in ("manual", "auto"):  # a typo must not mean buying without a click
+            raise ValueError(f"ENTRY_MODE={entry_mode!r}: use manual or auto")
         ensemble = EnsembleParams(
             min_long_score=_float(env, "MIN_LONG_SCORE", 0.15),
             min_exit_score=_float(env, "MIN_EXIT_SCORE", 0.10),
@@ -313,7 +318,7 @@ class Settings:
             bars_dir=Path(env.get("BARS_DIR", "data/bars")),
             market_data=env.get("MARKET_DATA", "csv").strip().lower(),
             tradingview_data=_bool(env, "TRADINGVIEW_DATA", True),
-            entry_mode=env.get("ENTRY_MODE", "manual").strip().lower(),
+            entry_mode=entry_mode,
             paper_settlement=env.get("PAPER_SETTLEMENT", "t1").strip().lower(),
             paper_margin=min(2.0, max(1.0, _float(env, "PAPER_MARGIN", 1.0))),
             paper_ledger_path=Path(env.get("PAPER_LEDGER_PATH", "data/paper_ledger.json")),
