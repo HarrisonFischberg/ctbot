@@ -133,6 +133,21 @@ def test_account_state_round_trips_and_kill_switch_survives_restart():
     assert fresh.day_trade_dates == [date(2026, 10, 12)]
 
 
+def test_clearing_the_kill_switch_keeps_stops_and_survives_restart(tmp_path):
+    from ctbot.risk.manager import load_account_state, save_account_state
+
+    rm, path = RiskManager(RiskLimits()), tmp_path / "risk.json"
+    s = _state(equity=200, peak_equity=300, brackets={"KO": {"stop": 55.0, "target": None, "exit_at": "x"}})
+    rm.refresh(s, date(2026, 10, 13))
+    assert s.kill_switch
+    rm.clear_kill_switch(s)
+    save_account_state(s, path)
+    back = load_account_state(_state(equity=200, peak_equity=250), path)  # restart: peak floor is starting capital
+    rm.refresh(back, date(2026, 10, 13))
+    assert not back.kill_switch and back.peak_equity == 200 and back.brackets == s.brackets
+    assert "kill_switch_active" not in rm.check_entry(_cand(), _ok_decision(), back, QUOTE, ADV).reasons
+
+
 def test_strategy_overrides_only_loosen_liquidity_for_their_own_longs():
     cheap = Quote("XYZ", 2.0, 2.01, 2.0)
     adv = 2_000_000

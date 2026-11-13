@@ -267,6 +267,17 @@ def main() -> None:
             _record_equity(settings, broker)
             log.info("top up: added $%.2f of paper cash (deposits now $%.2f)", amount, broker.deposits)
 
+    def apply_kill_reset() -> None:
+        """Dashboard "Clear emergency stop" (the bot owns the risk state, so it applies it)."""
+        req = settings.paper_ledger_path.with_name("paper_kill_reset.json")
+        if not req.exists():
+            return
+        req.unlink()
+        refresh_state()
+        components.risk.clear_kill_switch(state)
+        save_account_state(state, settings.paper_risk_state_path)
+        log.warning("emergency stop cleared from the dashboard: drawdown now counts from $%.2f", state.equity)
+
     def guarded(fn, what: str) -> None:
         """One failed cycle (data outage, expired sign-in, API error) must not end the loop."""
         try:
@@ -295,6 +306,7 @@ def main() -> None:
                  asleep_until.strftime("%a %b %d %H:%M ET"))
         while datetime.now(timezone.utc) < asleep_until:
             guarded(apply_topup, "top up")
+            guarded(apply_kill_reset, "clear emergency stop")
             guarded(handle_clicks, "dashboard clicks")
             time.sleep(2)
         asleep_until = None
@@ -302,6 +314,7 @@ def main() -> None:
 
     while True:
         guarded(apply_topup, "top up")
+        guarded(apply_kill_reset, "clear emergency stop")
         guarded(handle_clicks, "dashboard clicks")
         guarded(cycle, "cycle")  # after the close this one only records the closing equity
         if not args.loop:
@@ -314,6 +327,7 @@ def main() -> None:
         next_check = time.monotonic() + 30
         while time.monotonic() < deadline and market_open():  # dashboard clicks run within ~2s
             guarded(apply_topup, "top up")
+            guarded(apply_kill_reset, "clear emergency stop")
             guarded(handle_clicks, "dashboard clicks")
             if time.monotonic() >= next_check:
                 if broker.positions():

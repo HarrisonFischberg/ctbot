@@ -1060,6 +1060,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
       </form>
       <p class="ap-note" id="autoOn" hidden><span id="autoOnText"></span> <button class="linkish u" type="button" id="autoOff">Turn off Invest for Me</button></p>
       <div class="ap-side"><button class="btn dark big" type="button" id="pauseAll"><svg class="ico"><use href="#i-pause"/></svg><span>Pause all strategies</span></button><p id="pauseText" hidden>Paused: no new buys. Stops, targets and sells still run.</p></div>
+      <div class="ap-side" id="killReset" hidden><button class="btn dark big" type="button" id="killResetGo" title="Let the bot buy again. The drop limit then counts from today's value; stops and sell plans stay.">Clear emergency stop</button><p>Emergency stop is on: no new buys. Stops and sells still run.</p></div>
       <div class="ap-side" id="topup" hidden><button class="btn dark big" type="button" id="topupGo">Add paper cash</button><p id="topupText"></p></div>
       <div class="ap-div"></div>
       <h3 id="tmModes" tabindex="-1" style="scroll-margin-top:120px">Trading modes</h3>
@@ -1647,7 +1648,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     if (TM.qqq_gate === false) alerts.push(["warn", "△", "Buys can happen while the Nasdaq is in a downtrend."]);
     if (!S.bot.running) alerts.push(["warn", "△", "The bot is off, so nothing trades. Start it in Terminal with ./run_ctbot.sh."]);
     if (S.halted) alerts.push(["warn", "△", "All strategies are paused: no new buys. Stops and sells still run. Resume them on Autopilot."]);
-    if (a.kill_switch) alerts.push(["crit", "!", `Emergency stop is on: the account fell ${pct(S.limits.max_total_drawdown_pct, 0)} or more from its high, so the bot won't buy anything. To let it buy again, delete data/paper_risk_state.json.`]);
+    if (a.kill_switch) alerts.push(["crit", "!", `Emergency stop is on: the account fell ${pct(S.limits.max_total_drawdown_pct, 0)} or more from its high, so the bot won't buy anything. To let it buy again, use Clear emergency stop on Autopilot. Stops and sells keep running either way.`]);
     if (S.live_trading_enabled) alerts.push(["crit", "!", "Real-money trading is switched on (LIVE_TRADING_ENABLED is true)."]);
     if (m.data_error) alerts.push(["warn", "△", "Can't get stock prices right now: " + m.data_error]);
     const pf = S.preflight || {};
@@ -2422,6 +2423,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     $("pauseAll").lastChild.textContent = S.halted ? "Resume all strategies" : "Pause all strategies";
     $("pauseAll").title = S.halted ? "Let strategies buy again" : "Stop all new buys. What you own stays, and its stops and sells keep running.";
     $("pauseText").hidden = !S.halted;
+    $("killReset").hidden = !S.account_summary.kill_switch;
     $("autoOnText").title = L.auto ? `Invest for me is on: ${usd(L.auto.amount, 0)}` + (P.length ? ` in ${P.map(([n, c]) => `${plainOf(n).title} ${usd(c, 0)}`).join(", ")}` : "") +
       `. The bot tops these up as cash frees and re-picks weekly${L.auto.picked_at ? ` (last ${new Date(L.auto.picked_at).toLocaleDateString()})` : ""}.` : "";
     $("runMeta").textContent = `${runs.length} active`;
@@ -2610,6 +2612,14 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     if (!ok) return toast("Not changed: " + (j.error || "error"), true);
     toast(j.paused ? "All strategies paused: no new buys. Stops and sells still run." : "Strategies can buy again.");
     load();
+  });
+  $("killResetGo").addEventListener("click", async () => {
+    $("killResetGo").disabled = true;
+    const [ok, j] = await api("/api/paper/kill_reset");
+    $("killResetGo").disabled = false;
+    if (!ok) return toast("Not cleared: " + (j.error || "error"), true);
+    toast(S.bot.running ? "The bot clears the emergency stop within a few seconds." : "Cleared when the bot next starts (./run_ctbot.sh).");
+    setTimeout(load, 4000);
   });
   $("topupGo").addEventListener("click", async () => {
     $("topupGo").disabled = true;
