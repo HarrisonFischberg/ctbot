@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from pathlib import Path
 
@@ -272,6 +272,10 @@ class Settings:
             vwap_entry_gate=_bool(env, "VWAP_ENTRY_GATE", False),
             regime_gate=_bool(env, "REGIME_GATE", False),
         )
+        for f in fields(risk):  # 3 meaning 3% would turn the loss limits off without a word
+            v = getattr(risk, f.name)
+            if f.name.endswith("_pct") and not 0 <= v <= 1:
+                raise ValueError(f"{f.name.upper()}={v:g} is outside 0-1: write a fraction, e.g. 0.03 for 3%")
         ensemble = EnsembleParams(
             min_long_score=_float(env, "MIN_LONG_SCORE", 0.15),
             min_exit_score=_float(env, "MIN_EXIT_SCORE", 0.10),
