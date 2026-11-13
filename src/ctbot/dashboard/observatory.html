@@ -2614,11 +2614,12 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     load();
   });
   $("killResetGo").addEventListener("click", async () => {
+    if (!confirm("Clear the emergency stop?\n\nThe bot can buy again. The drop limit then counts from today's value and the old high is forgotten. Borrowing and \"pull back after losses\" limits also restart from today. Stops and sell plans stay. This can't be undone.")) return;
     $("killResetGo").disabled = true;
     const [ok, j] = await api("/api/paper/kill_reset");
     $("killResetGo").disabled = false;
     if (!ok) return toast("Not cleared: " + (j.error || "error"), true);
-    toast(S.bot.running ? "The bot clears the emergency stop within a few seconds." : "Cleared when the bot next starts (./run_ctbot.sh).");
+    toast(S.bot.running ? "The bot clears the emergency stop within a minute or two." : "Cleared when the bot next starts (./run_ctbot.sh).");
     setTimeout(load, 4000);
   });
   $("topupGo").addEventListener("click", async () => {

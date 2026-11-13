@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -94,6 +95,21 @@ def load_account_state(state: AccountState, path: Path) -> AccountState:
     state.model_losing_streak = data.get("model_losing_streak", {})
     state.entry_dates = [date.fromisoformat(d) for d in data.get("entry_dates", [])]
     return state
+
+
+def apply_kill_reset(request: Path, state: AccountState, state_path: Path, refresh: Callable[[], None]) -> bool:
+    """Handle a dashboard "Clear emergency stop" request file. Clears the latch only while it is
+    on, so a stray request can't re-base the drop limit; the file is removed only after the save,
+    so a failed refresh leaves it for the next try. True if the switch was cleared."""
+    if not request.exists():
+        return False
+    cleared = state.kill_switch
+    if cleared:
+        refresh()
+        RiskManager.clear_kill_switch(state)
+        save_account_state(state, state_path)
+    request.unlink()
+    return cleared
 
 
 # The only limits a strategy may relax (via a [<name>.risk] table in strategies.toml).

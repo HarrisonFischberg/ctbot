@@ -141,6 +141,9 @@ def test_launch_endpoints_validate_and_need_the_token(tmp_path, monkeypatch):
         assert post("/api/launch/auto/off", {}) == 200 and not auto_invest.path(s).exists()
         assert post("/api/paper/topup", {}) == 202  # the paper bot applies it
         assert json.loads(s.paper_ledger_path.with_name("paper_topup.json").read_text()) == {"to": 5000.0}
+        assert post("/api/paper/kill_reset", {}) == 409  # no emergency stop on
+        s.paper_risk_state_path.parent.mkdir(parents=True, exist_ok=True)
+        s.paper_risk_state_path.write_text(json.dumps({"kill_switch": True}))
         assert post("/api/paper/kill_reset", {}) == 202 and s.paper_ledger_path.with_name("paper_kill_reset.json").exists()
     finally:
         httpd.shutdown()

@@ -29,6 +29,7 @@ from ctbot.providers.registry import build_providers  # noqa: E402
 from ctbot.risk.manager import (  # noqa: E402
     AccountState,
     RiskManager,
+    apply_kill_reset as apply_kill_reset_request,
     load_account_state,
     save_account_state,
 )
@@ -269,14 +270,9 @@ def main() -> None:
 
     def apply_kill_reset() -> None:
         """Dashboard "Clear emergency stop" (the bot owns the risk state, so it applies it)."""
-        req = settings.paper_ledger_path.with_name("paper_kill_reset.json")
-        if not req.exists():
-            return
-        req.unlink()
-        refresh_state()
-        components.risk.clear_kill_switch(state)
-        save_account_state(state, settings.paper_risk_state_path)
-        log.warning("emergency stop cleared from the dashboard: drawdown now counts from $%.2f", state.equity)
+        if apply_kill_reset_request(settings.paper_ledger_path.with_name("paper_kill_reset.json"), state,
+                                    settings.paper_risk_state_path, refresh_state):
+            log.warning("emergency stop cleared from the dashboard: drawdown now counts from $%.2f", state.equity)
 
     def guarded(fn, what: str) -> None:
         """One failed cycle (data outage, expired sign-in, API error) must not end the loop."""

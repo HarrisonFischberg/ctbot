@@ -148,6 +148,33 @@ def test_clearing_the_kill_switch_keeps_stops_and_survives_restart(tmp_path):
     assert "kill_switch_active" not in rm.check_entry(_cand(), _ok_decision(), back, QUOTE, ADV).reasons
 
 
+def test_kill_reset_request_while_switch_is_off_changes_nothing(tmp_path):
+    from ctbot.risk.manager import apply_kill_reset
+
+    req, s = tmp_path / "paper_kill_reset.json", _state(equity=200, peak_equity=300)
+    req.write_text("{}")
+    assert not apply_kill_reset(req, s, tmp_path / "risk.json", lambda: None)
+    assert s.peak_equity == 300 and not req.exists() and not (tmp_path / "risk.json").exists()
+
+
+def test_kill_reset_request_survives_a_failed_refresh(tmp_path):
+    import pytest
+
+    from ctbot.risk.manager import apply_kill_reset
+
+    req, s = tmp_path / "paper_kill_reset.json", _state(equity=200, peak_equity=300, kill_switch=True)
+    req.write_text("{}")
+
+    def boom():
+        raise RuntimeError("broker down")
+
+    with pytest.raises(RuntimeError):
+        apply_kill_reset(req, s, tmp_path / "risk.json", boom)
+    assert req.exists() and s.kill_switch
+    assert apply_kill_reset(req, s, tmp_path / "risk.json", lambda: None)
+    assert not s.kill_switch and s.peak_equity == 200 and not req.exists()
+
+
 def test_strategy_overrides_only_loosen_liquidity_for_their_own_longs():
     cheap = Quote("XYZ", 2.0, 2.01, 2.0)
     adv = 2_000_000

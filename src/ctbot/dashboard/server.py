@@ -293,6 +293,9 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
 
     def paper_kill_reset(_body: dict) -> tuple[int, dict]:
         """Ask the paper bot to clear its emergency stop (it holds the latch in memory)."""
+        risk = settings.paper_risk_state_path
+        if not (risk.exists() and json.loads(risk.read_text()).get("kill_switch")):
+            return 409, {"error": "the emergency stop is not on"}
         req = settings.paper_ledger_path.with_name("paper_kill_reset.json")
         req.parent.mkdir(parents=True, exist_ok=True)
         req.write_text("{}")
