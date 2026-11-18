@@ -1,0 +1,15 @@
+version: 2
+rules:
+  - id: "TT3"
+    path: "*facts.py"
+    reason: "False positive: the env value is the SEC-required User-Agent contact string, sent only to SEC EDGAR. Not a secret."
+  - id: "TT3"
+    path: "*news.py"
+    reason: "False positive: the env value is the SEC-required User-Agent contact string (or a browser UA), sent only to SEC/news hosts. Not a secret."
+  - id: "P6"
+    path: "*timemachine.py"
+    reason: "False positive: no system prompt is read or printed here; this is stop-rule logic."
+  - id: "AR2"
+    path: "SKILL.md"
+    message: "*Anti*Refusal*"
+    reason: "Intentional: tells the agent to repeat the tool's printed verdict verbatim, not to suppress safety caveats (the same section requires stating that odds are not predictions)."
