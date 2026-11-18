@@ -67,6 +67,8 @@ concrete reason the setup is bad (stale signal, falling market, news against it,
 confidence stays your honest probability of a profit, and the risk manager accepts approvals at
 30% or more.
 
+stop_loss_pct and take_profit_pct are fractions of the entry price: 0.05 means 5%, not 5.
+
 debate, when present, holds two short arguments written just before your review: the strongest
 case for and against taking this trade. Both are advocacy on the same evidence, not new facts.
 """

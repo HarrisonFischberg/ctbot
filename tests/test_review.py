@@ -48,6 +48,15 @@ def test_review_logs_usage_and_cost(tmp_path):
     assert llm_costs.summary(path)["by_purpose"] == {"review": row["usd"]}
 
 
+def test_stops_answered_as_whole_percents_become_fractions(monkeypatch):
+    # 5.0 used to reach the risk manager as 500%, so every stop silently became the cap
+    for answered, want in ((5.0, 0.05), (1.0, 0.01), (0.04, 0.04), (None, None)):
+        reply = json.dumps({**json.loads(VERDICT), "stop_loss_pct": answered, "take_profit_pct": answered})
+        monkeypatch.setitem(globals(), "VERDICT", reply)
+        d = ClaudeDecisionEngine("claude-opus-5-5", client=_Client()).evaluate(CAND, {})
+        assert (d.stop_loss_pct, d.take_profit_pct) == (want, want)
+
+
 def test_review_without_key_is_a_rejection_not_a_crash():
     class Raises:
         def __init__(self):

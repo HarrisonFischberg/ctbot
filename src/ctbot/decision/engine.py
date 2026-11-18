@@ -46,6 +46,11 @@ def api_schema() -> dict:
 _REJECT = Decision(approve=False, confidence=0.0, rationale="", suggested_notional=0.0)
 
 
+def _as_fraction(pct: float | None) -> float | None:
+    """The risk manager wants 0.05 for 5%; Claude has answered 5.0, which turned stops into the cap."""
+    return pct / 100 if pct and pct >= 1 else pct
+
+
 def _reject(reason: str) -> Decision:
     return Decision(**{**asdict(_REJECT), "rationale": reason})
 
@@ -164,4 +169,7 @@ class ClaudeDecisionEngine:
         except ValidationError as e:
             log.error("Invalid decision JSON: %s", e)
             return _reject("invalid_json")
-        return Decision(**parsed.model_dump())
+        fields = parsed.model_dump()
+        for key in ("stop_loss_pct", "take_profit_pct"):
+            fields[key] = _as_fraction(fields[key])
+        return Decision(**fields)
