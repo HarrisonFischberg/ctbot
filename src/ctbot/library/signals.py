@@ -131,6 +131,51 @@ def calm_trend(d, spy):
     return calm & ~calm.shift(fill_value=False)
 
 
+# --- eight families from the "151 Trading Strategies" review (2026-11-19), chosen before any test was run ---
+
+def ibs_dip(d, spy):
+    rng = (d["high"] - d["low"]).replace(0, np.nan)
+    return ((d["close"] - d["low"]) / rng < 0.2) & _uptrend(d)
+
+
+def sma_cross(d, spy):
+    m = _sma(d["close"], 50)
+    return (d["close"] > m) & (d["close"].shift() <= m.shift()) & _uptrend(d)
+
+
+def three_ma(d, spy):
+    up = (_sma(d["close"], 10) > _sma(d["close"], 50)) & (_sma(d["close"], 50) > _sma(d["close"], 200))
+    return up & ~up.shift(fill_value=False)
+
+
+def support_bounce(d, spy):
+    floor = d["low"].rolling(60, min_periods=60).min().shift()
+    return (d["low"] <= floor * 1.005) & (d["close"] > d["open"]) & _uptrend(d)
+
+
+def resid_mom(d, spy):
+    r = d["close"].pct_change()
+    m = spy["close"].reindex(d.index).pct_change()
+    beta = (r.rolling(252, min_periods=252).cov(m) / m.rolling(252, min_periods=252).var()).shift()
+    resid = (r - beta * m).rolling(126, min_periods=126).sum().shift(21)  # 6 months of market-free return, skipping the last month
+    return (resid > 0.10) & (d["close"] > d["high"].rolling(20, min_periods=20).max().shift())
+
+
+def r2_trend(d, spy):
+    c = np.log(d["close"]).rolling(63, min_periods=63).corr(pd.Series(np.arange(len(d), dtype=float), d.index))
+    ok = (c > 0.9) & (d["close"] > _sma(d["close"], 50))
+    return ok & ~ok.shift(fill_value=False)
+
+
+def ts_momentum(d, spy):
+    r = d["close"] / d["close"].shift(252) - 1
+    return (r > 0) & (r.shift() <= 0)
+
+
+def deep_rsi2(d, spy):
+    return _rsi(d["close"], 2) < 5
+
+
 FAMILIES: dict[str, Family] = {f.key: f for f in [
     Family("high52", "52-Week High Breakout", "Buys when the price closes at a new 52-week high in an uptrend.", 40,
            high52, "George & Hwang 2004, 52-week high momentum"),
@@ -164,6 +209,24 @@ FAMILIES: dict[str, Family] = {f.key: f for f in [
            shock_dip, "short-term reversal, scaled by EWMA volatility (RiskMetrics 1996)"),
     Family("calm_trend", "Calm Uptrend", "Buys when a stock above its 200-day average turns calmer than its own yearly median volatility.", 40,
            calm_trend, "volatility-managed portfolios (Moreira & Muir 2017)"),
+    # 2026-11-19, 151 Trading Strategies (Kakushadze & Serur 2018) plus the Nov 5 rule review: all eight fixed before
+    # their first backtest and ship together, the weak ones included, so the library's trial count stays honest
+    Family("ibs_dip", "Weak Close Bounce (IBS)", "Buys a close in the bottom fifth of the day's range while above the 200-day average.", 5,
+           ibs_dip, "internal bar strength mean reversion, 151 Trading Strategies 4.4"),
+    Family("sma_cross", "50-Day Average Cross", "Buys when the price closes back above its 50-day average in a long uptrend.", 40,
+           sma_cross, "single moving average, 151 Trading Strategies 3.11"),
+    Family("three_ma", "Three Averages Aligned", "Buys when the 10-, 50- and 200-day averages first line up in rising order.", 40,
+           three_ma, "three moving averages, 151 Trading Strategies 3.13"),
+    Family("support_bounce", "Support Bounce", "Buys an up day that touched within half a percent of its 60-day low, in an uptrend.", 10,
+           support_bounce, "support and resistance, 151 Trading Strategies 3.14"),
+    Family("resid_mom", "Residual Momentum", "Buys a new 20-day high after 6 months of strong return left over once the market's move is removed.", 40,
+           resid_mom, "residual momentum (Blitz, Huij & Martens 2011), 151 Trading Strategies 3.7"),
+    Family("r2_trend", "Clean Trend (R-squared)", "Buys when 3 months of prices first line up as a near-straight rise above the 50-day average.", 40,
+           r2_trend, "trend quality, 151 Trading Strategies 4.3"),
+    Family("ts_momentum", "12-Month Momentum Turn", "Buys when the 12-month return turns positive.", 120,
+           ts_momentum, "time-series momentum (Moskowitz, Ooi & Pedersen 2012), 151 Trading Strategies 10.4"),
+    Family("deep_rsi2", "Deep 2-Day RSI Dip", "Buys when the 2-day RSI drops under 5, in any trend.", 5,
+           deep_rsi2, "Connors & Alvarez 2009; held up for QQQ in the 2026-11 rule review"),
 ]}
 
 UNIVERSES = {

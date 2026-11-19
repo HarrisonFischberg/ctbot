@@ -112,7 +112,19 @@ def test_full_run_on_synthetic_prices_admits_nothing_from_noise(monkeypatch):
                                 "close": c, "volume": 2e6}, idx)
     monkeypatch.setattr(fx, "load_panel", lambda symbols, root=None: {s: data[s] for s in symbols if s in data})
     rep = lbt.run(holdout=False, registry=None)
-    assert rep["n_trials"] == 30 and set(rep["entries"]["lib_rsi2_etfs"]) >= {"dev", "validation", "checks"}
+    assert rep["n_trials"] == 46 and set(rep["entries"]["lib_rsi2_etfs"]) >= {"dev", "validation", "checks"}
     assert len(rep["admitted"]) <= 2  # pure noise: at most a stray false positive at q=10%
     ok, why = lbt.reason(rep, "lib_rsi2_etfs")
     assert why.startswith("passed" if ok else "failed")
+
+
+def test_new_151_families_fire_on_their_textbook_case():
+    p = _panel()
+    a, spy = p["AAA"].copy(), p["SPY"]
+    i = 600
+    a.iloc[i, a.columns.get_loc("close")] = a["low"].iloc[i]  # close at the day's low: IBS 0
+    assert sg.ibs_dip(a, spy).iloc[i] == (a["close"].iloc[i] > a["close"].iloc[i - 199:i + 1].mean())
+    crash = a.copy()
+    crash.iloc[500:, crash.columns.get_loc("close")] = crash["close"].iloc[499] * np.exp(-0.08 * np.arange(1, len(crash) - 499))
+    assert sg.deep_rsi2(crash, spy).iloc[505:520].all()  # a steady slide pins the 2-day RSI under 5
+    assert not sg.ts_momentum(a, spy).iloc[:252].any()   # needs a full year of bars
