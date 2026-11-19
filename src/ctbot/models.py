@@ -124,6 +124,7 @@ class Decision:
     suggested_notional: float
     stop_loss_pct: float | None = None
     take_profit_pct: float | None = None
+    paired: dict | None = None  # pipeline: this review with lessons against the same one without
 
 
 @dataclass(frozen=True)

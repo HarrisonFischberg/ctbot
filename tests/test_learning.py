@@ -147,3 +147,34 @@ def test_buy_records_entry_context():
     assert ctx["models"] == ["copy_trading"] and ctx["sector"] == "Staples"
     assert ctx["size_mult"] == 1.0 and ctx["pulled_back"] == []
     assert ctx["market_vs_trend"] == 0.0 and ctx["stock_day_move"] == 0.0
+
+
+def test_a_review_with_lessons_is_paired_with_the_same_review_without(tmp_path):
+    from dataclasses import replace
+
+    from ctbot.strategies.registry import WeightedStrategy
+    from tests.test_pipeline import _components, _Strategy
+
+    class Engine:  # the lesson talks the reviewer out of the trade
+        def evaluate(self, candidate, account):
+            return Decision(approve="lessons" not in account, confidence=0.9, rationale="", suggested_notional=50.0)
+
+    lessons = tmp_path / "lessons.json"
+    lessons.write_text(json.dumps({"lessons": [{"id": "L1", "text": "skip it", "models": ["copy_trading"]},
+                                               {"id": "L2", "text": "other", "models": ["orb"]}]}))
+    md, ideas = _MD(50.0), []
+    broker = PaperBroker(md, 250.0, tmp_path / "ledger.json", slippage_bps=0, clock=lambda: NOW)
+    sig = Signal("copy_trading", "KO", Direction.LONG, 1.0, 30)
+    c = _components(broker, [WeightedStrategy(_Strategy("copy_trading", [sig]), 0.5, standalone=True)])
+    c.market_data, c.engine, c.recorder = md, Engine(), ideas.append
+    c.settings = replace(c.settings, review_lessons=True, lessons_file=lessons)
+    state = AccountState(equity=250, cash=250, peak_equity=250, day_start_equity=250, open_positions=0)
+    run_cycle(c, state, NOW)
+    [idea] = ideas
+    assert idea["status"] == "rejected" and not broker.positions()  # the verdict with lessons is the one traded
+    assert idea["decision"]["paired"] == {"lessons": ["L1"], "take": False, "plain_take": True}
+
+    lessons.write_text(json.dumps({"lessons": []}))  # nothing to show: one plain review, no pair
+    ideas.clear()
+    run_cycle(c, state, NOW + timedelta(days=1))  # a setup is reviewed once a day
+    assert "paired" not in ideas[0]["decision"] and ideas[0]["status"] == "auto_submitted"

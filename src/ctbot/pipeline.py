@@ -230,6 +230,7 @@ def _idea(
             "approve": decision.approve, "confidence": decision.confidence,
             "rationale": decision.rationale, "suggested_notional": decision.suggested_notional,
             "stop_loss_pct": decision.stop_loss_pct, "take_profit_pct": decision.take_profit_pct,
+            **({"paired": decision.paired} if decision.paired else {}),
         },
         "risk": None if verdict is None else {
             "allowed": verdict.allowed, "reasons": list(verdict.reasons),
@@ -750,12 +751,24 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                         c.settings.ideas_path.with_name("idea_scores.json"))
                 except Exception:  # noqa: BLE001 - memory is optional context, never a blocker
                     log.exception("outcome memory failed for %s", cand.symbol)
+            review = lambda acct: (c.engine.evaluate(cand, acct, debate=True) if c.settings.review_debate  # noqa: E731
+                                   else c.engine.evaluate(cand, acct))
+            shown = []
             if c.settings.review_lessons:
                 from ctbot.learn import lessons_for  # lazy: learn imports the readout and variants
 
-                account["lessons"] = lessons_for(c.settings.lessons_file, buyers)
-            decision = (c.engine.evaluate(cand, account, debate=True) if c.settings.review_debate
-                        else c.engine.evaluate(cand, account))
+                shown = lessons_for(c.settings.lessons_file, buyers)
+            if shown:
+                # Reviewed twice, with and without the lessons, so each lesson is judged on the verdicts it
+                # changed (learn.lesson_effects). The plain review is the one the other books share.
+                floor = c.risk.limits.min_claude_confidence if c.risk.min_confidence is None else c.risk.min_confidence
+                took = lambda d: d.approve and d.confidence >= floor  # noqa: E731
+                plain = review(account)
+                decision = review({**account, "lessons": [x["text"] for x in shown]})
+                decision = replace(decision, paired={"lessons": [x["id"] for x in shown], "take": took(decision),
+                                                     "plain_take": took(plain)})
+            else:
+                decision = review(account)
             adv = avg_dollar_volume(c.market_data, cand.symbol)
             verdict = c.risk.check_entry(cand, decision, state, quote, adv, held, today, report, now,
                                          live_quotes(c.market_data), **_entry_gates(c, cand))

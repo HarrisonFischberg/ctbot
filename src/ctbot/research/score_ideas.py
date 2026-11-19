@@ -75,11 +75,15 @@ def summarize(scores: list[dict[str, Any]]) -> dict[str, Any]:
         for g in (s["model"], "all"):
             groups[g].setdefault(key, []).append(s["net_ret"])
 
-    def stat(r):
-        return {"n": len(r), "avg_bps": statistics.mean(r) * 1e4 if r else None,
-                "win_rate": sum(x > 0 for x in r) / len(r) if r else None}
-
     return {m: {k: stat(v) for k, v in g.items()} for m, g in groups.items()}
+
+
+def stat(r: list[float]) -> dict[str, Any]:
+    """n, average and win rate of a list of returns, plus the t-statistic of the average against zero."""
+    sd = statistics.stdev(r) if len(r) > 1 else 0.0
+    return {"n": len(r), "avg_bps": statistics.mean(r) * 1e4 if r else None,
+            "win_rate": sum(x > 0 for x in r) / len(r) if r else None,
+            "t": statistics.mean(r) / sd * len(r) ** 0.5 if sd else None}
 
 
 def calibration(scores: list[dict[str, Any]], width: float = 0.1) -> list[dict[str, Any]]:

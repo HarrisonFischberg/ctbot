@@ -5,13 +5,19 @@ each paper book did that day and its running per-model record, the approved-vs-r
 scores, the confidence calibration table and the factory's live list. Code only: no Claude call,
 read-only on every book. The readout prints `changes()` as a "what changed" line.
 
+The journal also carries the two yardsticks the loop is judged on, both from replayed ideas rather
+than book P&L (two books differ by ~70 bps a day from luck alone, so a real 10 bps edge takes ~200
+trading days to show there): `scoreboard`, which strategies lose even after Claude approves them, and
+`lessons`, what each lesson did to the verdicts it changed (`lesson_effects`).
+
 `ctbot-learn refine` (stage 2, after prime-agent's continual harness) makes one Claude call a night:
 it reads the last 20 journals and the current lessons and proposes at most 3 create/update/delete
 edits to data/learning/lessons.json. Code checks every edit before applying it (`check`): short
 text, at most 12 lessons, models that exist, enough settled trades or scored ideas behind it in
 the latest journal, and no wording about sizes, stops, loss caps, leverage or live trading. Each
 applied edit is one hash-chained line in data/learning/history.jsonl; `ctbot-learn rollback <id>`
-reverts one. Nothing reads the lessons into trading yet: that is stage 3, a separate paper book.
+reverts one. The `learner` paper book (stage 3) shows the lessons to its reviewer; `guard` deletes a
+lesson whose changed verdicts did worse than the originals.
 """
 
 from __future__ import annotations
@@ -25,6 +31,7 @@ import uuid
 from collections.abc import Iterable
 from datetime import UTC, date, datetime
 from pathlib import Path
+from statistics import NormalDist
 from typing import Any
 
 from ctbot import llm_costs, market_hours, readout, tuning, variants
@@ -79,7 +86,59 @@ def journal(settings: Any, day: date, factory_report: dict[str, Any] | None = No
     fac = {"generated": factory_report.get("generated"), "n_candidates": factory_report.get("n_candidates"),
            "passed": len(factory_report.get("passed", [])), "live": factory_report.get("live", [])}
     return {"day": day.isoformat(), "written": datetime.now(UTC).isoformat(timespec="seconds"),
-            "books": books, "ideas": ideas, "factory": fac}
+            "books": books, "ideas": ideas, "factory": fac, "scoreboard": scoreboard((ideas or {}).get("summary") or {}),
+            "lessons": lesson_effects(s.ideas_path for name, s in _books(settings) if name in ("main", GUARD_BOOK))}
+
+
+def scoreboard(summary: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """strategy -> {"n", "avg_bps", "p", "losing"} for the ideas Claude approved, from the idea
+    replay. `p` is how likely an average this low is if the strategy really breaks even; `losing`
+    needs MIN_IDEAS approved ideas, a negative average and a p that survives Benjamini-Hochberg
+    across every strategy tested, so one unlucky strategy among many is not called a loser."""
+    from ctbot.research.validation import benjamini_hochberg
+
+    rows = {m: g["approved"] for m, g in summary.items() if m != "all" and (g.get("approved") or {}).get("n")}
+    pvals = {m: NormalDist().cdf(a["t"]) for m, a in rows.items() if a["n"] >= MIN_IDEAS and a.get("t") is not None}
+    keep = benjamini_hochberg(pvals) if pvals else {}
+    return {m: {"n": a["n"], "avg_bps": round(a["avg_bps"], 1), "p": round(pvals[m], 4) if m in pvals else None,
+                "losing": bool(keep.get(m)) and a["avg_bps"] < 0} for m, a in sorted(rows.items())}
+
+
+def lesson_effects(idea_files: Iterable[Path]) -> dict[str, dict[str, Any]]:
+    """lesson id -> {"n", "avg_bps", "win_rate", "t"} over the reviews it changed. A paired review
+    (pipeline) records the verdict with and without lessons; where they differ, the replayed
+    return of that idea is the lesson's effect: counted as is when the lesson made the bot buy,
+    negated when it made the bot pass. Each (time, symbol) counts once across books.
+    shortcut: only ideas with an exit plan replay (the intraday models), so a lesson that only ever
+    changes swing-model verdicts shows n=0; replay swing ideas on daily bars when one matters."""
+    from ctbot.research import bars as cache
+    from ctbot.research.score_ideas import score_idea, stat
+
+    rets: dict[str, list[float]] = {}
+    seen, by_sym = set(), {}
+    for path in idea_files:
+        try:
+            lines = path.read_text().splitlines()
+        except OSError:
+            continue
+        for ln in lines:
+            if '"paired"' not in ln:
+                continue
+            idea = json.loads(ln)
+            pair = (idea.get("decision") or {}).get("paired") or {}
+            key = (idea["ts"], idea["symbol"])
+            if pair.get("take") == pair.get("plain_take") or key in seen:
+                continue
+            sym = idea["symbol"]
+            if sym not in by_sym:
+                by_sym[sym] = sorted(cache.load("5minute", sym), key=lambda b: b.ts)
+            s = score_idea(idea, by_sym[sym])
+            if s is None:
+                continue  # no exit plan, or its exit is not in the bar cache yet: counted on a later night
+            seen.add(key)
+            for lid in pair.get("lessons", []):
+                rets.setdefault(lid, []).append(s["net_ret"] if pair["take"] else -s["net_ret"])
+    return {lid: stat(r) for lid, r in rets.items()}
 
 
 def journal_dir(settings: Any) -> Path:
@@ -139,8 +198,12 @@ current lessons. Propose at most 3 edits, or none. Each lesson is one or two sen
 judgment ("orb ideas approved in the last hour lost in 9 of 11 replays; demand a strong reason
 late in the day"), tied to the models it concerns ("all" for every review), and cites the journal
 numbers behind it. Only propose a lesson when the sample is large (15+ closed trades or 30+ scored
-ideas for that model) and the pattern is clear; small samples are noise. Update or delete lessons
-the newer data contradicts. Never write about position size, stops, loss limits, leverage, spend
+ideas for that model) and the pattern is clear; small samples are noise. A lesson must be able to
+change a verdict: aim at what the reviewer approves and loses on (the latest journal's scoreboard
+lists approved ideas per strategy; "losing" marks the significant losers) or rejects and would have
+won on. A lesson about a strategy whose ideas are already all rejected, and lose, is refused.
+lesson_effects shows what each current lesson did to the verdicts it changed (positive avg_bps is
+good). Update or delete lessons the newer data contradicts. Never write about position size, stops, loss limits, leverage, spend
 or live trading: those are fixed rules outside your remit. Returning no edits is a good answer.
 Keep each lesson's text under 300 characters, updates included: longer text is refused."""
 
@@ -167,14 +230,14 @@ def load_lessons(folder: Path) -> list[dict[str, Any]]:
         return []
 
 
-def lessons_for(path: Path, models: Iterable[str]) -> list[str]:
-    """The lesson texts a review of these models should see (lessons for "all" included)."""
+def lessons_for(path: Path, models: Iterable[str]) -> list[dict[str, Any]]:
+    """The lessons a review of these models should see (lessons for "all" included)."""
     try:
         lessons = json.loads(path.read_text()).get("lessons", [])
     except (OSError, ValueError):
         return []
     want = set(models) | {"all"}
-    return [x["text"] for x in lessons if want & set(x.get("models", []))]
+    return [x for x in lessons if want & set(x.get("models", []))]
 
 
 def history(folder: Path) -> list[dict[str, Any]]:
@@ -228,6 +291,9 @@ def check(edit: dict[str, Any], lessons: list[dict[str, Any]], latest: dict[str,
         trades, ideas = _sample(m, latest)
         if trades < MIN_TRADES and ideas < MIN_IDEAS:
             return f"{m}: {trades} closed trades and {ideas} scored ideas, below {MIN_TRADES}/{MIN_IDEAS}"
+        g = ((latest.get("ideas") or {}).get("summary") or {}).get(m) or {}
+        if g and not (g.get("approved") or {}).get("n") and ((g.get("rejected") or {}).get("avg_bps") or 0) <= 0:
+            return f"{m}: changes nothing, its ideas are already all rejected and they lose"
     return None
 
 
@@ -283,31 +349,26 @@ def rollback(folder: Path, event: str, now: datetime | None = None) -> dict[str,
                             "after": row["before"], "evidence": "", "refused": None})
 
 
-GUARD_BOOK, GUARD_DAYS, GUARD_GAP_USD = "learner", 10, 100.0
+GUARD_BOOK, GUARD_MIN_FLIPS = "learner", 20
 
 
-def guard(folder: Path, journals: list[dict[str, Any]], now: datetime | None = None) -> dict[str, Any] | None:
-    """Stage 3's A/B check: when the learner book (base plus lessons) trails base by more than
-    GUARD_GAP_USD over the last GUARD_DAYS journals, undo the newest lesson edit made in that window."""
-    both = [j for j in journals if GUARD_BOOK in j.get("books", {}) and "base" in j.get("books", {})]
-    recent = both[-GUARD_DAYS:]
-    if len(recent) < GUARD_DAYS:
-        return None
-    gap = sum((j["books"][GUARD_BOOK].get("day_pnl") or 0) - (j["books"]["base"].get("day_pnl") or 0) for j in recent)
-    if gap >= -GUARD_GAP_USD:
-        return None
-    rows = history(folder)
-    undone = {r["trigger"].split()[-1] for r in rows if r["action"] == "rollback"}
-    edits = [r for r in rows if r["action"] in ("create", "update", "delete") and not r["refused"]
-             and r["event"] not in undone and r["ts"][:10] >= recent[0]["day"]]
-    return rollback(folder, edits[-1]["event"], now) if edits else None
+def guard(folder: Path, latest: dict[str, Any], now: datetime | None = None) -> list[dict[str, Any]]:
+    """Delete every lesson whose changed verdicts (the latest journal's lesson_effects) lost money
+    over at least GUARD_MIN_FLIPS of them. Logged like any other edit, so `rollback` restores one."""
+    ids = {x["id"] for x in load_lessons(folder)}
+    bad = [lid for lid, e in (latest.get("lessons") or {}).items()
+           if lid in ids and e["n"] >= GUARD_MIN_FLIPS and e["avg_bps"] < 0]
+    return apply(folder, [{"action": "delete", "id": lid, "evidence": f"changed {latest['lessons'][lid]['n']} verdicts, "
+                           f"{latest['lessons'][lid]['avg_bps']:+.1f} bps each"} for lid in bad][:MAX_EDITS],
+                 latest, now, trigger="guard") if bad else []
 
 
 def _compact(j: dict[str, Any]) -> dict[str, Any]:
     ideas = j.get("ideas") or {}
     return {"day": j["day"], "main_models": j["books"].get("main", {}).get("models", {}),
             "book_day_pnl": {k: b.get("day_pnl") for k, b in j["books"].items()},
-            "ideas": {k: ideas.get(k) for k in ("scored", "summary", "calibration")}, "factory_live": j["factory"]["live"]}
+            "ideas": {k: ideas.get(k) for k in ("scored", "summary", "calibration")}, "factory_live": j["factory"]["live"],
+            "scoreboard": j.get("scoreboard"), "lesson_effects": j.get("lessons")}
 
 
 def refine(settings: Any, day: date, client: Any = None, now: datetime | None = None) -> list[dict[str, Any]] | None:
@@ -323,7 +384,7 @@ def refine(settings: Any, day: date, client: Any = None, now: datetime | None = 
     if spent >= cap:
         return None
     journals = [json.loads(p.read_text()) for p in paths]
-    undone = guard(folder, journals, now)  # code, before any spend: lessons that hurt go first
+    undone = guard(folder, journals[-1], now)  # code, before any spend: lessons that hurt go first
     msg = json.dumps({"journals": [_compact(j) for j in journals], "lessons": load_lessons(folder)}, default=str)
     if client is None:
         import anthropic
@@ -337,7 +398,7 @@ def refine(settings: Any, day: date, client: Any = None, now: datetime | None = 
     text = next((b.text for b in r.content if b.type == "text"), "")
     if r.stop_reason != "end_turn":
         raise ValueError(f"stop_reason {r.stop_reason}")
-    return ([undone] if undone else []) + apply(folder, json.loads(text).get("edits", []), journals[-1], now)
+    return undone + apply(folder, json.loads(text).get("edits", []), journals[-1], now)
 
 
 def _usage_rows(path: Path) -> list[dict[str, Any]]:
@@ -357,6 +418,7 @@ def main(argv: list[str] | None = None) -> None:
     r = sub.add_parser("refine", help="one Claude call proposing reviewer lessons (paper only)")
     r.add_argument("day", nargs="?", type=date.fromisoformat)
     sub.add_parser("lessons", help="print the current lessons")
+    sub.add_parser("scoreboard", help="approved ideas per strategy and each lesson's effect, from the latest journal")
     b = sub.add_parser("rollback", help="undo one applied lesson edit")
     b.add_argument("event")
     args = p.parse_args(argv)
@@ -375,6 +437,15 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "lessons":
         for x in load_lessons(folder):
             print(f"{x['id']} [{', '.join(x['models'])}] {x['text']}")
+        return
+    if args.cmd == "scoreboard":
+        j = previous(journal_dir(s), date.max) or {}
+        print(f"journal {j.get('day', 'none yet')}: approved ideas per strategy, replayed")
+        for m, r in (j.get("scoreboard") or {}).items():
+            p = "" if r["p"] is None else f", p {r['p']:.3f}"
+            print(f"  {m:<24}{r['avg_bps']:>+8.1f} bps over {r['n']}{p}{'  LOSING' if r['losing'] else ''}")
+        for lid, e in (j.get("lessons") or {}).items():
+            print(f"  lesson {lid}: changed {e['n']} verdicts, {e['avg_bps']:+.1f} bps each")
         return
     if args.cmd == "rollback":
         print(f"rolled back: {rollback(folder, args.event)['after']}")
