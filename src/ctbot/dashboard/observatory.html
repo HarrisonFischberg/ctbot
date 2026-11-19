@@ -959,7 +959,8 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     <div class="apsw-wrap" data-tab="trading" style="display:flex;align-items:center;gap:10px">
       <label class="apsw"><input type="checkbox" id="apOn" form="apForm" role="switch"><span class="track"></span><span><b id="apOnLbl">Autopilot</b><small id="apMeta"></small></span></label>
       <button class="info" type="button" data-explain="autopilot" aria-label="How Autopilot works"><svg class="ico"><use href="#i-info"/></svg></button>
-      <label class="apsw" style="margin-left:18px"><input type="checkbox" id="tmAggSw" role="switch" disabled><span class="track"></span><span><b id="tmAggLbl">Aggressive day trading</b><small id="tmAggMeta"></small></span></label>
+      <div class="seg" id="tmStyle" role="group" aria-label="Trading style" style="margin-left:18px"><button type="button" data-style="swing">Swing</button><button type="button" data-style="day">Day trade</button><button type="button" data-style="mix">Mix</button></div>
+      <label class="apsw" style="display:none"><input type="checkbox" id="tmAggSw" role="switch" disabled><span class="track"></span><span><b id="tmAggLbl">Aggressive day trading</b><small id="tmAggMeta"></small></span></label>
     </div>
   </div>
 
@@ -1063,8 +1064,9 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
       <div class="ap-side" id="killReset" hidden><button class="btn dark big" type="button" id="killResetGo" title="Let the bot buy again. The drop limit then counts from today's value; stops and sell plans stay.">Clear emergency stop</button><p>Emergency stop is on: no new buys. Stops and sells still run.</p></div>
       <div class="ap-side" id="topup" hidden><button class="btn dark big" type="button" id="topupGo">Add paper cash</button><p id="topupText"></p></div>
       <div class="ap-div"></div>
-      <h3 id="tmModes" tabindex="-1" style="scroll-margin-top:120px">Trading modes</h3>
-      <form class="ap-form" id="tmForm">
+      <h3 id="tmModes" tabindex="-1" style="scroll-margin-top:120px">Trading style</h3>
+      <p class="ap-note" id="tmStyleNote"></p>
+      <form class="ap-form" id="tmForm" style="display:none">
         <div class="tm-key">
           <label class="apsw"><input type="checkbox" id="tmQqq" role="switch"><span class="track"></span><span><b>QQQ as market gauge</b>
             <small>On: while QQQ is under its 50-day average, new buys use only cash on hand. Off: the bot can borrow again.</small></span></label>
@@ -1080,8 +1082,8 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
         <p class="ap-note" id="tmPnl"></p>
         <button class="btn solid big" type="submit" id="tmSave">Save modes</button>
       </form>
-      <p class="ap-note" id="tmMeta"></p>
-      <ul class="ap-note" id="tmLog"></ul>
+      <p class="ap-note" id="tmMeta" style="display:none"></p>
+      <ul class="ap-note" id="tmLog" style="display:none"></ul>
     </div>
 
     <div data-tab="trading" data-sub="overview" class="card span-12" id="promoCard" hidden>
@@ -1668,7 +1670,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
       const broke = a.equity - a.deployed < 1;  // cash spent, so a no-borrowing hold blocks every buy
       alerts.push(["warn", "△", (TM.aggressive && broke ? "Aggressive mode is on but can't buy anything: " : "Playing it safe: ") +
         `${a.pulled_back.join(", ")}. New buys use only cash on hand, no borrowing, until that clears${broke ? ", and the cash is spent" : ""}.` +
-        (qqq ? " To let it borrow again, untick \"QQQ as market gauge\"." : ""), qqq && "Open trading modes"]);
+        "", false]);
     }
     if (a.margin_call) alerts.push(["crit", "!", "Borrowed too much: your account value is under 25% of what you hold, so buying is paused until it recovers."]);
     if (S.limits.pdt_rule && a.day_trades_5d >= S.limits.max_day_trades_5d) alerts.push(["warn", "△", `Day-trade limit reached (${a.day_trades_5d} of ${S.limits.max_day_trades_5d} in 5 days): the bot can't buy and sell the same stock on the same day.`]);
@@ -2855,12 +2857,29 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     $("tmAggLbl").textContent = `Aggressive day trading is ${T.aggressive ? "ON" : "OFF"}`;
     $("tmAggMeta").textContent = T.aggressive ? `High trade count · in cash by ${T.flatten_at} ET · paper only` : "Day-trading models follow your normal rules";
     $("tmQqqWarn").hidden = T.qqq_gate;
+    renderStyle(T);
     const c = T.costs || {};
     $("tmPnl").textContent = T.aggressive ? `Today after costs: ${sgnUsd(c.net_day_pnl)} · ${c.fills} fills · commissions ${usd(c.commissions)} · `
       + `est. slippage ${usd(c.slippage)} (already in the fill prices). Paper fills never wait in line or fill partly, so real trading would likely do worse.` : "";
     $("tmMeta").textContent = `QQQ gauge ${T.qqq_gate ? "on" : "off"} · aggressive day trading ${T.aggressive ? `on, in cash by ${T.flatten_at} ET` : "off"}`;
     put($("tmLog"), (T.log || []).map((e) => `<li>${fmtTime(e.ts)}: ${esc(TM_NAMES[e.field] || e.field)} ${esc(String(e.from))} → ${esc(String(e.to))}</li>`).join(""));
   }
+  const TM_STYLES = { swing: [false, false, "Swing: holds for days to weeks. The day-trading models sit out."],
+    day: [true, true, "Day trade: everything is sold before the close, so the account is all cash overnight."],
+    mix: [true, false, "Mix: day trades are sold before the close; swing holds and the trend cores stay."] };
+  function renderStyle(T) {
+    const cur = T.aggressive ? (T.flatten_all ? "day" : "mix") : "swing";
+    $("tmStyle").querySelectorAll("button").forEach((b) => { b.className = ((on) => on ? "on" : "")(b.dataset.style === cur); b.setAttribute("aria-pressed", b.dataset.style === cur); b.disabled = !canTrade(); });
+    $("tmStyleNote").textContent = TM_STYLES[cur][2] + " The bot sets everything else itself. Paper only.";
+  }
+  $("tmStyle").addEventListener("click", async (e) => {
+    const s = TM_STYLES[e.target.dataset.style]; if (!s) return;
+    const [ok, j] = await api("/api/trading-modes", { aggressive: s[0], flatten_all: s[1] });
+    if (!ok) return toast(j.error || "could not save", true);
+    Object.assign(S.trading_modes, j);
+    renderModes(); renderChrome();
+    toast(s[2] + " The bot picks it up next cycle.");
+  });
   ["tmQqq", "tmOvn", "tmAt", "tmAll", "tmFee"].forEach((id) => $(id).addEventListener("input", () => (tmDirty = true)));
   async function setAggressive(on) {  // one click: saves at once, no Save button
     const [ok, j] = await api("/api/trading-modes", { aggressive: on });
