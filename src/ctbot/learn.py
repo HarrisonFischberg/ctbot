@@ -431,10 +431,11 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("scoreboard", help="approved ideas per strategy and each lesson's effect, from the latest journal")
     b = sub.add_parser("rollback", help="undo one applied lesson edit")
     b.add_argument("event")
+    sub.add_parser("research", help="one Claude call proposing new entry rules for tomorrow's factory run")
     sub.add_parser("promote", help="nightly: end promotions that stopped paying, propose at most one new change")
     sub.add_parser("promotions", help="list proposed and active promotions")
-    for name in ("approve", "decline"):
-        sub.add_parser(name, help=f"{name} a waiting proposal").add_argument("id")
+    for name, what in (("approve", "a waiting proposal"), ("decline", "a waiting proposal"), ("undo", "an active promotion")):
+        sub.add_parser(name, help=f"{name} {what}").add_argument("id")
     args = p.parse_args(argv)
     s = Settings.from_env()
     day = getattr(args, "day", None) or market_hours.trading_date(datetime.now(UTC))
@@ -452,17 +453,27 @@ def main(argv: list[str] | None = None) -> None:
         for x in load_lessons(folder):
             print(f"{x['id']} [{', '.join(x['models'])}] {x['text']}")
         return
-    if args.cmd in ("promote", "promotions", "approve", "decline"):
+    if args.cmd == "research":
+        from ctbot.library import agent, factory
+
+        rows = agent.propose(s.llm_usage_path, day, factory.load_report())
+        if rows is None:
+            print("research: skipped (today's research budget is spent)")
+        for row in rows or []:
+            print(f"  {row['key']}: " + (f"refused ({row['refused']})" if row["refused"] else "queued for tomorrow's factory run"))
+        print(f"research: {len(agent.families())} agent rules under test or passing, {len(agent.retired())} failed trials counted")
+        return
+    if args.cmd in ("promote", "promotions", "approve", "decline", "undo"):
         from ctbot import promote  # lazy: promote imports this module
 
         now = datetime.now(UTC)
         if args.cmd == "promote":
             for x in promote.review(s, now):
                 print(f"ended: {x['title']} ({x['why_ended']})")
-            new = promote.propose(s, previous(journal_dir(s), date.max) or {}, now)
-            print(f"proposed {new['id']}: {new['title']} ({new['evidence']})" if new else "promotions: nothing new to propose")
+            new = promote.propose(s, previous(journal_dir(s), date.max) or {}, now, approve=promote.auto())
+            print(f"{new['status']} {new['id']}: {new['title']} ({new['evidence']})" if new else "promotions: nothing new to propose")
         elif args.cmd != "promotions":
-            x = promote.decide(s, args.id, args.cmd == "approve", now)
+            x = promote.undo(s, args.id, now) if args.cmd == "undo" else promote.decide(s, args.id, args.cmd == "approve", now)
             print(f"{x['status']}: {x['title']}")
         for x in promote.load(s):
             if args.cmd == "promotions" or x["status"] in ("proposed", "active"):

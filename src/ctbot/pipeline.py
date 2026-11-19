@@ -78,6 +78,7 @@ class Components:
     # strategies as configured in strategies.toml; `strategies` is this, as the launcher sees it
     configured: list[WeightedStrategy] | None = None
     launched: tuple | None = None  # last applied launcher state: (in use, {name: capital})
+    promoted_rules: frozenset = frozenset()  # factory rules the learning loop promoted onto this book (promote.apply_rules)
     # (symbol, side) -> monotonic time of the last submission: refuses an identical order within
     # DUPLICATE_WINDOW_S (a retried cycle, a double click, a strategy firing twice)
     recent_orders: dict = field(default_factory=dict)
@@ -120,6 +121,10 @@ def apply_launcher(c: Components, state: AccountState, positions: dict, now: dat
     if c.configured is None:
         c.configured = list(c.strategies)
     if not c.executor.is_live:
+        from ctbot import promote  # lazy: promote imports the readout and variants
+
+        rule_sleeves: dict[str, float] = {}
+        promote.apply_rules(c, state, rule_sleeves)
         try:
             auto_invest.run(c.settings, now)  # Invest for me: weekly re-pick, top-ups as cash frees
         except Exception:  # noqa: BLE001 - a bad plan file must not stop the cycle
@@ -170,6 +175,8 @@ def apply_launcher(c: Components, state: AccountState, positions: dict, now: dat
     if extra := trading_modes.traded_models(c.modes):  # aggressive day trading: these trade, benched or not
         c.strategies = [replace(ws, mode="trade", standalone=True) if ws.strategy.name in extra else ws
                         for ws in c.strategies]
+    if not c.executor.is_live:
+        runs = {**rule_sleeves, **runs}  # a promoted factory rule trades inside its own slice of the account
     state.sleeves = dict(runs)
     state.sleeve_used = {n: used.get(n, 0.0) for n in runs}
     # each strategy's unspent money is kept for it: no other strategy may buy with it

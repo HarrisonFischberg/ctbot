@@ -10,17 +10,22 @@
 * setting: a settings-test book that differs from main only in its Autopilot numbers and is "better"
   than main (variants._vs_main) over SETTING_MIN_DAYS gives main those numbers.
 
-A qualifying change becomes a proposal in data/learning/promotions.json and nothing happens until
-Harold approves it (dashboard, or `ctbot-learn approve <id>`). One proposal at a time, COOL_DAYS
+* rule: a factory rule that is still on the factory's live list and made money over MIN_RULE_TRADES
+  closed trades in the factory paper book (forward results, the only test Claude's hindsight and the
+  backtest cannot leak into) trades on main too, in its own sleeve of RULE_PCT of the account, at
+  most MAX_RULES of them.
+
+A qualifying change becomes a proposal in data/learning/promotions.json. With PROMOTE_AUTO on (the
+default since 2026-11-19, Harold's choice) the nightly run approves it itself; with PROMOTE_AUTO=false
+nothing happens until Harold approves it (dashboard, or `ctbot-learn approve <id>`). Either way he
+can undo an active one (dashboard, or `ctbot-learn undo <id>`). One proposal at a time, COOL_DAYS
 between promotions so each effect can be read, and a declined or undone change is not proposed
 again for BLOCK_DAYS. The base book never gets promotions: it is the control, and an active
 promotion is undone when main falls behind base by more than luck (t below CHECK_T over
 CHECK_MIN_DAYS+ days) or when the guard deletes its lesson. Every step is a line in the lessons'
 hash-chained history. Only main reads this file: a variant book's own folder has none.
 
-shortcut: factory rules are not promoted (main would need a capped sleeve per rule, and the factory
-book has 1 closed trade), nor are test books that differ by an env setting; add them when a book
-gets near the bar.
+shortcut: test books that differ by an env setting are not promoted; add them when one gets near the bar.
 """
 
 from __future__ import annotations
@@ -44,6 +49,7 @@ MIN_FLIPS, LESSON_MIN_AGE_DAYS, MAX_PROMOTED_LESSONS = 30, 28, 3
 SETTING_MIN_DAYS = 40
 BENCH_DAYS, COOL_DAYS, BLOCK_DAYS = 30, 14, 30
 CHECK_MIN_DAYS, CHECK_T = 10, -2.0
+MIN_RULE_TRADES, RULE_PCT, MAX_RULES = 15, 0.10, 2
 PROPOSAL_DAYS = 14  # an unanswered proposal lapses, so stale evidence is never approved and the queue moves
 SETTING_KEYS = ("max_loss_pct", "giveback_pct", "min_confidence")
 KEYS = {"id", "kind", "target", "title", "evidence", "status", "proposed", "decided", "ended", "why_ended", "undo"}
@@ -72,11 +78,17 @@ def _save(settings: Any, items: list[dict[str, Any]]) -> None:
     tmp.replace(path)
 
 
+def auto() -> bool:
+    return os.environ.get("PROMOTE_AUTO", "true").strip().lower() not in ("false", "0", "no", "off")
+
+
 def active(settings: Any) -> dict[str, Any]:
-    """What main applies right now: {"bench": {strategy: reason}, "lessons": {lesson id: the approved text}}."""
+    """What main applies right now: {"bench": {strategy: reason}, "lessons": {lesson id: the approved text},
+    "rules": {factory rule names}}."""
     live = [x for x in load(settings) if x["status"] == "active"]
     return {"bench": {x["target"]: f"benched by the learning loop: {x['evidence']}" for x in live if x["kind"] == "bench"},
-            "lessons": {x["target"]: x.get("text") for x in live if x["kind"] == "lesson"}}
+            "lessons": {x["target"]: x.get("text") for x in live if x["kind"] == "lesson"},
+            "rules": frozenset(x["target"] for x in live if x["kind"] == "rule")}
 
 
 def _log(settings: Any, action: str, item: dict[str, Any], now: datetime, why: str = "") -> None:
@@ -121,6 +133,12 @@ def candidates(settings: Any, journal: dict[str, Any], now: datetime) -> list[di
         rows = variants.summary(settings)
     except (ValueError, OSError):
         books, rows = {}, []
+    for name, s in sorted(_factory_record(settings, books).items()):
+        if s["closed"] >= MIN_RULE_TRADES and s["pnl"] > 0 and s["avg_ret"] > 0:
+            out.append({"kind": "rule", "target": name,
+                        "title": f"Let the factory rule {name} trade on the main account with up to {RULE_PCT:.0%} of it",
+                        "evidence": f"in the factory test account its {s['closed']} closed trades averaged "
+                                    f"{s['avg_ret']:+.2%} each and it still passes the nightly backtest"})
     for r in rows:
         v, vs = books.get(r["name"]), r.get("vs_main") or {}
         if (v and v.strategies == "library" and not v.env and vs.get("verdict") == "better"
@@ -129,6 +147,42 @@ def candidates(settings: Any, journal: dict[str, Any], now: datetime) -> list[di
             out.append({"kind": "setting", "target": v.name, "title": f"Give the main account the {v.name} test account's settings ({nums})",
                         "evidence": f"{v.name} beat main by {vs['edge']:+.3%} a day over {vs['days']} days"})
     return out
+
+
+def _factory_record(settings: Any, books: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """rule -> its closed-trade record in the factory paper book(s), for rules on tonight's live list."""
+    from ctbot.dashboard.state import model_stats
+    from ctbot.library import factory
+
+    live = set((factory.load_report() or {}).get("live", []))
+    out: dict[str, dict[str, Any]] = {}
+    for v in books.values():
+        if v.strategies != "factory":
+            continue
+        try:
+            ledger = settings.paper_ledger_path.parent / variants.ROOT_NAME / v.name / "paper_ledger.json"
+            fills = json.loads(ledger.read_text()).get("fills", [])
+        except (OSError, ValueError):
+            continue
+        out.update({s["model"]: s for s in model_stats(fills, {}) if s["model"] in live})
+    return out
+
+
+def apply_rules(c: Any, state: Any, runs: dict[str, float]) -> None:
+    """Called by the pipeline each paper cycle: main trades its promoted factory rules as systematic
+    strategies, each sized off its own sleeve (`runs`, which the launcher turns into state.sleeves).
+    A rule that leaves the list stops opening trades; what it holds keeps its stop and time exit."""
+    from ctbot.library import factory
+
+    want = active(c.settings)["rules"]
+    if want != c.promoted_rules:  # variant books never get here: no promotions file, so both are empty
+        rep = factory.load_report() or {}
+        live = {**rep, "live": sorted(n for n in want if n in rep.get("candidates", {}))}
+        c.configured = [ws for ws in c.configured if ws.strategy.name not in c.promoted_rules] + factory.live_strategies(live)
+        c.promoted_rules, c.launched = want, None
+        log.info("promoted factory rules on this book: %s", ", ".join(sorted(want)) or "none")
+    for name in want:
+        runs.setdefault(name, RULE_PCT * state.equity)
 
 
 def _age(ts: str | None, now: datetime) -> timedelta:
@@ -140,8 +194,9 @@ def _age(ts: str | None, now: datetime) -> timedelta:
         return timedelta(0)
 
 
-def propose(settings: Any, journal: dict[str, Any], now: datetime) -> dict[str, Any] | None:
-    """Add at most one proposal; None while one is waiting, inside the cooling-off, or nothing qualifies."""
+def propose(settings: Any, journal: dict[str, Any], now: datetime, approve: bool = False) -> dict[str, Any] | None:
+    """Add at most one proposal; None while one is waiting, inside the cooling-off, or nothing qualifies.
+    `approve` (PROMOTE_AUTO) applies it at once."""
     items = load(settings)
     if any(x["status"] == "proposed" for x in items):
         return None
@@ -150,16 +205,20 @@ def propose(settings: Any, journal: dict[str, Any], now: datetime) -> dict[str, 
     # a lapsed proposal (never decided) may come straight back with fresh evidence; everything else waits
     block = {(x["kind"], x["target"]) for x in items if x["status"] == "active"
              or (x["decided"] and x["ended"] and _age(x["ended"], now) < timedelta(days=BLOCK_DAYS))}
-    lessons_full = len(active(settings)["lessons"]) >= MAX_PROMOTED_LESSONS
+    live = active(settings)
+    full = {"lesson": len(live["lessons"]) >= MAX_PROMOTED_LESSONS, "rule": len(live["rules"]) >= MAX_RULES}
     for c in candidates(settings, journal, now):
-        if (c["kind"], c["target"]) in block or (c["kind"] == "lesson" and lessons_full):
+        if (c["kind"], c["target"]) in block or full.get(c["kind"]):
             continue
         item = {"id": uuid.uuid4().hex[:8], **c, "status": "proposed", "proposed": now.isoformat(timespec="seconds"),
                 "decided": None, "ended": None, "why_ended": None, "undo": None}
         _save(settings, items + [item])
         _log(settings, "propose", item, now)
-        _notify("CTbot: a change is waiting for your approval", f"{item['title']}\nWhy: {item['evidence']}.\n"
-                "Approve or decline it on the dashboard's Autopilot page.")
+        if approve:
+            item = decide(settings, item["id"], True, now)
+        _notify("CTbot applied a learned change" if approve else "CTbot: a change is waiting for your approval",
+                f"{item['title']}\nWhy: {item['evidence']}.\n"
+                + ("You can undo it" if approve else "Approve or decline it") + " on the dashboard's Autopilot page.")
         return item
     return None
 
@@ -204,6 +263,17 @@ def _end(settings: Any, item: dict[str, Any], status: str, why: str, now: dateti
     _log(settings, "demote", item, now, why)
 
 
+def undo(settings: Any, pid: str, now: datetime) -> dict[str, Any]:
+    """Harold takes an active promotion back off main."""
+    items = load(settings)
+    item = next((x for x in items if x["id"] == pid and x["status"] == "active"), None)
+    if item is None:
+        raise ValueError(f"no active promotion {pid}")
+    _end(settings, item, "undone", "undone by you", now)
+    _save(settings, items)
+    return item
+
+
 def _main_vs_base(settings: Any, since: str) -> tuple[int, float]:
     """(days, t-stat) of main's daily return minus base's on the days after `since` (YYYY-MM-DD)."""
     data = settings.paper_ledger_path.parent
@@ -219,7 +289,10 @@ def review(settings: Any, now: datetime) -> list[dict[str, Any]]:
     shortcut: the main-vs-base test reruns nightly on overlapping data and ends every active promotion at once,
     so a harmless change is undone more often than t < -2 suggests (it errs toward undoing); give each
     promotion one fixed check date if good changes keep getting undone."""
+    from ctbot.library import factory
+
     items = load(settings)
+    live_rules = set((factory.load_report() or {}).get("live", []))
     ended = []
     for x in items:
         if x["status"] == "proposed" and _age(x["proposed"], now) >= timedelta(days=PROPOSAL_DAYS):
@@ -232,6 +305,8 @@ def review(settings: Any, now: datetime) -> list[dict[str, Any]]:
             _end(settings, x, "expired", f"{BENCH_DAYS} days are up: it trades again and must re-earn a bench", now)
         elif x["kind"] == "lesson" and _lesson_text(settings, x["target"]) != x.get("text"):
             _end(settings, x, "undone", "the lesson was deleted or reworded", now)
+        elif x["kind"] == "rule" and x["target"] not in live_rules:
+            _end(settings, x, "undone", "the rule no longer passes the nightly backtest", now)
         elif days >= CHECK_MIN_DAYS and t < CHECK_T:
             _end(settings, x, "undone", f"main fell behind the base account over the {days} days since (t {t:.1f})", now)
         else:

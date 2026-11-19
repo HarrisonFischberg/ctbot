@@ -687,8 +687,8 @@ main:focus { outline: none; }
 
     <div data-tab="trading" class="card span-12" id="promoCard" hidden>
       <h2>Learned changes <span class="count" id="promoMeta"></span></h2>
-      <p class="explain">Each night the bot checks what it has learned against its own results. When a change has enough evidence it asks here first,
-        one change at a time. Nothing reaches your main practice account until you approve it, and an approved change is undone automatically if it stops paying.</p>
+      <p class="explain">Each night the bot checks what it has learned against its own results. When a change has enough evidence it applies it to your main practice account,
+        one change at a time, and takes it back off automatically if it stops paying. You can undo any of them here. Paper money only.</p>
       <div id="promos"></div>
     </div>
 
@@ -2235,17 +2235,18 @@ main:focus { outline: none; }
     $("promos").innerHTML = P.map((p) => `<div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;padding:10px 0;border-top:1px solid rgba(var(--tint),.1)">
         <div style="flex:1 1 320px;min-width:0"><b>${esc(p.title)}</b><div class="explain" style="margin:2px 0 0">Why: ${esc(p.evidence)}.${p.why_ended ? ` Ended: ${esc(p.why_ended)}.` : ""}</div></div>
         <div>${p.status === "proposed" ? `<button class="btn solid" data-promo="${esc(p.id)}" data-yes="1">Approve</button> <button class="btn" data-promo="${esc(p.id)}">Decline</button>`
-          : WORDS[p.status] || esc(p.status)}</div></div>`).join("");
+          : `${WORDS[p.status] || esc(p.status)}${p.status === "active" ? ` <button class="btn" data-promo="${esc(p.id)}" data-undo="1">Undo</button>` : ""}`}</div></div>`).join("");
   }
   $("promos").addEventListener("click", async (e) => {
     const b = e.target.closest("button[data-promo]");
     if (!b) return;
-    const yes = !!b.dataset.yes;
+    const yes = !!b.dataset.yes, undo = !!b.dataset.undo;
+    if (undo && !confirm("Undo this change on your main practice account?\n\nIt won't be applied again for 30 days.")) return;
     if (yes && !confirm("Approve this change for your main practice account?\n\nPaper money only. It is undone automatically if the account falls behind the unchanged one.")) return;
     b.disabled = true;
-    const [ok, j] = await api("/api/promotions/decide", { id: b.dataset.promo, approve: yes });
+    const [ok, j] = await api("/api/promotions/decide", undo ? { id: b.dataset.promo, undo: true } : { id: b.dataset.promo, approve: yes });
     if (!ok) { b.disabled = false; return toast("Not saved: " + (j.error || "error"), true); }
-    toast(yes ? "Approved: the bot applies it at its next market check." : "Declined: it won't be proposed again for 30 days.");
+    toast(undo ? "Undone: the bot drops it at its next market check." : yes ? "Approved: the bot applies it at its next market check." : "Declined: it won't be proposed again for 30 days.");
     load();
   });
   function renderVariants() {

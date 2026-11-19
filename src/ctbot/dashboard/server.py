@@ -397,10 +397,12 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
 
         if current_settings().mode.value != "paper":
             return 400, {"error": "promotions are paper only"}
-        if not isinstance(body.get("approve"), bool):
+        if body.get("undo") is not True and not isinstance(body.get("approve"), bool):
             return 400, {"error": "approve must be true or false"}
         try:
-            item = promote.decide(current_settings(), str(body.get("id", "")), body["approve"], datetime.now(timezone.utc))
+            now, pid = datetime.now(timezone.utc), str(body.get("id", ""))
+            item = (promote.undo(current_settings(), pid, now) if body.get("undo") is True
+                    else promote.decide(current_settings(), pid, body["approve"], now))
         except ValueError as e:
             return 400, {"error": str(e)}
         log.info("promotion %s: %s (%s)", item["id"], item["status"], item["title"])

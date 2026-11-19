@@ -63,7 +63,7 @@ def test_one_proposal_at_a_time_then_a_yes_benches_the_strategy_on_main_only(tmp
     from ctbot.variants import book_env, load
 
     v = load(s.strategies_file.with_name("variants.toml"))[0]
-    assert promote.active(Settings.from_env(book_env({}, s.paper_ledger_path, v))) == {"bench": {}, "lessons": {}}
+    assert promote.active(Settings.from_env(book_env({}, s.paper_ledger_path, v))) == {"bench": {}, "lessons": {}, "rules": frozenset()}
 
     orb = {"scoreboard": {"orb": LOSING}}
     assert promote.propose(s, orb, NOW + timedelta(days=13)) is None  # cooling off after a promotion
@@ -185,8 +185,96 @@ def test_a_broken_promotions_file_or_lesson_reads_as_nothing(tmp_path):
     path.parent.mkdir(parents=True)
     for bad in ('[]', '{"items": {"a": 1}}', '{"items": [{"kind": "bench"}, 7]}', '{"items": [', '{}'):
         path.write_text(bad)
-        assert promote.load(s) == [] and promote.active(s) == {"bench": {}, "lessons": {}}
+        assert promote.load(s) == [] and promote.active(s) == {"bench": {}, "lessons": {}, "rules": frozenset()}
     learn._save(learn.learning_dir(s), [{"id": "L1", "text": "x", "models": ["orb"]},  # no start date: never old enough
                                         {"id": "L2", "text": "y", "models": ["orb"], "created": "2026-01-01T00:00:00"}])
     good = {"n": 35, "avg_bps": 20.0, "t": 3.0}
     assert [c["target"] for c in promote.candidates(s, {"lessons": {"L1": good, "L2": good}}, NOW)] == ["L2"]
+
+
+def test_auto_mode_applies_the_change_itself_and_harold_can_undo_it(tmp_path, monkeypatch):
+    s = _settings(tmp_path)
+    assert promote.auto()  # on unless PROMOTE_AUTO says otherwise
+    monkeypatch.setenv("PROMOTE_AUTO", "false")
+    assert not promote.auto()
+    item = promote.propose(s, JOURNAL, NOW, approve=True)
+    assert item["status"] == "active" and "vwap_revert" in promote.active(s)["bench"]
+    assert [r["action"] for r in learn.history(learn.learning_dir(s))] == ["propose", "promote"]
+    assert promote.propose(s, {"scoreboard": {"orb": LOSING}}, NOW + timedelta(days=1), approve=True) is None  # still one at a time
+    with pytest.raises(ValueError):
+        promote.undo(s, "nope", NOW)
+    assert promote.undo(s, item["id"], NOW + timedelta(days=2))["why_ended"] == "undone by you"
+    assert promote.active(s)["bench"] == {}
+    assert promote.propose(s, JOURNAL, NOW + timedelta(days=20), approve=True) is None  # not re-applied for 30 days
+
+
+def test_a_factory_rule_reaches_main_only_on_forward_trades_and_in_its_own_sleeve(tmp_path, monkeypatch):
+    from types import SimpleNamespace as NS
+
+    from ctbot.library import factory
+
+    s = _settings(tmp_path)
+    s.strategies_file.with_name("variants.toml").write_text('[factory]\nstrategies = "factory"\n')
+    name = "fx_rsi2_any_g8_h5_etfs"
+    report = {"live": [name], "candidates": {name: {"name": name, "family": "rsi2", "universe": "etfs", "filter": "any",
+                                                    "giveback": 0.08, "max_hold": 5}}}
+    monkeypatch.setattr(factory, "load_report", lambda path=None: report)
+    monkeypatch.setattr(promote.variants, "summary", lambda settings: [])
+    ledger = s.paper_ledger_path.parent / "variants" / "factory" / "paper_ledger.json"
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+
+    def trades(n, sell):
+        fills = []
+        for i in range(n):
+            ts = (NOW - timedelta(days=2 * n - 2 * i)).isoformat()
+            fills += [{"symbol": "SPY", "side": "buy", "quantity": 1, "price": 100.0, "tag": name, "ts": ts},
+                      {"symbol": "SPY", "side": "sell", "quantity": 1, "price": sell, "tag": "time_exit", "ts": ts[:-6] + "+00:01"}]
+        ledger.write_text(json.dumps({"fills": fills}))
+
+    trades(14, 103.0)
+    assert promote.candidates(s, {}, NOW) == []  # a backtest pass alone is not enough: 15 closed trades first
+    trades(15, 97.0)
+    assert promote.candidates(s, {}, NOW) == []  # and they must have made money
+    trades(15, 103.0)
+    [c] = promote.candidates(s, {}, NOW)
+    assert (c["kind"], c["target"]) == ("rule", name) and "+3.00%" in c["evidence"]
+    promote.propose(s, {}, NOW, approve=True)
+
+    lib = NS(strategy=NS(name="orb"))
+    comp = NS(settings=s, configured=[lib], promoted_rules=frozenset(), launched="x")
+    runs = {}
+    promote.apply_rules(comp, NS(equity=20_000.0), runs)
+    assert [ws.strategy.name for ws in comp.configured] == ["orb", name] and comp.launched is None
+    assert comp.configured[1].strategy.evidence["systematic"] and runs == {name: 2_000.0}  # 10% of the account, no more
+
+    report["live"] = []  # the rule stops passing the nightly backtest
+    assert promote.review(s, NOW + timedelta(days=1))[0]["why_ended"] == "the rule no longer passes the nightly backtest"
+    runs = {}
+    promote.apply_rules(comp, NS(equity=20_000.0), runs)
+    assert [ws.strategy.name for ws in comp.configured] == ["orb"] and runs == {}
+
+
+def test_the_paper_cycle_gives_a_promoted_rule_its_sleeve(tmp_path, monkeypatch):
+    from ctbot.library import factory
+    from ctbot.paper.simulator import PaperBroker
+    from ctbot.pipeline import run_cycle
+    from ctbot.risk.manager import AccountState
+    from tests.test_learning import _MD
+    from tests.test_pipeline import _components
+
+    name = "fx_rsi2_any_g8_h5_etfs"
+    monkeypatch.setattr(factory, "load_report", lambda path=None: {"live": [name], "candidates": {name: {
+        "name": name, "family": "rsi2", "universe": "etfs", "filter": "any", "giveback": 0.08, "max_hold": 5}}})
+    now = datetime(2026, 10, 13, 15, tzinfo=UTC)
+    md = _MD(50.0)
+    broker = PaperBroker(md, 1000.0, tmp_path / "ledger.json", slippage_bps=0, clock=lambda: now)
+    c = _components(broker, [])
+    c.market_data = md
+    state = AccountState(equity=1000, cash=1000, peak_equity=1000, day_start_equity=1000, open_positions=0)
+    run_cycle(c, state, now)
+    assert state.sleeves == {} and c.promoted_rules == frozenset()  # nothing promoted: nothing changes
+    promote._save(c.settings, [{"id": "p1", "kind": "rule", "target": name, "title": "", "evidence": "", "status": "active",
+                                "proposed": now.isoformat(), "decided": now.isoformat(), "ended": None, "why_ended": None,
+                                "undo": None}])
+    run_cycle(c, state, now)
+    assert state.sleeves == {name: 100.0} and [ws.strategy.name for ws in c.configured] == [name]

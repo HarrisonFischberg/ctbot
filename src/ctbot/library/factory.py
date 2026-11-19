@@ -16,6 +16,10 @@ It passes only if every gate holds:
 * dev Sharpe above 0 and 20+ validation trades (the library's own admission rules);
 * it still makes money over the selection years at 3x the normal costs.
 
+The research agent's rules (ctbot.library.agent, families `ag_*`) join the grid the night after they are
+proposed and go through the same gates, counted as their own set together with every agent rule that
+failed before.
+
 Each group winner also gets a "plateau" share: how many of its neighbouring exit settings were
 profitable too (reported, not a gate). Finalists then get one look at the holdout (2023 on), recorded once per candidate in the trial
 registry. It is a sanity check after selection, never used to rank. The "live" list holds
@@ -70,8 +74,10 @@ FILTERS = {"any": None, "spy_trend": _spy_trend, "volume": _volume, "beats_spy":
 
 def candidates() -> list[dict[str, Any]]:
     out = []
-    for fam, filt, gb, hm, uni in itertools.product(sg.FAMILIES.values(), FILTERS, GIVEBACKS, HOLD_MULTS,
-                                                    sg.UNIVERSES):
+    from ctbot.library import agent  # the research agent's rules (keys ag_*) are tested like library rules
+
+    for fam, filt, gb, hm, uni in itertools.product([*sg.FAMILIES.values(), *agent.families().values()], FILTERS,
+                                                    GIVEBACKS, HOLD_MULTS, sg.UNIVERSES):
         hold = max(2, round(fam.max_hold * hm))
         out.append({"name": f"fx_{fam.key}_{filt}_g{round(gb * 100)}_h{hold}_{uni}", "family": fam.key,
                     "filter": filt, "giveback": gb, "max_hold": hold, "universe": uni})
@@ -79,7 +85,11 @@ def candidates() -> list[dict[str, Any]]:
 
 
 def family_of(c: dict[str, Any]) -> sg.Family:
-    base, f = sg.FAMILIES[c["family"]], FILTERS[c["filter"]]
+    if not (base := sg.FAMILIES.get(c["family"])):
+        from ctbot.library import agent
+
+        base = agent.families(every=True)[c["family"]]
+    f = FILTERS[c["filter"]]
     rule = base.rule if f is None else (lambda d, spy: base.rule(d, spy) & f(d, spy).astype(bool))
     return replace(base, key=c["name"], rule=rule, max_hold=c["max_hold"])
 
@@ -92,7 +102,11 @@ def _selection(r: pd.Series) -> pd.Series:
 
 
 def run(panels: dict[str, dict[str, pd.DataFrame]], spy: pd.DataFrame,
-        cands: list[dict[str, Any]] | None = None, progress: bool = False, registry=None) -> dict[str, Any]:
+        cands: list[dict[str, Any]] | None = None, progress: bool = False, registry=None,
+        retired: dict[str, float] | None = None) -> dict[str, Any]:
+    """`retired`: p-values of the research agent's earlier failed trials (agent.retired). Agent rules
+    (family ag_*) are judged as their own set: BH and the Deflated Sharpe count run over tonight's
+    agent groups plus every retired trial, so the agent's failures raise its own bar, not the library's."""
     from ctbot.research.lab import deflated_sharpe
     from ctbot.research.validation import benjamini_hochberg, pbo, sharpe_pvalue, spa_pvalue
 
@@ -118,7 +132,11 @@ def run(panels: dict[str, dict[str, pd.DataFrame]], spy: pd.DataFrame,
             best[g] = n
     pvals = {n: sharpe_pvalue(sel[n]) for n in best.values()}
     plateau = {n: _plateau(rows[n], rows, sr) for n in best.values()}
-    survivors = benjamini_hochberg(pvals, FDR_Q)
+    retired = retired or {}
+    ag = {n for n in pvals if rows[n]["family"].startswith("ag_")}
+    survivors = benjamini_hochberg({n: p for n, p in pvals.items() if n not in ag}, FDR_Q) if len(pvals) > len(ag) else {}
+    if ag:
+        survivors.update(benjamini_hochberg({**retired, **{n: pvals[n] for n in ag}}, FDR_Q))
     sr_var = float(np.var(list(sr.values()), ddof=1)) if len(sr) > 1 else 0.0
     selection = pd.DataFrame({n: r[r.index <= lbt.SPLITS["validation"][1]] for n, r in daily.items()})
     run_pbo = pbo(selection.to_numpy()) if selection.shape[1] >= 2 and len(selection) >= 10 else None
@@ -128,7 +146,8 @@ def run(panels: dict[str, dict[str, pd.DataFrame]], spy: pd.DataFrame,
 
     passed = []
     for name, c in rows.items():
-        dsr = deflated_sharpe(sel[name].tolist(), len(best), sr_var)["dsr"]
+        trials = len(ag) + len(retired) if c["family"].startswith("ag_") else len(best) - len(ag)
+        dsr = deflated_sharpe(sel[name].tolist(), trials, sr_var)["dsr"]
         checks = {"pbo": not lucky, "fdr": bool(survivors.get(name)), "dsr": dsr >= MIN_DSR,
                   "dev_sharpe_positive": c["dev"].get("sharpe", 0) > 0,
                   "enough_trades": c["validation"].get("trades", 0) >= 20}
@@ -253,9 +272,13 @@ def main() -> None:
     print(f"backtesting {len(cands)} candidates ...", flush=True)
     from ctbot.research.registry import Registry
 
-    rep = run(panels, spy, cands, progress=True, registry=Registry())
+    from ctbot.library import agent
+
+    rep = run(panels, spy, cands, progress=True, registry=Registry(), retired=agent.retired())
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(rep, indent=2, default=str))
+    if gone := agent.settle(rep):
+        print(f"research agent: retired {', '.join(gone)} (tested, passed nowhere; still counted)")
     p = rep["pbo"]
     print(f"PBO across the run: {p['pbo']:.2f}" if p else "PBO: not enough data")
     print(f"SPA p-value that no candidate beats cash: {rep['spa_pvalue']}")
