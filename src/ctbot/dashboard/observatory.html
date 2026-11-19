@@ -349,11 +349,10 @@ main:focus { outline: none; }
 .ap-side[hidden] { display: none; }
 .subnav { display: flex; gap: 6px; align-items: stretch; padding: 5px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow-x: auto; scrollbar-width: none; }
 .subnav::-webkit-scrollbar { display: none; }
-.subnav button { flex: none; border: 1px solid var(--line); background: rgba(var(--tint), .03); color: var(--ink); padding: 9px 22px; border-radius: 6px; font: 500 14.5px var(--sans); cursor: pointer; }
+.subnav button { flex: 1 1 0; white-space: nowrap; border: 1px solid var(--line); background: rgba(var(--tint), .03); color: var(--ink); padding: 9px 22px; border-radius: 6px; font: 500 14.5px var(--sans); cursor: pointer; }
 .subnav button:hover { background: rgba(var(--tint), .07); }
-.subnav button.on { background: var(--fill); color: var(--on-fill); border-color: transparent; font-weight: 600; min-width: 140px; }
+.subnav button.on { background: var(--fill); color: var(--on-fill); border-color: transparent; font-weight: 600; }
 .subnav button:focus-visible { outline: 2px solid var(--neon); outline-offset: 1px; }
-.subnav button:nth-child(n + 3) { border-color: transparent; background: transparent; }
 .ovc { display: flex; flex-direction: column; }
 .ovc .chart { height: 250px; }
 .ovc .foot { margin: 6px 0 0; color: var(--ink-2); font-size: 12px; }
