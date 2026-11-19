@@ -30,6 +30,19 @@ def test_target_stop_and_time_exits():
     assert t["exit_reason"] == "time" and t["net_ret"] < 0  # costs only
 
 
+def test_swing_idea_without_a_plan_is_scored_over_its_horizon():
+    idea = {"id": "x", "ts": T0.isoformat(), "symbol": "KO", "direction": "long", "decision": {"approve": True},
+            "signals": [{"strategy": "momentum", "direction": "long", "horizon_days": 2.0, "evidence": {"return": 0.2}}]}
+    two_days = 2 * 24 * 12  # 5-minute bars
+    up = _bars([(100, 100)] * two_days + [(104, 104)] * 3)
+    s = score_idea(idea, up)
+    assert (s["model"], s["exit_reason"], s["exit"]) == ("momentum", "time", 104)
+    crash = _bars([(100, 100), (100, 89)] + [(89, 89)] * two_days)
+    s = score_idea(idea, crash)
+    assert s["exit_reason"] == "stop" and s["exit"] == 90.0  # 10% under the entry
+    assert score_idea(idea, _bars([(100, 100)] * 5)) is None  # horizon not reached yet: pending
+
+
 def test_pending_when_exit_not_cached_and_summary():
     short = _bars([(100, 100)] * 3)
     nxt = _idea(True, exit_at="2026-10-14T09:35:00-04:00")

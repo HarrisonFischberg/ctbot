@@ -18,3 +18,24 @@ source = "ctbot research backtest, 14 ETFs, out-of-sample 2020-2026"
 [turn_of_month]
 avg_ret = 0.00407
 source = "ctbot research backtest, out-of-sample 2020-2026: SPY +34.3 bps, QQQ +47.1 bps (mean of the two)"
+
+# Swing models, raw signals without Claude's review, 88-name universe, 2 bps (ETFs) / 4 bps (stocks)
+# a side. The universe is today's large caps, so these flatter anything that buys strength.
+# Study: profit-fixes/study.py (2026-11-19). With an 8% trail instead: +116, +77 and +41 bps.
+[momentum]
+avg_ret = 0.00521
+win_rate = 0.38
+trades = 1152
+source = "profit-fixes study, daily bars, out-of-sample 2020-2026, 4% trailing stop"
+
+[trend_template]
+avg_ret = 0.00370
+win_rate = 0.38
+trades = 2285
+source = "profit-fixes study, daily bars, out-of-sample 2020-2026, 4% trailing stop"
+
+[mean_reversion]
+avg_ret = 0.00084
+win_rate = 0.48
+trades = 1839
+source = "profit-fixes study, daily bars, out-of-sample 2020-2026, 4% trailing stop"

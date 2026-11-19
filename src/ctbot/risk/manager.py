@@ -187,8 +187,8 @@ class RiskManager:
         With the autopilot's trailing on, a non-systematic entry gets no fixed target: it records
         its entry, its highest price and a trail distance (Claude's stop distance capped by the
         give-back, or the give-back for a model's own stop), and `trail` raises the stop behind
-        the price. Systematic models keep
-        their own backtested exits."""
+        the price. Systematic models, and models whose plan names its
+        own exit rule, keep their backtested exits."""
         L = self.limits
         systematic = bool(plan and plan.get("systematic"))
         max_loss = L.max_stop_loss_pct if systematic or not self.max_loss_pct else self.max_loss_pct
@@ -206,7 +206,10 @@ class RiskManager:
             b = {"stop": round(fill_price * (1 - stop_pct), 4),
                  "target": round(fill_price * (1 + tp_pct), 4) if tp_pct else None}
         # a factory rule brings its own backtested give-back, even though it is systematic
-        giveback = (plan or {}).get("giveback") or (None if systematic else self.trail_giveback)
+        # A model with its own backtested exit rule (rsi2_etf sells above its 5-day average) keeps it:
+        # 2010-26, a 4% trail cut its out-of-sample edge from +11.7 to +2.6 bps a trade.
+        own_exit = systematic or bool((plan or {}).get("exit_rule"))
+        giveback = (plan or {}).get("giveback") or (None if own_exit else self.trail_giveback)
         if giveback:
             # Claude's stop sets the trail (capped by the give-back); a model's own stop (often a
             # tight ATR stop) stays the starting stop and the trail uses the give-back itself
