@@ -24,6 +24,9 @@ from ctbot.research import bars as cache
 from ctbot.research.backtest import cost_bps
 
 
+RECENT_DAYS = 60  # the learning loop's scoreboard: long enough for 30+ ideas, short enough to forget
+
+
 def _plan(idea: dict[str, Any]) -> dict[str, Any] | None:
     for s in idea.get("signals", []):
         if s.get("direction") == "long" and (s.get("evidence") or {}).get("exit_at"):
@@ -75,11 +78,15 @@ def summarize(scores: list[dict[str, Any]]) -> dict[str, Any]:
         for g in (s["model"], "all"):
             groups[g].setdefault(key, []).append(s["net_ret"])
 
-    def stat(r):
-        return {"n": len(r), "avg_bps": statistics.mean(r) * 1e4 if r else None,
-                "win_rate": sum(x > 0 for x in r) / len(r) if r else None}
-
     return {m: {k: stat(v) for k, v in g.items()} for m, g in groups.items()}
+
+
+def stat(r: list[float]) -> dict[str, Any]:
+    """n, average and win rate of a list of returns, plus the t-statistic of the average against zero."""
+    sd = statistics.stdev(r) if len(r) > 1 else 0.0
+    return {"n": len(r), "avg_bps": statistics.mean(r) * 1e4 if r else None,
+            "win_rate": sum(x > 0 for x in r) / len(r) if r else None,
+            "t": statistics.mean(r) / sd * len(r) ** 0.5 if sd else None}
 
 
 def calibration(scores: list[dict[str, Any]], width: float = 0.1) -> list[dict[str, Any]]:
@@ -126,8 +133,10 @@ def run(ideas_path: Path, out: Path, fetch=None) -> dict[str, Any]:
             pending += 1
         else:
             scores.append(s)
-    report = {"generated_at": datetime.now(timezone.utc).isoformat(), "scored": len(scores),
-              "pending": pending, "summary": summarize(scores), "calibration": calibration(scores), "scores": scores[-500:]}
+    now = datetime.now(timezone.utc)
+    recent = [s for s in scores if datetime.fromisoformat(s["ts"]) >= now - timedelta(days=RECENT_DAYS)]
+    report = {"generated_at": now.isoformat(), "scored": len(scores), "pending": pending, "summary": summarize(scores),
+              "recent": summarize(recent), "calibration": calibration(scores), "scores": scores[-500:]}
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2, default=str))
     return report

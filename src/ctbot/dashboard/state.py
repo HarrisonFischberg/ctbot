@@ -280,6 +280,15 @@ def _variants(settings: Settings) -> list[dict[str, Any]]:
         return []
 
 
+def _promotions(settings: Settings) -> list[dict[str, Any]]:
+    """Learning-loop changes for main: the one waiting for a yes, the active ones, and the last few ended."""
+    from ctbot import promote
+
+    items = promote.load(settings)
+    return [x for x in items if x["status"] in ("proposed", "active")] + \
+        [x for x in items if x["status"] not in ("proposed", "active")][-5:]
+
+
 def _autopilot(settings: Settings, strategies: list[dict[str, Any]], fills: list[dict[str, Any]],
                now: datetime) -> dict[str, Any]:
     """Autopilot page: the two knobs, and which models it lets trade now and why."""
@@ -287,7 +296,9 @@ def _autopilot(settings: Settings, strategies: list[dict[str, Any]], fills: list
 
     cfg = autopilot.load(settings.autopilot_path)
     enabled = [s for s in strategies if s["enabled"]]
-    verdicts = autopilot.decide([s["name"] for s in enabled], fills, now)
+    from ctbot import promote
+
+    verdicts = autopilot.decide([s["name"] for s in enabled], fills, now, benched=promote.active(settings)["bench"])
     models = [{"name": s["name"], "plain": s.get("plain"), "description": s.get("description"),
                "systematic": s["name"].startswith("trend_core"), "configured_mode": s["mode"],
                **verdicts[s["name"]]} for s in enabled]
@@ -448,6 +459,7 @@ def build_state(
         "autopilot": _autopilot(settings, _strategies(settings.strategies_file), ledger.get("fills", []), now),
         "trading_modes": _trading_modes(settings, ledger.get("fills", []), equity - day_start, today),
         "variants": _variants(settings),
+        "promotions": _promotions(settings),
         "manual_orders": _manual_activity(settings),
         "collective2": _c2(),
         "research": _research(),

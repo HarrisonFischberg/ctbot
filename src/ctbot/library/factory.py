@@ -16,6 +16,11 @@ It passes only if every gate holds:
 * dev Sharpe above 0 and 20+ validation trades (the library's own admission rules);
 * it still makes money over the selection years at 3x the normal costs.
 
+The research agent's rules (ctbot.library.agent, families `ag_*`) join the grid the night after they are
+proposed and go through the same gates with a higher bar: they are counted among the library's
+trials, tonight's agent rules and every agent rule that failed before. Library rules are judged
+over library candidates only, so their results do not move when the agent adds a rule.
+
 Each group winner also gets a "plateau" share: how many of its neighbouring exit settings were
 profitable too (reported, not a gate). Finalists then get one look at the holdout (2023 on), recorded once per candidate in the trial
 registry. It is a sanity check after selection, never used to rank. The "live" list holds
@@ -29,6 +34,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
+import logging
 import time
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -41,6 +47,7 @@ import pandas as pd
 from ctbot.library import backtest as lbt
 from ctbot.library import signals as sg
 
+log = logging.getLogger(__name__)
 REPORT = Path("data/research/factory_report.json")
 GIVEBACKS = (0.05, 0.08, 0.12)
 HOLD_MULTS = (0.5, 1.0, 2.0)
@@ -70,8 +77,10 @@ FILTERS = {"any": None, "spy_trend": _spy_trend, "volume": _volume, "beats_spy":
 
 def candidates() -> list[dict[str, Any]]:
     out = []
-    for fam, filt, gb, hm, uni in itertools.product(sg.FAMILIES.values(), FILTERS, GIVEBACKS, HOLD_MULTS,
-                                                    sg.UNIVERSES):
+    from ctbot.library import agent  # the research agent's rules (keys ag_*) are tested like library rules
+
+    for fam, filt, gb, hm, uni in itertools.product([*sg.FAMILIES.values(), *agent.families().values()], FILTERS,
+                                                    GIVEBACKS, HOLD_MULTS, sg.UNIVERSES):
         hold = max(2, round(fam.max_hold * hm))
         out.append({"name": f"fx_{fam.key}_{filt}_g{round(gb * 100)}_h{hold}_{uni}", "family": fam.key,
                     "filter": filt, "giveback": gb, "max_hold": hold, "universe": uni})
@@ -79,9 +88,17 @@ def candidates() -> list[dict[str, Any]]:
 
 
 def family_of(c: dict[str, Any]) -> sg.Family:
-    base, f = sg.FAMILIES[c["family"]], FILTERS[c["filter"]]
+    if not (base := sg.FAMILIES.get(c["family"])):
+        from ctbot.library import agent
+
+        base = agent.families(every=True)[c["family"]]  # KeyError: the rule left the agent's store
+    f = FILTERS[c["filter"]]
     rule = base.rule if f is None else (lambda d, spy: base.rule(d, spy) & f(d, spy).astype(bool))
     return replace(base, key=c["name"], rule=rule, max_hold=c["max_hold"])
+
+
+def _agent(c: dict[str, Any]) -> bool:
+    return c["family"].startswith("ag_")  # the research agent's keys; no library family may start ag_
 
 
 def _selection(r: pd.Series) -> pd.Series:
@@ -92,7 +109,12 @@ def _selection(r: pd.Series) -> pd.Series:
 
 
 def run(panels: dict[str, dict[str, pd.DataFrame]], spy: pd.DataFrame,
-        cands: list[dict[str, Any]] | None = None, progress: bool = False, registry=None) -> dict[str, Any]:
+        cands: list[dict[str, Any]] | None = None, progress: bool = False, registry=None,
+        retired: dict[str, float] | None = None) -> dict[str, Any]:
+    """`retired`: p-values of the research agent's earlier failed trials (agent.retired). Agent rules
+    (family ag_*) clear a higher bar than library rules: their BH, Deflated Sharpe count, Sharpe
+    spread and PBO run over the library's trials, tonight's agent groups and every retired trial.
+    Library rules are judged over library candidates only, exactly as in a run with no agent rules."""
     from ctbot.research.lab import deflated_sharpe
     from ctbot.research.validation import benjamini_hochberg, pbo, sharpe_pvalue, spa_pvalue
 
@@ -118,17 +140,35 @@ def run(panels: dict[str, dict[str, pd.DataFrame]], spy: pd.DataFrame,
             best[g] = n
     pvals = {n: sharpe_pvalue(sel[n]) for n in best.values()}
     plateau = {n: _plateau(rows[n], rows, sr) for n in best.values()}
-    survivors = benjamini_hochberg(pvals, FDR_Q)
-    sr_var = float(np.var(list(sr.values()), ddof=1)) if len(sr) > 1 else 0.0
+    retired = retired or {}
+    ag = {n for n in pvals if _agent(rows[n])}
+    lib = {n: p for n, p in pvals.items() if n not in ag}
+    survivors = benjamini_hochberg(lib, FDR_Q) if lib else {}
+    if ag:
+        every = benjamini_hochberg({**retired, **pvals}, FDR_Q)
+        survivors.update({n: every[n] for n in ag})
     selection = pd.DataFrame({n: r[r.index <= lbt.SPLITS["validation"][1]] for n, r in daily.items()})
-    run_pbo = pbo(selection.to_numpy()) if selection.shape[1] >= 2 and len(selection) >= 10 else None
-    lucky = run_pbo is None or run_pbo["pbo"] >= 0.5
-    # a diagnostic, not a gate: can the best of every candidate beat cash once all the tries are counted?
-    spa = round(spa_pvalue(selection.to_numpy()), 4)
+
+    def luck(names: list[str]) -> tuple[float, dict | None]:
+        """Sharpe spread and PBO across these candidates."""
+        v = [sr[n] for n in names if n in sr]
+        s = selection[names]
+        return (float(np.var(v, ddof=1)) if len(v) > 1 else 0.0,
+                pbo(s.to_numpy()) if s.shape[1] >= 2 and len(s) >= 10 else None)
+
+    lib_names = [n for n in rows if not _agent(rows[n])] or list(rows)
+    judged = {False: luck(lib_names)}
+    judged[True] = luck(list(rows)) if len(lib_names) < len(rows) else judged[False]
+    run_pbo = judged[False][1]
+    # a diagnostic, not a gate: can the best library candidate beat cash once all the tries are counted?
+    spa = round(spa_pvalue(selection[lib_names].to_numpy()), 4)
 
     passed = []
     for name, c in rows.items():
-        dsr = deflated_sharpe(sel[name].tolist(), len(best), sr_var)["dsr"]
+        sr_var, set_pbo = judged[_agent(c)]
+        lucky = set_pbo is None or set_pbo["pbo"] >= 0.5
+        trials = len(best) + len(retired) if _agent(c) else len(lib)
+        dsr = deflated_sharpe(sel[name].tolist(), trials, sr_var)["dsr"]
         checks = {"pbo": not lucky, "fdr": bool(survivors.get(name)), "dsr": dsr >= MIN_DSR,
                   "dev_sharpe_positive": c["dev"].get("sharpe", 0) > 0,
                   "enough_trades": c["validation"].get("trades", 0) >= 20}
@@ -154,7 +194,9 @@ def run(panels: dict[str, dict[str, pd.DataFrame]], spy: pd.DataFrame,
             live.append(n)
     return {"generated": datetime.now(UTC).isoformat(timespec="seconds"), "n_candidates": len(rows),
             "pbo": run_pbo, "spa_pvalue": spa, "splits": {k: lbt.SPLITS[k] for k in ("dev", "validation")},
-            "gates": {"fdr_q": FDR_Q, "min_dsr": MIN_DSR, "cost_stress": COST_STRESS, "groups": len(best)},
+            "gates": {"fdr_q": FDR_Q, "min_dsr": MIN_DSR, "cost_stress": COST_STRESS, "groups": len(lib) or len(best),
+                      "agent_groups": len(ag), "agent_retired_trials": len(retired),
+                      "agent_pbo": judged[True][1] if ag else None},
             "passed": passed, "live": live, "candidates": rows}
 
 
@@ -201,7 +243,12 @@ def live_strategies(report: dict[str, Any] | None) -> list:
     out = []
     for name in (report or {}).get("live", []):
         c = report["candidates"][name]
-        rs = RuleStrategy(c["family"], c["universe"], name, fam=family_of(c),
+        try:
+            fam = family_of(c)
+        except KeyError:  # an agent rule gone from the store: skip it, never stop the trading cycle
+            log.warning("factory: %s has no rule behind it any more; not trading it", name)
+            continue
+        rs = RuleStrategy(c["family"], c["universe"], name, fam=fam,
                           evidence={"systematic": True, "giveback": c["giveback"]})
         out.append(WeightedStrategy(rs, 1.0, standalone=True, mode="trade"))
     return out
@@ -253,9 +300,16 @@ def main() -> None:
     print(f"backtesting {len(cands)} candidates ...", flush=True)
     from ctbot.research.registry import Registry
 
-    rep = run(panels, spy, cands, progress=True, registry=Registry())
-    REPORT.parent.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text(json.dumps(rep, indent=2, default=str))
+    from ctbot.library import agent
+
+    rep = run(panels, spy, cands, progress=True, registry=Registry(), retired=agent.retired())
+    # a partial run must not replace the report the factory book trades from, nor retire agent rules
+    partial = bool(args.universe or args.limit)
+    out = REPORT.with_suffix(".partial.json") if partial else REPORT
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(rep, indent=2, default=str))
+    if not partial and (gone := agent.settle(rep)):
+        print(f"research agent: retired {', '.join(gone)} (tested, passed nowhere; still counted)")
     p = rep["pbo"]
     print(f"PBO across the run: {p['pbo']:.2f}" if p else "PBO: not enough data")
     print(f"SPA p-value that no candidate beats cash: {rep['spa_pvalue']}")
@@ -269,7 +323,7 @@ def main() -> None:
           f"BH q=10%, DSR >= 0.95 on 2010-22, dev Sharpe > 0, 20+ trades, profitable at 3x costs)")
     print(f"factory book trades {len(rep['live'])}: {', '.join(rep['live']) or 'none'} "
           "(passed, profitable 2023-now, one per rule and universe)")
-    print(f"written: {REPORT}")
+    print(f"written: {out}" + (" (partial run: the factory book keeps its last full report)" if partial else ""))
 
 
 if __name__ == "__main__":

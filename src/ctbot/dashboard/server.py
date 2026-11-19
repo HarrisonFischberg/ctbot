@@ -392,6 +392,22 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
         return 200, {"ok": True, "enabled": cfg.enabled, "max_loss_pct": cfg.max_loss_pct, "giveback_pct": cfg.giveback_pct,
                      "min_confidence": cfg.min_confidence}
 
+    def decide_promotion(body: dict) -> tuple[int, dict]:
+        from ctbot import promote
+
+        if current_settings().mode.value != "paper":
+            return 400, {"error": "promotions are paper only"}
+        if body.get("undo") is not True and not isinstance(body.get("approve"), bool):
+            return 400, {"error": "approve must be true or false"}
+        try:
+            now, pid = datetime.now(timezone.utc), str(body.get("id", ""))
+            item = (promote.undo(current_settings(), pid, now) if body.get("undo") is True
+                    else promote.decide(current_settings(), pid, body["approve"], now))
+        except ValueError as e:
+            return 400, {"error": str(e)}
+        log.info("promotion %s: %s (%s)", item["id"], item["status"], item["title"])
+        return 200, {"ok": True, "status": item["status"]}
+
     def save_trading_modes(body: dict) -> tuple[int, dict]:
         from ctbot import trading_modes
 
@@ -409,6 +425,7 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
     routes = {
         "/api/autopilot": save_autopilot,
         "/api/trading-modes": save_trading_modes,
+        "/api/promotions/decide": decide_promotion,
         "/api/assistant/chat": assistant_chat,
         "/api/assistant/apply": assistant_apply,
         "/api/assistant/dismiss": assistant_dismiss,

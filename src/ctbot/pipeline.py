@@ -78,6 +78,7 @@ class Components:
     # strategies as configured in strategies.toml; `strategies` is this, as the launcher sees it
     configured: list[WeightedStrategy] | None = None
     launched: tuple | None = None  # last applied launcher state: (in use, {name: capital})
+    promoted_rules: frozenset = frozenset()  # factory rules the learning loop promoted onto this book (promote.apply_rules)
     # (symbol, side) -> monotonic time of the last submission: refuses an identical order within
     # DUPLICATE_WINDOW_S (a retried cycle, a double click, a strategy firing twice)
     recent_orders: dict = field(default_factory=dict)
@@ -120,6 +121,10 @@ def apply_launcher(c: Components, state: AccountState, positions: dict, now: dat
     if c.configured is None:
         c.configured = list(c.strategies)
     if not c.executor.is_live:
+        from ctbot import promote  # lazy: promote imports the readout and variants
+
+        rule_sleeves: dict[str, float] = {}
+        promote.apply_rules(c, state, rule_sleeves)
         try:
             auto_invest.run(c.settings, now)  # Invest for me: weekly re-pick, top-ups as cash frees
         except Exception:  # noqa: BLE001 - a bad plan file must not stop the cycle
@@ -161,7 +166,8 @@ def apply_launcher(c: Components, state: AccountState, positions: dict, now: dat
         autopilot.apply(c, state, ap, fills, now, frozenset(runs))
     elif (in_use, runs) != c.launched:
         c.strategies = [
-            replace(ws, mode="trade", standalone=True) if ws.strategy.name in runs else replace(ws, mode="shadow")
+            replace(ws, mode="trade", standalone=True) if ws.strategy.name in runs or ws.strategy.name in c.promoted_rules
+            else replace(ws, mode="shadow")
             for ws in c.configured
         ] if in_use else list(c.configured)
         c.launched = (in_use, runs)
@@ -170,6 +176,10 @@ def apply_launcher(c: Components, state: AccountState, positions: dict, now: dat
     if extra := trading_modes.traded_models(c.modes):  # aggressive day trading: these trade, benched or not
         c.strategies = [replace(ws, mode="trade", standalone=True) if ws.strategy.name in extra else ws
                         for ws in c.strategies]
+    if not c.executor.is_live:
+        # a promoted factory rule trades inside its own slice of the account; none is held for one that cannot trade
+        trading = {ws.strategy.name for ws in c.strategies if ws.mode == "trade"}
+        runs = {**{n: v for n, v in rule_sleeves.items() if n in trading}, **runs}
     state.sleeves = dict(runs)
     state.sleeve_used = {n: used.get(n, 0.0) for n in runs}
     # each strategy's unspent money is kept for it: no other strategy may buy with it
@@ -230,6 +240,7 @@ def _idea(
             "approve": decision.approve, "confidence": decision.confidence,
             "rationale": decision.rationale, "suggested_notional": decision.suggested_notional,
             "stop_loss_pct": decision.stop_loss_pct, "take_profit_pct": decision.take_profit_pct,
+            **({"paired": decision.paired} if decision.paired else {}),
         },
         "risk": None if verdict is None else {
             "allowed": verdict.allowed, "reasons": list(verdict.reasons),
@@ -750,12 +761,26 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                         c.settings.ideas_path.with_name("idea_scores.json"))
                 except Exception:  # noqa: BLE001 - memory is optional context, never a blocker
                     log.exception("outcome memory failed for %s", cand.symbol)
-            if c.settings.review_lessons:
-                from ctbot.learn import lessons_for  # lazy: learn imports the readout and variants
+            review = lambda acct: (c.engine.evaluate(cand, acct, debate=True) if c.settings.review_debate  # noqa: E731
+                                   else c.engine.evaluate(cand, acct))
+            from ctbot import promote  # lazy: learn and promote import the readout and variants
+            from ctbot.learn import lessons_for
 
-                account["lessons"] = lessons_for(c.settings.lessons_file, buyers)
-            decision = (c.engine.evaluate(cand, account, debate=True) if c.settings.review_debate
-                        else c.engine.evaluate(cand, account))
+            # the learner book sees every lesson; main sees the ones Harold approved for it (promote)
+            allowed = None if c.settings.review_lessons else promote.active(c.settings)["lessons"]
+            shown = [x for x in lessons_for(c.settings.lessons_file, buyers)
+                     if x.get("id") and (allowed is None or allowed.get(x["id"]) == x["text"])]
+            if shown:
+                # Reviewed twice, with and without the lessons, so each lesson is judged on the verdicts it
+                # changed (learn.lesson_effects). The plain review is the one the other books share.
+                floor = c.risk.limits.min_claude_confidence if c.risk.min_confidence is None else c.risk.min_confidence
+                took = lambda d: d.approve and d.confidence >= floor  # noqa: E731
+                plain = review(account)
+                decision = review({**account, "lessons": [x["text"] for x in shown]})
+                decision = replace(decision, paired={"lessons": [x["id"] for x in shown], "take": took(decision),
+                                                     "plain_take": took(plain)})
+            else:
+                decision = review(account)
             adv = avg_dollar_volume(c.market_data, cand.symbol)
             verdict = c.risk.check_entry(cand, decision, state, quote, adv, held, today, report, now,
                                          live_quotes(c.market_data), **_entry_gates(c, cand))

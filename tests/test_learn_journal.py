@@ -75,7 +75,11 @@ def test_apply_logs_a_hash_chain_and_rollback_restores(tmp_path):
     lid = lessons[0]["id"]
     up = learn.apply(tmp_path, [{"action": "update", "id": lid, "text": "orb: stricter after 15:00",
                                   "models": ["orb"], "evidence": "orb 20 closed"}], LATEST)[0]
-    assert next(x for x in learn.load_lessons(tmp_path) if x["id"] == lid)["text"] == "orb: stricter after 15:00"
+    assert up["after"]["id"] != lid and up["after"]["created"] == up["ts"]  # new words are a new lesson, tested from zero
+    assert [x["text"] for x in learn.load_lessons(tmp_path) if x["id"] in (lid, up["after"]["id"])] == ["orb: stricter after 15:00"]
+    same = learn.apply(tmp_path, [{"action": "update", "id": up["after"]["id"], "text": "orb: stricter after 15:00",
+                                   "models": ["orb"], "evidence": "orb 21 closed"}], LATEST)[0]
+    assert same["after"]["id"] == up["after"]["id"]  # fresh evidence alone keeps the lesson and its record
     learn.rollback(tmp_path, up["event"])
     assert next(x for x in learn.load_lessons(tmp_path) if x["id"] == lid)["text"] == lessons[0]["text"]
     learn.rollback(tmp_path, rows[0]["event"])  # undo the create
@@ -115,25 +119,66 @@ def test_refine_applies_checked_edits_records_spend_and_stops_at_the_daily_cap(t
 
 def test_lessons_for_picks_the_reviewed_models_and_all(tmp_path):
     learn.apply(tmp_path, [_edit(), _edit(text="vwap_revert: prefer the morning", models=["vwap_revert"])], LATEST)
-    assert learn.lessons_for(tmp_path / "lessons.json", ["orb"]) == [_edit()["text"]]
+    assert [x["text"] for x in learn.lessons_for(tmp_path / "lessons.json", ["orb"])] == [_edit()["text"]]
     assert learn.lessons_for(tmp_path / "missing.json", ["orb"]) == []
 
 
-def test_guard_undoes_the_newest_recent_edit_when_the_learner_trails_base(tmp_path):
+def test_check_refuses_a_lesson_that_cannot_change_a_verdict():
+    summary = {"orb": {"approved": {"n": 0}, "rejected": {"n": 40, "avg_bps": -24.0}},
+               "gap": {"approved": {"n": 0}, "rejected": {"n": 40, "avg_bps": 12.0}}}
+    latest = {"books": {}, "ideas": {"summary": summary}}
+    assert "changes nothing" in learn.check(_edit(), [], latest)  # all rejected, and they lose
+    assert learn.check(_edit(models=["gap"]), [], latest) is None  # all rejected, but they would have won
+
+
+def test_scoreboard_calls_a_strategy_losing_only_with_a_sample_and_significance():
+    def g(n, avg, t):
+        return {"approved": {"n": n, "avg_bps": avg, "t": t}, "rejected": {"n": 0}}
+
+    board = learn.scoreboard({"all": g(200, -5, -1), "bad": g(40, -30.0, -3.5), "noisy": g(40, -30.0, -0.8),
+                              "thin": g(8, -90.0, -4.0), "good": g(40, 25.0, 2.0), "unreviewed": {"rejected": {"n": 3}}})
+    assert set(board) == {"bad", "noisy", "thin", "good"}
+    assert [m for m, r in board.items() if r["losing"]] == ["bad"]
+    assert board["thin"]["p"] is None and board["bad"]["p"] < 0.001
+
+
+def _paired_idea(ts, take, plain_take, lessons=("L1",)):
+    return {"id": ts, "ts": ts, "symbol": "KO", "direction": "long",
+            "decision": {"approve": take, "confidence": 0.5,
+                         "paired": {"lessons": list(lessons), "take": take, "plain_take": plain_take}},
+            "signals": [{"strategy": "orb", "direction": "long",
+                         "evidence": {"stop": 98.0, "target": 102.0, "exit_at": "2026-10-13T15:50:00-04:00"}}]}
+
+
+def test_lesson_effects_score_only_the_verdicts_a_lesson_changed(tmp_path, monkeypatch):
     from datetime import datetime, timedelta
 
-    learn.apply(tmp_path, [_edit()], LATEST, now=datetime(2026, 10, 1, tzinfo=UTC))
-    new = learn.apply(tmp_path, [_edit(text="orb: skip after 15:00")], LATEST, now=datetime(2026, 11, 3, tzinfo=UTC))[0]
-    days = [date(2026, 10, 27) + timedelta(days=i) for i in range(10)]
+    from ctbot.models import Bar
+    from ctbot.research import bars
 
-    def journals(learner):
-        return [{"day": d.isoformat(), "books": {"base": {"day_pnl": 0.0}, "learner": {"day_pnl": learner}}}
-                for d in days]
+    t0 = datetime(2026, 10, 13, 15, tzinfo=UTC)
+    down = [Bar("KO", t0 + timedelta(minutes=5 * i), 100, 100, 97, 97, 1) for i in range(80)]  # every entry stops out
+    monkeypatch.setattr(bars, "load", lambda interval, sym: down)
+    ts = [(t0 + timedelta(minutes=5 * i)).isoformat() for i in range(4)]
+    ideas = [_paired_idea(ts[0], False, True),   # the lesson made the bot pass on a loser: good
+             _paired_idea(ts[1], True, False),   # the lesson made the bot buy a loser: bad
+             _paired_idea(ts[2], False, True),
+             _paired_idea(ts[3], True, True)]    # same verdict either way: not counted
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    a.write_text("\n".join(json.dumps(x) for x in ideas))
+    b.write_text(json.dumps(ideas[0]))  # the same review in a second book counts once
+    e = learn.lesson_effects([a, b, tmp_path / "missing.jsonl"])["L1"]
+    assert e["n"] == 3 and e["avg_bps"] > 0 and round(e["win_rate"], 2) == 0.67
 
-    assert learn.guard(tmp_path, journals(-5.0)) is None  # $50 behind over 10 days: within the band
-    assert learn.guard(tmp_path, journals(-20.0)[:9]) is None  # not 10 days yet
-    row = learn.guard(tmp_path, journals(-20.0))
-    assert row["trigger"] == f"rollback {new['event']}"
-    assert [x["text"] for x in learn.load_lessons(tmp_path)] == [_edit()["text"]]
-    assert learn.guard(tmp_path, journals(-20.0)) is None  # the older lesson predates the window
-    assert learn.verify(tmp_path)
+
+def test_guard_deletes_a_lesson_whose_changed_verdicts_lost(tmp_path):
+    learn.apply(tmp_path, [_edit(), _edit(text="orb: skip after 15:00")], LATEST)
+    keep, bad = (x["id"] for x in learn.load_lessons(tmp_path))
+    effects = {keep: {"n": 25, "avg_bps": 4.0}, bad: {"n": 19, "avg_bps": -30.0}, "gone": {"n": 50, "avg_bps": -9.0}}
+    assert learn.guard(tmp_path, {**LATEST, "lessons": effects}) == []  # 19 changed verdicts: too few to judge
+    effects[bad]["n"] = 20
+    row, = learn.guard(tmp_path, {**LATEST, "lessons": effects})
+    assert row["trigger"] == "guard" and row["action"] == "delete" and not row["refused"]
+    assert [x["id"] for x in learn.load_lessons(tmp_path)] == [keep] and learn.verify(tmp_path)
+    learn.rollback(tmp_path, row["event"])  # a person can bring it back
+    assert len(learn.load_lessons(tmp_path)) == 2

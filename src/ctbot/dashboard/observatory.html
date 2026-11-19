@@ -1084,6 +1084,13 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
       <ul class="ap-note" id="tmLog"></ul>
     </div>
 
+    <div data-tab="trading" data-sub="overview" class="card span-12" id="promoCard" hidden>
+      <h2>Learned changes <span class="count" id="promoMeta"></span></h2>
+      <p class="explain">Each night the bot checks what it has learned against its own results. A change with enough evidence goes onto your main practice account,
+        one at a time (on its own, or after your Approve if PROMOTE_AUTO=false), and comes back off automatically if it stops paying. You can undo any of them here. Paper money only.</p>
+      <div id="promos"></div>
+    </div>
+
     <div data-tab="trading" data-sub="overview" class="card span-12 ovc">
       <h2>Strategy vs. Nasdaq<span class="spacer"></span><span class="badge">Simulated backtest</span></h2>
       <div class="legend" id="ovLegend"></div>
@@ -2772,6 +2779,30 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     const b = e.target.closest("[data-why]"); if (!b) return;
     const li = b.closest(".dec"); li.classList.toggle("open"); b.setAttribute("aria-expanded", li.classList.contains("open"));
   });
+  function renderPromotions() {
+    const P = S.promotions || [];
+    $("promoCard").hidden = !P.length;
+    if (!P.length) return;
+    const waiting = P.filter((p) => p.status === "proposed").length;
+    $("promoMeta").textContent = waiting ? "1 waiting for you" : `${P.filter((p) => p.status === "active").length} active`;
+    const WORDS = { proposed: "Waiting for you", active: "Active", declined: "Declined", undone: "Undone", expired: "Ended" };
+    put($("promos"), P.map((p) => `<div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;padding:10px 0;border-top:1px solid rgba(var(--tint),.1)">
+        <div style="flex:1 1 320px;min-width:0"><b>${esc(p.title)}</b><div class="explain" style="margin:2px 0 0">Why: ${esc(p.evidence)}.${p.why_ended ? ` Ended: ${esc(p.why_ended)}.` : ""}</div></div>
+        <div>${p.status === "proposed" ? `<button class="btn solid" data-promo="${esc(p.id)}" data-yes="1">Approve</button> <button class="btn" data-promo="${esc(p.id)}">Decline</button>`
+          : `${WORDS[p.status] || esc(p.status)}${p.status === "active" ? ` <button class="btn" data-promo="${esc(p.id)}" data-undo="1">Undo</button>` : ""}`}</div></div>`).join(""));
+  }
+  $("promos").addEventListener("click", async (e) => {
+    const b = e.target.closest("button[data-promo]");
+    if (!b) return;
+    const yes = !!b.dataset.yes, undo = !!b.dataset.undo;
+    if (undo && !confirm("Undo this change on your main practice account?\n\nIt won't be applied again for 30 days.")) return;
+    if (yes && !confirm("Approve this change for your main practice account?\n\nPaper money only. It is undone automatically if the account falls behind the unchanged one.")) return;
+    b.disabled = true;
+    const [ok, j] = await api("/api/promotions/decide", undo ? { id: b.dataset.promo, undo: true } : { id: b.dataset.promo, approve: yes });
+    if (!ok) { b.disabled = false; return toast("Not saved: " + (j.error || "error"), true); }
+    toast(undo ? "Undone: the bot drops it at its next market check." : yes ? "Approved: the bot applies it at its next market check." : "Declined: it won't be proposed again for 30 days.");
+    load();
+  });
   function renderVariants() {
     const V = S.variants || [];
     $("varCard").hidden = V.length < 2;
@@ -2851,7 +2882,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     toast(`Saved: QQQ gauge ${j.qqq_gate ? "on" : "off"}, aggressive day trading ${j.aggressive ? "on" : "off"}. The bot picks it up next cycle.`);
   });
   function renderAll() {
-    renderChrome(); renderModes(); renderTicker(); renderAutopilot(); renderVariants(); renderPortfolio(); renderAlloc(); renderIdeas(); renderChart(); renderLimits(); renderPositions();
+    renderChrome(); renderModes(); renderTicker(); renderAutopilot(); renderPromotions(); renderVariants(); renderPortfolio(); renderAlloc(); renderIdeas(); renderChart(); renderLimits(); renderPositions();
     renderWatchlist(); renderFills(); renderStrategies(); renderLog(); renderC2(); renderModels(); renderPostmortems(); renderThoughts(); renderFilterScore(); renderLab();
     renderRuns(); renderCatalog(); renderCompare(); renderStressWF(); renderSteps(); applySub();
     loadPx();
