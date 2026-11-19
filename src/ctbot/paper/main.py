@@ -156,6 +156,7 @@ def main() -> None:
         open_positions=len(broker.positions()),
     )
     load_account_state(state, settings.paper_risk_state_path)
+    state.paid_in = settings.starting_capital + broker.deposits
 
     log = logging.getLogger("ctbot.paper")
     # Side-by-side books (config/variants.toml): same data and Claude verdicts, their own settings.
@@ -174,6 +175,7 @@ def main() -> None:
         state.equity = broker.equity()
         sync_cash(broker, state)
         state.open_positions = len(broker.positions())
+        state.paid_in = settings.starting_capital + broker.deposits
 
     toml_stamp = {"v": _mtime(settings.strategies_file)}
 
@@ -287,9 +289,9 @@ def main() -> None:
         refresh_state()
         # run_cycle -> RiskManager.refresh updates peak, rolls the day, trips the kill switch.
         now = datetime.now(timezone.utc)
-        state.paid_in, was_below = settings.starting_capital + broker.deposits, state.below_floor
         run_cycle(components, state, now)
-        if state.below_floor and not was_below:
+        if state.floor_crossed:  # set by RiskManager.refresh, in this cycle or on a dashboard click
+            state.floor_crossed = False
             log.warning("re-think floor: equity $%.2f is under %.0f%% of the $%.2f put in; new buys stopped",
                         state.equity, settings.risk.reevaluate_below_pct * 100, state.paid_in)
             if url := os.environ.get("NOTIFY_URL", "").strip():

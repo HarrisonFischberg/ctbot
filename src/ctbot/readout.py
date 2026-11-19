@@ -147,7 +147,7 @@ def _learning_line(settings: Any, day: date) -> str:
     losing = [f"{m} ({r['avg_bps']:+.0f} bps over {r['n']})" for m, r in cur["scoreboard"].items() if r["losing"]]
     folder = learn.learning_dir(settings)
     edits = [r for r in learn.history(folder) if not r["refused"] and r["ts"][:10] == day.isoformat()
-             and r["trigger"] != "promote"]
+             and r["trigger"] not in ("promote", "levels")]
     return ("What changed: " + ("; ".join(lines) if lines else "no newly settled trades.")
             + f" Reviewer lessons: {len(learn.load_lessons(folder))} active, {len(edits)} edited today"
             + "."

@@ -11,8 +11,17 @@ What keeps a nightly setter from chasing noise:
 * After that it moves only when a pair beats the current one with t >= MIN_T on per-day averages
   (ideas on one day move together, so days are the sample, not ideas). MIN_T = 3 allows for picking
   the best of 25 pairs.
+* Days next to each other share price paths (swing ideas are held for weeks), so the t uses a
+  Newey-West standard error over NW_LAGS days.
 * Ideas whose model keeps its own exit (systematic, an exit rule or its own give-back) are left out:
   these numbers do not touch them.
+* It stands aside while a promoted test-account setting is on trial (promote.py owns the numbers then).
+
+Swing ideas (momentum, trend_template, mean_reversion) have no time exit in the live bot, so here
+they run until the stop or the trail sells them, and an open one is valued at the last bar.
+shortcut: an intraday winner rolled overnight (RiskManager.maybe_swing), partial profit-takes and the
+end-of-day flatten are not replayed, and Claude's missing stop is taken as 5%; model them if the
+setter ever moves the numbers on intraday ideas alone.
 
 LEVELS_AUTO=false makes it report only. Every change is a row in the learning history.
 """
@@ -38,7 +47,7 @@ log = logging.getLogger(__name__)
 STEPS = (0.04, 0.06, 0.08, 0.10, 0.12)
 GRID = [(a, b) for a in STEPS for b in STEPS]  # (max_loss_pct, giveback_pct)
 PRIOR = (0.08, 0.08)
-LOOKBACK_DAYS, MIN_DAYS, MIN_IDEAS, MIN_T = 60, 20, 60, 3.0
+LOOKBACK_DAYS, MIN_DAYS, MIN_IDEAS, MIN_T, NW_LAGS = 60, 20, 60, 3.0, 10
 DEFAULT_STOP = 0.05  # RiskLimits.default_stop_loss_pct, used when Claude gave no stop
 
 
@@ -48,19 +57,20 @@ def replay(idea: dict[str, Any], bars: list, max_loss: float, giveback: float) -
     if not plan or not bars or plan.get("systematic") or plan.get("exit_rule") or plan.get("giveback"):
         return None
     t0, exit_at = datetime.fromisoformat(idea["ts"]), datetime.fromisoformat(plan["exit_at"])
+    swing = "stop_pct" in plan  # score_ideas' stand-in plan: live, these have no time exit
     i = next((k for k, b in enumerate(bars) if b.ts >= t0), None)
-    if i is None or bars[-1].ts < exit_at:
+    if i is None or bars[-1].ts < (t0 + timedelta(days=1) if swing else exit_at):
         return None
     entry = bars[i].open
     if plan.get("stop") is not None:  # a model's own stop, floored by the max loss; the trail is the give-back
         stop, trail = max(min(float(plan["stop"]), entry * 0.999), entry * (1 - max_loss)), giveback
     else:
         d = (idea.get("decision") or {}).get("stop_loss_pct") or DEFAULT_STOP
-        d = min(d / 100 if d > 1 else d, max_loss)  # old log rows hold percent, not a fraction
+        d = min(d / 100 if d >= 1 else d, max_loss)  # old log rows hold percent, not a fraction
         stop, trail = entry * (1 - d), min(d, giveback)
     stop, peak = max(stop, entry * (1 - trail)), entry
     for b in bars[i:]:
-        if b.ts >= exit_at:
+        if not swing and b.ts >= exit_at:
             px = b.open
             break
         if b.low <= stop:
@@ -69,7 +79,7 @@ def replay(idea: dict[str, Any], bars: list, max_loss: float, giveback: float) -
         peak = max(peak, b.high)
         stop = max(stop, peak * (1 - trail))
     else:
-        return None
+        px = bars[-1].close  # a swing idea still open: valued at the last bar, the same bar for every pair
     c = cost_bps(idea["symbol"]) / 1e4
     return px * (1 - c) / (entry * (1 + c)) - 1
 
@@ -99,9 +109,11 @@ def evaluate(ideas: list[dict[str, Any]], bars_for, current: tuple[float, float]
     mean = [statistics.mean(d[k] for d in daily) for k in range(len(pairs))]
     best, cur = max(range(len(pairs)), key=mean.__getitem__), pairs.index(current)
     diff = [d[best] - d[cur] for d in daily]
-    sd = statistics.stdev(diff)
-    out.update(best=pairs[best], gain_bps=statistics.mean(diff) * 1e4,
-               t=statistics.mean(diff) / sd * len(diff) ** 0.5 if sd else (99.0 if statistics.mean(diff) > 0 else 0.0))
+    m, n_d = statistics.mean(diff), len(diff)
+    cov = [sum((diff[j] - m) * (diff[j - k] - m) for j in range(k, n_d)) / n_d for k in range(NW_LAGS + 1)]
+    var = cov[0] + 2 * sum((1 - k / (NW_LAGS + 1)) * cov[k] for k in range(1, NW_LAGS + 1))
+    out.update(best=pairs[best], gain_bps=m * 1e4,
+               t=m / (var / n_d) ** 0.5 if var > 0 else (99.0 if m > 0 else 0.0))
     return out
 
 
@@ -131,7 +143,10 @@ def run(settings: Any, now: datetime) -> dict[str, Any]:
         return loaded[sym]
 
     ev = evaluate(ideas, bars_for, current, now)
-    if not state_path.exists():  # first run: the long backtest's answer, before any replay can speak
+    first = not state_path.exists()
+    if any(x["kind"] == "setting" and x["status"] == "active" for x in promote.load(settings)):
+        target, why = current, "a promoted test-account setting is on trial; its review decides first"
+    elif first:  # first run: the long backtest's answer, before any replay can speak
         target, why = PRIOR, "the 2011-2026 backtest: stops this wide beat tighter ones in both periods"
     elif ev["best"] and ev["best"] != current and ev["t"] >= MIN_T:
         target = ev["best"]
@@ -141,16 +156,16 @@ def run(settings: Any, now: datetime) -> dict[str, Any]:
         target, why = current, "no other pair is clearly better yet"
     ev.update(target=target, why=why, changed=False)
     if target != current and os.environ.get("LEVELS_AUTO", "true").strip().lower() not in ("0", "false", "no"):
-        autopilot.save(settings.autopilot_path, autopilot.validate(
-            {**asdict(cfg), "max_loss_pct": target[0], "giveback_pct": target[1]}))
-        learn._append(folder, {
+        new = autopilot.validate({**asdict(cfg), "max_loss_pct": target[0], "giveback_pct": target[1]})
+        learn._append(folder, {  # the record first: a change is never without its history row
             "event": os.urandom(4).hex(), "ts": now.isoformat(timespec="seconds"), "trigger": "levels", "action": "set",
             "before": {"max_loss_pct": current[0], "giveback_pct": current[1]},
             "after": {"max_loss_pct": target[0], "giveback_pct": target[1]}, "evidence": why[:500], "refused": None})
+        autopilot.save(settings.autopilot_path, new)
         promote._notify("CTbot set its own stop levels",
                         f"Max loss {target[0]:.0%}, give-back {target[1]:.0%} (was {current[0]:.0%} and {current[1]:.0%}).\nWhy: {why}.")
         ev["changed"] = True
-    if ev["changed"] or not state_path.exists():
+    if ev["changed"] or (first and target == PRIOR == current):  # report-only never uses up the first run
         state_path.write_text(json.dumps({"ts": now.isoformat(timespec="seconds"), "max_loss_pct": target[0],
                                           "giveback_pct": target[1], "why": why, "applied": ev["changed"]}))
     return ev

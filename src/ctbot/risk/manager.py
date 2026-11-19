@@ -61,6 +61,7 @@ class AccountState:
     paid_in: float = 0.0
     # Equity is at or under reevaluate_below_pct of paid_in; persisted so the stop latches once per fall.
     below_floor: bool = False
+    floor_crossed: bool = False  # set by refresh on a new fall; the paper loop sends the notice and clears it
 
 
 def save_account_state(state: AccountState, path: Path) -> None:
@@ -164,10 +165,11 @@ class RiskManager:
             state.kill_switch = True
         # The re-think floor: falling through it stops new buys once. After the owner clears the
         # stop it stays clear until equity has been back above the floor and falls through again.
-        below = 0 < state.equity <= self.limits.reevaluate_below_pct * state.paid_in
-        if below and not state.below_floor:
-            state.kill_switch = True
-        state.below_floor = below
+        if state.paid_in > 0:  # unknown (test books): leave the saved latch alone
+            below = 0 < state.equity <= self.limits.reevaluate_below_pct * state.paid_in
+            if below and not state.below_floor:
+                state.kill_switch = state.floor_crossed = True
+            state.below_floor = below
         cutoff = today - timedelta(days=7)
         state.day_trade_dates = [d for d in state.day_trade_dates if d > cutoff]
         state.entry_dates = [d for d in state.entry_dates if d == today]

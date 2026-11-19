@@ -299,3 +299,9 @@ def test_rethink_floor_stops_buys_once_per_fall():
     off = _state(equity=10, peak_equity=10)  # money put in unknown (test books): no floor
     rm.refresh(off, date(2026, 11, 19))
     assert not off.kill_switch
+    rm.clear_kill_switch(s)
+    s.paid_in = 0  # a click before the first cycle after a restart: the latch must survive
+    rm.refresh(s, date(2026, 11, 20))
+    s.paid_in = 20_000
+    rm.refresh(s, date(2026, 11, 20))
+    assert s.below_floor and not s.kill_switch

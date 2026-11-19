@@ -4,7 +4,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
-from ctbot import autopilot, levels
+from ctbot import autopilot, learn, levels
 from ctbot.models import Bar
 
 T0 = datetime(2026, 10, 1, 14, tzinfo=UTC)
@@ -38,7 +38,14 @@ def test_replay_follows_set_bracket():
     own["signals"][0] = {"strategy": "rsi2_etf", "direction": "long",
                          "evidence": {"exit_at": (T0 + timedelta(days=1)).isoformat(), "stop": 90, "exit_rule": "x"}}
     assert levels.replay(own, dip, 0.04, 0.04) is None  # keeps its own exit: these numbers don't touch it
-    assert levels.replay(_idea(), _bars([100, 101]), 0.08, 0.08) is None  # horizon not reached
+    assert levels.replay(_idea(), _bars([100, 101]), 0.08, 0.08) is None  # under a day of bars
+    assert round(levels.replay(_idea(), _bars([100, 103] * DAY), 0.08, 0.08), 3) == 0.029  # swing: no time exit, valued at the last bar
+    orb = _idea()
+    orb["signals"][0] = {"strategy": "orb", "direction": "long",
+                         "evidence": {"exit_at": (T0 + timedelta(hours=2)).isoformat(), "stop": 99}}
+    slide = _bars([100, 98, 97] + [97] * 30)
+    assert round(levels.replay(orb, slide, 0.08, 0.08), 3) == -0.011  # the model's own stop at 99
+    assert round(levels.replay(orb, _bars([100, 101] + [102] * 30), 0.08, 0.08), 3) == 0.019  # sold at its exit time
 
 
 def _many(n_days, closes):
@@ -74,3 +81,21 @@ def test_moves_only_on_clear_evidence(tmp_path, monkeypatch):
     autopilot.save(s.autopilot_path, autopilot.validate({"enabled": True, "max_loss_pct": 0.04, "giveback_pct": 0.04}))
     ev = levels.run(s, now)
     assert ev["target"][0] >= 0.08 and not ev["changed"] and autopilot.load(s.autopilot_path).max_loss_pct == 0.04
+    monkeypatch.delenv("LEVELS_AUTO")
+    moved = levels.run(s, now)  # a later move, on the replay's evidence
+    folder = learn.learning_dir(s)
+    assert moved["changed"] and autopilot.load(s.autopilot_path).max_loss_pct == moved["target"][0] >= 0.08
+    assert [r["trigger"] for r in learn.history(folder)] == ["levels", "levels"] and learn.verify(folder)
+    assert json.loads((folder / "levels.json").read_text())["max_loss_pct"] == moved["target"][0]
+
+
+def test_report_only_keeps_the_first_run(tmp_path, monkeypatch):
+    s = SimpleNamespace(autopilot_path=tmp_path / "autopilot.json", ideas_path=tmp_path / "ideas.jsonl",
+                        paper_ledger_path=tmp_path / "ledger.json")
+    autopilot.save(s.autopilot_path, autopilot.validate({"enabled": True, "max_loss_pct": 0.07, "giveback_pct": 0.04}))
+    monkeypatch.setattr(levels.cache, "load", lambda interval, sym: [])
+    monkeypatch.delenv("NOTIFY_URL", raising=False)
+    monkeypatch.setenv("LEVELS_AUTO", "false")
+    assert not levels.run(s, T0)["changed"]
+    monkeypatch.delenv("LEVELS_AUTO")
+    assert levels.run(s, T0)["changed"] and autopilot.load(s.autopilot_path).max_loss_pct == 0.08
