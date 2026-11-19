@@ -36,7 +36,8 @@ BENCH_WINDOW_DAYS = 30
 # Claude's approval is the gate and its win probability only has to clear this floor instead of
 # MIN_CLAUDE_CONFIDENCE (Harold's choice: 30% on 2026-10-20, 20% on 2026-10-27). Settable per book in autopilot.json.
 MIN_CONFIDENCE = 0.20
-LIMITS = {"max_loss_pct": (0.01, 0.25), "giveback_pct": (0.01, 0.30), "min_confidence": (0.10, 0.90)}
+LIMITS = {"max_loss_pct": (0.01, 0.25), "giveback_pct": (0.01, 0.30), "min_confidence": (0.10, 0.90),
+          "max_drawdown_pct": (0.05, 0.50)}
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,9 @@ class AutopilotConfig:
     max_loss_pct: float = 0.05
     giveback_pct: float = 0.08
     min_confidence: float = MIN_CONFIDENCE
+    # The owner's one risk setting: stop buying and ask him to reconsider when the account is this far
+    # under the money put in. Applies whether Autopilot is on or off (RiskManager.refresh).
+    max_drawdown_pct: float = 0.25
 
 
 def load(path: Path) -> AutopilotConfig:

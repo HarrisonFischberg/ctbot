@@ -73,8 +73,9 @@ dashboard on your Mac and phone over Tailscale, ntfy phone messages, and turning
   - **Self-set levels**: `ctbot-learn levels` runs nightly (plain code, no Claude). Main's max loss
     and give-back start at the backtest's 8% / 8% and move only when a replay of the account's own
     approved ideas shows another pair clearly ahead (t >= 3). `LEVELS_AUTO=false` only reports.
-    If equity falls to 75% of the money put in (`REEVALUATE_BELOW_PCT`), new buys stop once and a
-    notice goes out; stops and exits keep running until you re-evaluate.
+    The one risk setting is yours, "Set your max drawdown before reconsideration" on the Autopilot
+    page (default 25%): when the account is that far under the money put in, new buys stop once and
+    a notice goes out; stops and exits keep running until you reconsider.
   - **Learning journal**: every evening CTbot writes a journal for each paper book in
     `data/learning/journal/`: the book's day, each model's settled paper record, idea scores,
     calibration and the factory's picks. Plain code writes it; Claude isn't called.

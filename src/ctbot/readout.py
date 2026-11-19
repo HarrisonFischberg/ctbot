@@ -97,7 +97,7 @@ def _halts(s: Any) -> list[str]:
     except (FileNotFoundError, json.JSONDecodeError):
         st = {}
     if st.get("kill_switch"):
-        out.append("kill switch (" + ("re-evaluate: under the floor on the money put in" if st.get("below_floor") else "drawdown limit") + ")")
+        out.append("kill switch (" + ("reconsider: at the max drawdown on the money put in" if st.get("below_floor") else "drawdown limit") + ")")
     if st.get("risk_off"):
         out.append("pulled back: " + "; ".join(st["risk_off"]))
     return out
