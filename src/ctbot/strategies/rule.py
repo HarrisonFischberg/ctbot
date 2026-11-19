@@ -16,10 +16,10 @@ import pandas as pd
 
 from ctbot.library import backtest as lbt
 from ctbot.library import signals as sg
-from ctbot.market_hours import ET, exit_by
+from ctbot.market_hours import ET
 from ctbot.models import Direction, EventKind, Signal
 from ctbot.strategies.base import StrategyContext
-from ctbot.strategies.swing import _add_bdays
+from ctbot.strategies.swing import _add_bdays, _at
 
 log = logging.getLogger(__name__)
 FIELDS = ("open", "high", "low", "close", "volume")
@@ -74,7 +74,7 @@ class RuleStrategy:
             return []
         hits.sort(reverse=True)  # same ranking as the backtest: strongest 3-month return first
         quotes = ctx.market_data.quotes([h[1] for h in hits[: lbt.MAX_POS]])
-        exit_at = exit_by(_add_bdays(ctx.today, self.family.max_hold)).isoformat()
+        exit_at = _at(_add_bdays(ctx.today, self.family.max_hold), 15, 50)
         out = []
         for mom, sym, a, close in hits[: lbt.MAX_POS]:
             q = quotes.get(sym)

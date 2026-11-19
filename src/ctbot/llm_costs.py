@@ -1,8 +1,7 @@
 """Measured Claude API spend: one JSON line per call in data/llm_usage.jsonl.
 
 The decision engine (and the optional debate step) log `response.usage` here; the pipeline
-refuses further paid reviews once today's estimated spend, main book and side-by-side books
-together, reaches the main book's MAX_CLAUDE_USD_PER_DAY (a book's own cap only limits that book).
+refuses further paid reviews once today's estimated spend reaches MAX_CLAUDE_USD_PER_DAY.
 Prices are Anthropic list prices per million tokens (2026-10); unknown models are priced as
 Opus so the estimate errs high. Cache writes are billed at 1.25x the input price (2x for the
 1-hour TTL), cache reads at a tenth (less on the newest models: CACHE_READ).
@@ -63,13 +62,6 @@ def spent(path: Path, day: date) -> float:
         if row.get("day") == day.isoformat():
             total += float(row.get("usd", 0))
     return total
-
-
-def spent_all_books(main_path: Path, day: date) -> float:
-    """Today's spend of the main book plus every side-by-side book (data/variants/*/, see
-    ctbot.variants), so MAX_CLAUDE_USD_PER_DAY caps them in total."""
-    books = sorted(main_path.parent.glob(f"variants/*/{main_path.name}"))
-    return sum(spent(p, day) for p in [main_path, *books])
 
 
 def summary(path: Path) -> dict[str, Any]:
