@@ -166,7 +166,8 @@ def apply_launcher(c: Components, state: AccountState, positions: dict, now: dat
         autopilot.apply(c, state, ap, fills, now, frozenset(runs))
     elif (in_use, runs) != c.launched:
         c.strategies = [
-            replace(ws, mode="trade", standalone=True) if ws.strategy.name in runs else replace(ws, mode="shadow")
+            replace(ws, mode="trade", standalone=True) if ws.strategy.name in runs or ws.strategy.name in c.promoted_rules
+            else replace(ws, mode="shadow")
             for ws in c.configured
         ] if in_use else list(c.configured)
         c.launched = (in_use, runs)
@@ -176,7 +177,9 @@ def apply_launcher(c: Components, state: AccountState, positions: dict, now: dat
         c.strategies = [replace(ws, mode="trade", standalone=True) if ws.strategy.name in extra else ws
                         for ws in c.strategies]
     if not c.executor.is_live:
-        runs = {**rule_sleeves, **runs}  # a promoted factory rule trades inside its own slice of the account
+        # a promoted factory rule trades inside its own slice of the account; none is held for one that cannot trade
+        trading = {ws.strategy.name for ws in c.strategies if ws.mode == "trade"}
+        runs = {**{n: v for n, v in rule_sleeves.items() if n in trading}, **runs}
     state.sleeves = dict(runs)
     state.sleeve_used = {n: used.get(n, 0.0) for n in runs}
     # each strategy's unspent money is kept for it: no other strategy may buy with it

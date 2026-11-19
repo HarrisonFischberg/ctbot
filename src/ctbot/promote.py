@@ -170,7 +170,7 @@ def _factory_record(settings: Any, books: dict[str, Any]) -> dict[str, dict[str,
 
 def apply_rules(c: Any, state: Any, runs: dict[str, float]) -> None:
     """Called by the pipeline each paper cycle: main trades its promoted factory rules as systematic
-    strategies, each sized off its own sleeve (`runs`, which the launcher turns into state.sleeves).
+    strategies, each sized off its own sleeve (`runs`; the pipeline keeps the ones that are trading).
     A rule that leaves the list stops opening trades; what it holds keeps its stop and time exit."""
     from ctbot.library import factory
 
@@ -215,7 +215,12 @@ def propose(settings: Any, journal: dict[str, Any], now: datetime, approve: bool
         _save(settings, items + [item])
         _log(settings, "propose", item, now)
         if approve:
-            item = decide(settings, item["id"], True, now)
+            try:
+                item = decide(settings, item["id"], True, now)
+            except ValueError as e:  # cannot be applied any more: decline it so it does not block the queue
+                log.warning("promotion %s not applied: %s", item["id"], e)
+                decide(settings, item["id"], False, now)
+                return None
         _notify("CTbot applied a learned change" if approve else "CTbot: a change is waiting for your approval",
                 f"{item['title']}\nWhy: {item['evidence']}.\n"
                 + ("You can undo it" if approve else "Approve or decline it") + " on the dashboard's Autopilot page.")

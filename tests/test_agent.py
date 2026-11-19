@@ -102,6 +102,33 @@ def test_the_factory_tests_an_agent_rule_and_a_failure_is_retired_but_stays_coun
     assert list(agent.retired()) == list(r["pvalues"]) and agent.families() == {}
     assert "ag_coinflip" in agent.families(every=True)  # a book still holding its trades can rebuild the rule
     assert not any(c["family"].startswith("ag_") for c in fy.candidates())  # it is not re-run night after night
+    # the library's verdicts are the same as in a run the agent never joined
+    alone = fy.run({"etfs": {s: p[s] for s in ("AAA", "BBB", "CCC")}}, p["SPY"], [c for c in cands if c["family"] == "oracle"])
+    assert alone["pbo"] == rep["pbo"] and alone["spa_pvalue"] == rep["spa_pvalue"]
+    assert all(alone["candidates"][n]["dsr"] == rep["candidates"][n]["dsr"] for n in alone["candidates"])
+    # a rule gone from the store is skipped by the trading book, not a crash
+    agent._save([])
+    gone = next(n for n, c in rep["candidates"].items() if c["family"] == "ag_coinflip")
+    assert fy.live_strategies({**rep, "live": [gone, rep["passed"][0]]})[0].strategy.name == rep["passed"][0]
+
+
+def test_a_clone_is_refused_and_a_broken_store_is_never_overwritten(tmp_path):
+    store, usage = tmp_path / "agent_rules.json", tmp_path / "llm_usage.jsonl"
+    first = _rule(key="rsi_dip", conds=[{"type": "rsi_below", "params": {"n": 3, "x": 15}}], status="active")
+    assert agent.clone_of(_rule(key="twin", conds=[{"type": "rsi_below", "params": {"n": 3, "x": 15.5}}]), [first]) == "rsi_dip"
+    assert agent.clone_of(_rule(key="other", conds=[{"type": "gap_down", "params": {"pct": 0.01}}]), [first]) is None
+    assert agent.clone_of(_rule(key="breakout", conds=[{"type": "new_high", "params": {"n": 50}}]), []) == "donchian"  # a library rule renamed
+    agent._save([first, {"key": "from_a_newer_version", "shape": "unknown"}], store)
+    usage.write_text("not json\n")
+    c = _Client([_rule(key="twin", conds=[{"type": "rsi_below", "params": {"n": 3, "x": 15.5}}]),
+                 _rule(key="from_a_newer_version", conds=[{"type": "gap_down", "params": {"pct": 0.01}}])])
+    out = agent.propose(usage, date(2026, 11, 19), None, c, NOW, store)
+    assert "same days as rsi_dip" in out[0]["refused"] and "already used" in out[1]["refused"]
+    assert len(json.loads(store.read_text())["rules"]) == 2  # the row this version cannot read is kept
+    store.write_text("{ torn")
+    with pytest.raises(ValueError):
+        agent.propose(usage, date(2026, 11, 19), None, c, NOW, store)
+    assert store.read_text() == "{ torn" and c.calls == 1  # no call, no overwrite
 
 
 def test_failed_trials_raise_the_bar_for_later_agent_rules(monkeypatch):
@@ -118,5 +145,6 @@ def test_failed_trials_raise_the_bar_for_later_agent_rules(monkeypatch):
     p = _panel(6400, ("AAA", "SPY"), start="2000-01-03", seed=11)
     fy.run({"etfs": {"AAA": p["AAA"]}}, p["SPY"], cands, retired={"old_fail_1": 0.9, "old_fail_2": 0.7})
     lib, ag = seen
-    assert len(lib) == 1 and next(iter(lib)).startswith("fx_lib_")
-    assert len(ag) == 3 and {"old_fail_1", "old_fail_2"} < set(ag)  # tonight's agent rule is ranked among its failures
+    assert len(lib) == 1 and next(iter(lib)).startswith("fx_lib_")  # the library never sees the agent's trials
+    # tonight's agent rule is ranked among the library's trials and its own failures
+    assert len(ag) == 4 and {"old_fail_1", "old_fail_2", *lib} < set(ag)

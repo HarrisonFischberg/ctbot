@@ -1,6 +1,7 @@
 """Promotion: learned changes reach the main paper book only with a yes, one at a time, and come back off."""
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -278,3 +279,7 @@ def test_the_paper_cycle_gives_a_promoted_rule_its_sleeve(tmp_path, monkeypatch)
                                 "undo": None}])
     run_cycle(c, state, now)
     assert state.sleeves == {name: 100.0} and [ws.strategy.name for ws in c.configured] == [name]
+    assert [(ws.strategy.name, ws.mode) for ws in c.strategies] == [(name, "trade")]
+    c.strategies = [replace(ws, mode="shadow") for ws in c.strategies]  # benched: no cash is held for it
+    run_cycle(c, state, now)
+    assert state.sleeves == {}

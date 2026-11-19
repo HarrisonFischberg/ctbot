@@ -10,8 +10,10 @@ library rule (x filters x exits x universes) through the same gates.
 What keeps a nightly idea machine honest:
 * Every rule the agent ever tried stays counted. A rule that fails its first factory run is retired
   with its p-values, and the factory's Benjamini-Hochberg and Deflated Sharpe for agent rules run
-  over all of them, so each failure raises the bar for the next idea. Library rules are judged as
-  before, apart from the agent's.
+  over the library's trials, tonight's agent rules and every retired one, so each failure raises
+  the bar for the next idea. Library rules are judged as before, as if the agent did not exist.
+* A rule that fires on nearly the same days as a library rule or an earlier agent rule is refused
+  (`clone_of`), so a failed idea cannot come back under new numbers.
 * Claude has read about these years, and that hindsight leaks into its ideas and into the 2023+
   holdout alike. The test that cannot leak is forward: a passing rule trades in the factory paper
   book, and only its closed trades there can promote it to main (ctbot.promote).
@@ -21,6 +23,7 @@ Paper research only. Spend is capped by RESEARCH_MAX_USD_PER_DAY and logged as p
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
@@ -39,6 +42,7 @@ MAX_NEW, MAX_CONDITIONS = 3, 4
 RESEARCH_MODEL, RESEARCH_MAX_USD_PER_DAY = "claude-sonnet-5-5", 0.25
 KEY_OK = re.compile(r"[a-z][a-z0-9_]{2,23}")
 HOLD = (2, 120)
+BRIEF_RULES = 30
 
 
 def _high(d: pd.DataFrame, n: int) -> pd.Series:
@@ -98,15 +102,30 @@ BLOCKS: dict[str, tuple[str, dict[str, tuple[float, float]], Any]] = {
 INT_PARAMS = {"n", "k", "fast", "slow"}
 
 
+def _read(path: Path | None = None) -> list[Any]:
+    """The store as written. Raises when a file is there but unreadable, so nothing overwrites the
+    record of failed trials with a fresh list."""
+    path = path or STORE
+    if not path.exists():
+        return []
+    rules = json.loads(path.read_text())["rules"]
+    if not isinstance(rules, list):
+        raise ValueError(f"{path}: rules is not a list")
+    return rules
+
+
+def _valid(rules: list[Any]) -> list[dict[str, Any]]:
+    return [r for r in rules if isinstance(r, dict) and check(r, []) is None]
+
+
 def load(path: Path | None = None) -> list[dict[str, Any]]:
     try:
-        rules = json.loads((path or STORE).read_text())["rules"]
-        return [r for r in rules if isinstance(r, dict) and check(r, []) is None]
+        return _valid(_read(path))
     except (OSError, ValueError, KeyError, TypeError):
         return []
 
 
-def _save(rules: list[dict[str, Any]], path: Path | None = None) -> None:
+def _save(rules: list[Any], path: Path | None = None) -> None:
     path = path or STORE
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
@@ -152,6 +171,50 @@ def check(rule: dict[str, Any], existing: list[dict[str, Any]]) -> str | None:
     return None
 
 
+CLONE = 0.8
+
+
+@functools.lru_cache(maxsize=1)
+def _synthetic() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Made-up daily bars (fixed seed) to compare when two rules fire."""
+    rng = np.random.default_rng(0)
+    idx = pd.bdate_range("2000-01-03", periods=5000)
+
+    def bars(vol: float) -> pd.DataFrame:
+        close = 100 * np.exp(np.cumsum(rng.standard_t(4, len(idx)) * vol * (1 + 0.5 * np.sin(np.arange(len(idx)) / 200))))
+        open_ = np.roll(close, 1) * np.exp(rng.normal(0, vol / 2, len(idx)))
+        open_[0] = close[0]
+        hi = np.maximum(open_, close) * (1 + np.abs(rng.normal(0, vol / 2, len(idx))))
+        lo = np.minimum(open_, close) * (1 - np.abs(rng.normal(0, vol / 2, len(idx))))
+        return pd.DataFrame({"open": open_, "high": hi, "low": lo, "close": close,
+                             "volume": rng.lognormal(14, 0.5, len(idx))}, index=idx)
+
+    return bars(0.015), bars(0.008)
+
+
+def _fires(rule: Any) -> np.ndarray:
+    d, spy = _synthetic()
+    return rule(d, spy).fillna(False).to_numpy(dtype=bool)
+
+
+def clone_of(rule: dict[str, Any], existing: list[dict[str, Any]]) -> str | None:
+    """The library rule or earlier agent rule this one fires almost together with, or None.
+    shortcut: overlap on made-up bars, not real ones, so a clone that differs only on real-market
+    quirks gets through; upgrade to the cached universe bars if near-duplicates show up in the store."""
+    mine = _fires(family(rule).rule)
+    if not mine.any():
+        return None
+    others = {**{k: f.rule for k, f in sg.FAMILIES.items()}, **{r["key"]: family(r).rule for r in existing}}
+    for key, fn in others.items():
+        try:
+            theirs = _fires(fn)
+        except Exception:  # noqa: BLE001 - a library rule the made-up bars cannot feed is just not compared
+            continue
+        if (mine & theirs).sum() >= CLONE * (mine | theirs).sum():
+            return key
+    return None
+
+
 def family(rule: dict[str, Any]) -> sg.Family:
     conds = [(BLOCKS[c["type"]][2], {p: int(v) if p in INT_PARAMS else float(v) for p, v in c["params"].items()})
              for c in rule["conditions"]]
@@ -180,7 +243,8 @@ def retired(path: Path | None = None) -> dict[str, float]:
 def settle(report: dict[str, Any], path: Path | None = None) -> list[str]:
     """After a factory run: retire each agent rule that was tested and passed nowhere, keeping the
     p-values of its group winners. Returns the keys retired."""
-    rules, out = load(path), []
+    raw = _read(path)
+    rules, out = _valid(raw), []
     rows = report.get("candidates", {}).values()
     for r in rules:
         mine = [c for c in rows if c["family"] == f"ag_{r['key']}"]
@@ -191,7 +255,7 @@ def settle(report: dict[str, Any], path: Path | None = None) -> list[str]:
             r.update(status="retired", pvalues={c["name"]: c["pvalue"] for c in mine if c.get("pvalue") is not None})
             out.append(r["key"])
     if rules:
-        _save(rules, path)
+        _save(raw, path)
     return out
 
 
@@ -206,8 +270,9 @@ You see how every library rule and every rule you proposed before performed. Eve
 proposed stays in the multiple-testing count, so each failure raises the bar for all your later
 ideas: propose a rule only when you have a reason it should work that is not "it fits the past", and
 say that reason in `rationale` (the economic or behavioural effect it leans on). Prefer simple rules
-with round, conventional numbers; do not re-try small variations of a rule that failed. Proposing
-nothing is a good answer."""
+with round, conventional numbers; do not re-try small variations of a rule that failed, and a rule
+that fires on nearly the same days as a library rule or one of yours is refused. Proposing nothing
+is a good answer."""
 
 RULES_SCHEMA = {
     "type": "object", "additionalProperties": False, "required": ["rules"],
@@ -234,8 +299,10 @@ def _brief(report: dict[str, Any] | None, rules: list[dict[str, Any]]) -> dict[s
     return {"building_blocks": {k: {"means": v[0], "params": v[1]} for k, v in BLOCKS.items()},
             "library_rules": {f.key: f.tagline for f in sg.FAMILIES.values()},
             "group_winners": winners,
+            # the latest ones in full: the whole history would grow the call's cost every night
             "your_rules": [{k: r.get(k) for k in ("key", "tagline", "max_hold", "conditions", "rationale", "status", "last")}
-                           for r in rules],
+                           for r in rules[-BRIEF_RULES:]],
+            "rules_you_tried_in_all": len(rules),
             "failed_trials_counted_against_you": sum(len(r.get("pvalues") or {}) for r in rules if r.get("status") == "retired")}
 
 
@@ -244,13 +311,18 @@ def propose(usage_path: Path, day: date, report: dict[str, Any] | None, client: 
     """One Claude call; returns [{"key", "refused" (why, or None)}], or None when today's cap is spent."""
     model = os.environ.get("RESEARCH_MODEL", RESEARCH_MODEL)
     cap = float(os.environ.get("RESEARCH_MAX_USD_PER_DAY", RESEARCH_MAX_USD_PER_DAY))
-    try:
-        rows = [json.loads(ln) for ln in usage_path.read_text().splitlines() if ln.strip()]
-    except (OSError, ValueError):
-        rows = []
-    if sum(r.get("usd", 0) for r in rows if r.get("purpose") == "research" and r.get("day") == day.isoformat()) >= cap:
+    spent = 0.0
+    for ln in usage_path.read_text().splitlines() if usage_path.exists() else []:
+        try:  # one bad line must not hide the rest of today's spend
+            r = json.loads(ln)
+            if r.get("purpose") == "research" and r.get("day") == day.isoformat():
+                spent += float(r.get("usd") or 0)
+        except (ValueError, AttributeError, TypeError):
+            continue
+    if spent >= cap:
         return None
-    rules = load(path)
+    raw = _read(path)  # an unreadable store stops here, before any spend
+    rules = _valid(raw)
     if client is None:
         import anthropic
 
@@ -271,10 +343,15 @@ def propose(usage_path: Path, day: date, report: dict[str, Any] | None, client: 
         except (KeyError, TypeError):
             pass  # check() names what is wrong
         why = check(rule, rules)
+        if why is None and any(isinstance(r, dict) and r.get("key") == rule["key"] for r in raw):
+            why = f"the key {rule['key']} is already used"
+        if why is None and (twin := clone_of(rule, rules)):
+            why = f"fires on nearly the same days as {twin}"
         out.append({"key": rule.get("key"), "refused": why})
         if why is None:
             rules.append({**{k: rule[k] for k in ("key", "max_hold", "conditions")},
                           **{k: str(rule.get(k) or "")[:300] for k in ("title", "tagline", "rationale")},
                           "status": "active", "added": (now or datetime.now(UTC)).isoformat(timespec="seconds")})
-    _save(rules, path)
+            raw.append(rules[-1])
+    _save(raw, path)
     return out
