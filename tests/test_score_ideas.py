@@ -41,6 +41,10 @@ def test_swing_idea_without_a_plan_is_scored_over_its_horizon():
     s = score_idea(idea, crash)
     assert s["exit_reason"] == "stop" and s["exit"] == 90.0  # 10% under the entry
     assert score_idea(idea, _bars([(100, 100)] * 5)) is None  # horizon not reached yet: pending
+    idea["signals"][0]["horizon_days"] = float("nan")
+    assert score_idea(idea, up)["exit_reason"] == "time"  # scored over one day, not a crash
+    idea["signals"][0]["strategy"] = "congressional"
+    assert score_idea(idea, up) is None  # only the three swing models get the standard plan
 
 
 def test_pending_when_exit_not_cached_and_summary():

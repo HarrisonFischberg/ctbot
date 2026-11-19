@@ -21,7 +21,7 @@ source = "ctbot research backtest, out-of-sample 2020-2026: SPY +34.3 bps, QQQ +
 
 # Swing models, raw signals without Claude's review, 88-name universe, 2 bps (ETFs) / 4 bps (stocks)
 # a side. The universe is today's large caps, so these flatter anything that buys strength.
-# Study: profit-fixes/study.py (2026-11-19). With an 8% trail instead: +116, +77 and +41 bps.
+# Study: docs/research/profit-fixes/study.py (2026-11-19). Main trailed by 4% then. With an 8% trail instead: +116, +77 and +41 bps.
 [momentum]
 avg_ret = 0.00521
 win_rate = 0.38

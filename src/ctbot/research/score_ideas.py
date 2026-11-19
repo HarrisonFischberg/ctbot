@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import statistics
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -27,6 +28,7 @@ from ctbot.research.backtest import cost_bps
 RECENT_DAYS = 60  # the learning loop's scoreboard: long enough for 30+ ideas, short enough to forget
 
 
+SWING_MODELS = {"momentum", "trend_template", "mean_reversion"}
 SWING_STOP, SWING_MAX_DAYS = 0.10, 30  # the standard plan a swing idea is scored with
 
 
@@ -35,13 +37,15 @@ def _plan(idea: dict[str, Any]) -> dict[str, Any] | None:
     for s in longs:
         if (s.get("evidence") or {}).get("exit_at"):
             return {**s["evidence"], "model": s["strategy"]}
+    longs = [s for s in longs if s.get("strategy") in SWING_MODELS]
     if not longs:
-        return None
+        return None  # event models trade symbols whose 5-minute bars are not refreshed nightly
     # Swing models (momentum, trend_template, mean_reversion) carry no exit plan, so every such idea
     # is scored the same way: held for its own horizon behind a 10% disaster stop. That measures
     # the idea, not the book's trailing settings, and lets the scoreboard judge these strategies.
-    s = longs[0]
-    days = min(max(float(s.get("horizon_days") or 1), 1.0), SWING_MAX_DAYS)
+    s = longs[0]  # shortcut: the first swing model gets the whole score, split it when two often agree
+    days = float(s.get("horizon_days") or 1)
+    days = min(max(days, 1.0), SWING_MAX_DAYS) if math.isfinite(days) else 1.0  # a NaN half-life must not stop the run
     exit_at = datetime.fromisoformat(idea["ts"]) + timedelta(days=days)
     return {"model": s["strategy"], "exit_at": exit_at.isoformat(), "stop_pct": SWING_STOP}
 

@@ -111,8 +111,8 @@ def lesson_effects(idea_files: Iterable[Path]) -> dict[str, dict[str, Any]]:
     negated when it made the bot pass. Each (time, symbol) counts once across books.
     shortcut: a changed verdict is credited to every lesson shown in that review, so lessons for the
     same strategy share one record; show one lesson per review if they ever need telling apart.
-    shortcut: only ideas with an exit plan replay (the intraday models), so a lesson that only ever
-    changes swing-model verdicts shows n=0; replay swing ideas on daily bars when one matters."""
+    Swing ideas (momentum, trend_template, mean_reversion) replay on a standard plan, see
+    score_ideas._plan; event-model ideas still do not replay, so a lesson only about those shows n=0."""
     from ctbot.research import bars as cache
     from ctbot.research.score_ideas import score_idea, stat
 
