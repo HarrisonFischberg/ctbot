@@ -141,8 +141,13 @@ def candidates(settings: Any, journal: dict[str, Any], now: datetime) -> list[di
                                     f"{s['avg_ret']:+.2%} each and it still passes the nightly backtest"})
     from ctbot.library import index_rules
 
-    for name, r in sorted(index_rules.load().items()):
-        if r.get("winning"):
+    held = {index_rules.parts(n)[0] for n in active(settings)["rules"] if n in index_rules.NAMES}
+    for name, r in sorted(index_rules.winners(now.date()).items(), key=lambda kv: kv[1]["p"]):
+        sym, _, gate, _ = index_rules.parts(name)
+        # the QQQ core holds QQQ whenever it is above the gate, so such a rule could never buy; and
+        # one index rule a fund: a second would be the same bet and the two would block each other
+        if (sym, gate) != ("QQQ", "above") and sym not in held:
+            held.add(sym)
             f = r["forward"]
             out.append({"kind": "rule", "target": name,
                         "title": f"Let this index rule trade on the main account with up to {RULE_PCT:.0%} of it: {index_rules.title(name)}",
@@ -307,7 +312,7 @@ def review(settings: Any, now: datetime) -> list[dict[str, Any]]:
     from ctbot.library import factory, index_rules
 
     items = load(settings)
-    live_rules = set((factory.load_report() or {}).get("live", [])) | index_rules.keepers()
+    live_rules = set((factory.load_report() or {}).get("live", []))
     ended = []
     for x in items:
         if x["status"] == "proposed" and _age(x["proposed"], now) >= timedelta(days=PROPOSAL_DAYS):
@@ -320,8 +325,10 @@ def review(settings: Any, now: datetime) -> list[dict[str, Any]]:
             _end(settings, x, "expired", f"{BENCH_DAYS} days are up: it trades again and must re-earn a bench", now)
         elif x["kind"] == "lesson" and _lesson_text(settings, x["target"]) != x.get("text"):
             _end(settings, x, "undone", "the lesson was deleted or reworded", now)
-        elif x["kind"] == "rule" and x["target"] not in live_rules:
-            _end(settings, x, "undone", "the rule no longer passes its nightly check", now)
+        elif x["kind"] == "rule" and x["target"] in index_rules.NAMES and not index_rules.keep(x["target"], x["decided"][:10]):
+            _end(settings, x, "undone", "the rule stopped winning in its nightly replay", now)
+        elif x["kind"] == "rule" and x["target"] not in index_rules.NAMES and x["target"] not in live_rules:
+            _end(settings, x, "undone", "the rule no longer passes the nightly backtest", now)
         elif days >= CHECK_MIN_DAYS and t < CHECK_T:
             _end(settings, x, "undone", f"main fell behind the base account over the {days} days since (t {t:.1f})", now)
         else:

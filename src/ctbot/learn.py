@@ -86,21 +86,18 @@ def journal(settings: Any, day: date, factory_report: dict[str, Any] | None = No
     fac = {"generated": factory_report.get("generated"), "n_candidates": factory_report.get("n_candidates"),
            "passed": len(factory_report.get("passed", [])), "live": factory_report.get("live", [])}
     return {"day": day.isoformat(), "written": datetime.now(UTC).isoformat(timespec="seconds"),
-            "books": books, "ideas": ideas, "factory": fac, "index_rules": _index_rules(day), "scoreboard": scoreboard((ideas or {}).get("recent") or {}),
+            "books": books, "ideas": ideas, "factory": fac, "index_rules": _index_rules(), "scoreboard": scoreboard((ideas or {}).get("recent") or {}),
             "lessons": lesson_effects(s.ideas_path for name, s in _books(settings) if name in ("main", GUARD_BOOK))}
 
 
-def _index_rules(day: date) -> dict[str, Any] | None:
-    """Tonight's score of the 96 index rules (ctbot.library.index_rules), cut to what the journal needs:
-    the rules with a forward record or a passing history. The full table is data/research/index_rules.json."""
+def _index_rules() -> dict[str, Any] | None:
+    """The latest score of the 96 index rules (ctbot.library.index_rules; `ctbot-learn journal` refreshes
+    it first), cut to the rules with a forward record or a passing history. The full table is
+    data/research/index_rules.json."""
     from ctbot.library import index_rules
 
-    try:
-        rep = index_rules.refresh(day)
-    except Exception:  # noqa: BLE001 - the journal is still worth writing without it
-        log.exception("index rule scoring failed")
-        return None
-    if rep is None:
+    rep = index_rules.report()
+    if not rep:
         return None
     rows = rep["rules"]
     return {"tracked": len(rows), "bars_through": rep["bars_through"], "forward_from": rep["forward_from"],
@@ -529,6 +526,12 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "rollback":
         print(f"rolled back: {rollback(folder, args.event)['after']}")
         return
+    try:  # the nightly replay of the 96 index rules; the journal is still worth writing without it
+        from ctbot.library import index_rules
+
+        index_rules.refresh(day)
+    except Exception:
+        log.exception("index rule scoring failed")
     path = write(s, day)
     cur = json.loads(path.read_text())
     lines = changes(previous(path.parent, day), cur)

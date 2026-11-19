@@ -6,15 +6,18 @@ the signal. They were declared once, before any result was read (project study o
 the list never changes, so the count that the multiple-testing maths needs stays 96.
 
 Every night `score` replays all 96 on the daily bar cache (no Claude call, no orders):
-* history: 2000-2012 and 2013 to FORWARD_FROM, the two periods the study read. 2 of 96 passed both.
+* history: 2000-2012 and 2013 to FORWARD_FROM, the two periods the study read. 2 of 96 passed both
+  (PRIOR, fixed here so a revised bar cache cannot change which ones).
 * forward: trades entered from FORWARD_FROM on, bars nobody had seen when the rules were written.
   This is the record that builds night by night and the only one that can promote a rule.
 
-A rule is `winning` once it has MIN_TRADES forward trades over MIN_DAYS, a positive average and
-positive excess over simply holding in the same gate, and its forward p-value survives
-Benjamini-Hochberg at 10%: among the history passers if it is one of them, otherwise among all 96.
+A rule is `winning` once it has LOOKS[0] forward trades over MIN_DAYS, a positive average and
+positive excess over simply holding in the same gate, and its forward p-value (Student's t) survives
+Benjamini-Hochberg: among PRIOR if it is one of them, otherwise among all 96. Looking every night
+would let luck through, so a rule is only tested on its first 15, 30, 60 or 120 forward trades
+(LOOKS) and the 10% error rate is split across those four looks.
 ctbot.promote then lets it trade on the main paper book inside a capped slice, and takes it off
-again when its forward average turns negative (`keepers`).
+again when its forward average, or its average since it was promoted, turns negative (`keep`).
 """
 
 from __future__ import annotations
@@ -23,7 +26,6 @@ import json
 import math
 from datetime import date, time
 from pathlib import Path
-from statistics import NormalDist
 from typing import Any
 
 import pandas as pd
@@ -33,7 +35,9 @@ from ctbot.library import signals as sg
 REPORT = Path("data/research/index_rules.json")
 FORWARD_FROM = "2026-10-28"  # the study's bars ended 2026-10-27
 SEL, CONF = ("2000-01-01", "2012-12-31"), ("2013-01-01", "2026-10-27")
-MIN_TRADES, MIN_DAYS, FDR_Q = 12, 60, 0.10
+LOOKS, MIN_DAYS, FDR_Q = (15, 30, 60, 120), 60, 0.10
+MIN_AFTER, STALE_DAYS = 3, 7
+PRIOR = ("ix_SPY_dd7_any_h1", "ix_QQQ_rsi5_any_h5")  # the study's two passers
 GATE_DAYS, STOP = 170, 0.08
 SYMBOLS, HOLDS, GATES = ("SPY", "QQQ"), (1, 5), ("any", "above", "below")
 
@@ -69,8 +73,9 @@ def title(name: str) -> str:
 
 
 def _gate(g: str, d: pd.DataFrame, qqq: pd.DataFrame) -> pd.Series:
-    above = (qqq["close"] > qqq["close"].rolling(GATE_DAYS).mean()).reindex(d.index).fillna(False).astype(bool)
-    return {"any": above | ~above, "above": above, "below": ~above}[g]
+    avg = qqq["close"].rolling(GATE_DAYS).mean()
+    side = (qqq["close"] > avg).where(avg.notna()).reindex(d.index)  # NaN: no QQQ bar or average that day
+    return {"any": side.isna() | side.notna(), "above": side.eq(True), "below": side.eq(False)}[g]
 
 
 def fires(name: str, d: pd.DataFrame, qqq: pd.DataFrame) -> pd.Series:
@@ -102,6 +107,8 @@ def _stat(t: pd.Series, base: float) -> dict[str, Any]:
 
 def score(panel: dict[str, pd.DataFrame], today: date) -> dict[str, Any]:
     """All 96 rules on the bars in `panel` (SPY and QQQ daily)."""
+    from scipy.stats import t as student_t
+
     from ctbot.research.validation import benjamini_hochberg
 
     qqq, rows = panel["QQQ"], {}
@@ -112,23 +119,22 @@ def score(panel: dict[str, pd.DataFrame], today: date) -> dict[str, Any]:
         t = _trades(d, sig, hold)
         every = (d["close"].shift(-hold) / d["open"].shift(-1) - 1)[_gate(g, d, qqq)]  # the same hold from any day in the gate
         row = {k: _stat(t[a:z], float(every[a:z].mean())) for k, (a, z) in (("sel", SEL), ("conf", CONF), ("forward", (FORWARD_FROM, None)))}
-        s, c = row["sel"], row["conf"]
-        row["history_ok"] = bool(s["n"] >= 10 and c["n"] >= 10 and s["t"] and c["t"] and s["excess"] > 0 and c["excess"] > 0
-                                 and s["t"] >= 2 and c["t"] >= 1.5)
+        fwd = t[FORWARD_FROM:]
+        looked = max((k for k in LOOKS if k <= len(fwd)), default=0)  # the p-value only moves at these counts
+        at = _stat(fwd.iloc[:looked], float(every[FORWARD_FROM:].mean()))
+        row["p"] = float(student_t.sf(at["t"], looked - 1)) if looked and at["t"] is not None else 1.0
+        row["history_ok"] = name in PRIOR
         row["fires_today"] = bool(len(sig) and sig.iloc[-1])
+        row["trades"] = [[str(k.date()), round(float(v), 5)] for k, v in fwd.items()]
         rows[name] = row
 
-    def p(r: dict[str, Any]) -> float:  # one-sided: how likely is a forward record this good from no edge
-        f = r["forward"]
-        return NormalDist().cdf(-f["t"]) if f["n"] >= MIN_TRADES and f["t"] is not None else 1.0
-
-    prior = {n: p(r) for n, r in rows.items() if r["history_ok"]}
-    keep = {n for fam in (prior, {n: p(r) for n, r in rows.items()}) if fam
-            for n, ok in benjamini_hochberg(fam, FDR_Q).items() if ok}
+    q = FDR_Q / len(LOOKS)
+    keep = {n for fam in ({n: rows[n]["p"] for n in PRIOR}, {n: r["p"] for n, r in rows.items()})
+            for n, ok in benjamini_hochberg(fam, q).items() if ok}
     old = (today - date.fromisoformat(FORWARD_FROM)).days >= MIN_DAYS
     for n, r in rows.items():
         f = r["forward"]
-        r["winning"] = bool(old and n in keep and f["n"] >= MIN_TRADES and f["avg"] > 0 and f["excess"] > 0)
+        r["winning"] = bool(old and n in keep and f["n"] >= LOOKS[0] and f["avg"] > 0 and f["excess"] > 0)
     return {"day": today.isoformat(), "bars_through": str(qqq.index[-1].date()), "forward_from": FORWARD_FROM, "rules": rows}
 
 
@@ -148,19 +154,45 @@ def refresh(today: date, path: Path | None = None) -> dict[str, Any] | None:
     return rep
 
 
-def load(path: Path | None = None) -> dict[str, Any]:
+def _whole(r: Any) -> bool:
     try:
-        rules = json.loads((path or REPORT).read_text())["rules"]
-        return {n: r for n, r in rules.items() if n in NAMES and isinstance(r, dict)}
+        f = r["forward"]
+        return (isinstance(f["n"], int) and isinstance(r["trades"], list) and isinstance(r["p"], int | float)
+                and all(f[k] is None or isinstance(f[k], int | float) for k in ("avg", "excess")))
+    except (KeyError, TypeError):
+        return False
+
+
+def report(path: Path | None = None) -> dict[str, Any]:
+    """The last nightly report, rows that are not whole dropped; {} when there is none to read."""
+    try:
+        rep = json.loads((path or REPORT).read_text())
+        date.fromisoformat(rep["bars_through"])
+        rep["rules"] = {n: r for n, r in rep["rules"].items() if n in NAMES and _whole(r)}
+        return rep
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return {}
 
 
-def keepers(path: Path | None = None) -> set[str]:
-    """Rules a promotion may keep trading: the forward record is still positive. A promoted rule
-    whose record turns negative, or a report that cannot be read, takes it off the main book."""
-    return {n for n, r in load(path).items()
-            if (r.get("forward") or {}).get("n") and r["forward"]["avg"] > 0 and r["forward"]["excess"] > 0}
+def winners(today: date, path: Path | None = None) -> dict[str, dict[str, Any]]:
+    """Tonight's winning rules; none from a report whose bars are more than STALE_DAYS old."""
+    rep = report(path)
+    if not rep or (today - date.fromisoformat(rep["bars_through"])).days > STALE_DAYS:
+        return {}
+    return {n: r for n, r in rep["rules"].items() if r.get("winning") is True}
+
+
+def keep(name: str, since: str, path: Path | None = None) -> bool:
+    """May a rule promoted on `since` (YYYY-MM-DD) keep trading? Not when its forward average has
+    turned negative, nor when its MIN_AFTER+ trades entered since the promotion lost on average;
+    not when the report cannot be read either.
+    shortcut: judged on the replay, not on the main book's own fills (later entry, the 8% stop, a
+    skipped buy); switch to the ledger's closed trades once a promoted rule has some."""
+    r = report(path).get("rules", {}).get(name)
+    if not r or not r["forward"]["n"] or r["forward"]["avg"] <= 0:
+        return False
+    after = [ret for day, ret in r["trades"] if day > since]
+    return len(after) < MIN_AFTER or sum(after) > 0
 
 
 class IndexRule:
@@ -191,7 +223,7 @@ class IndexRule:
         try:
             d, qqq = (_frame([b for b in ctx.market_data.daily_bars(s, 520) if b.ts.date() < ctx.today])
                       for s in (self.symbol, "QQQ"))
-            if len(d) < 260 or len(qqq) < 260 or not bool(fires(self.name, d, qqq).iloc[-1]):
+            if len(d) < 260 or d.index[-1] != qqq.index[-1] or not bool(fires(self.name, d, qqq).iloc[-1]):
                 return []
             q = ctx.market_data.quotes([self.symbol]).get(self.symbol)
         except Exception:  # noqa: BLE001 - no bars or no quote today: no trade

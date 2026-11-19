@@ -48,6 +48,8 @@ def test_noise_promotes_nothing_and_a_real_forward_edge_is_winning_only_past_the
     spy, qqq = _bars(1), _bars(2)
     rep = ix.score({"SPY": spy, "QQQ": qqq}, TODAY)
     assert len(rep["rules"]) == 96 and not any(r["winning"] for r in rep["rules"].values())
+    for seed in range(3, 9):  # more made-up markets with no edge
+        assert not any(r["winning"] for r in ix.score({"SPY": _bars(seed), "QQQ": _bars(seed + 50)}, TODAY)["rules"].values())
     name = "ix_QQQ_three_down_any_h1"
     f = ix.fires(name, qqq, qqq)
     days = np.flatnonzero((f & (qqq.index >= ix.FORWARD_FROM)).to_numpy()[:-1]) + 1
@@ -55,7 +57,9 @@ def test_noise_promotes_nothing_and_a_real_forward_edge_is_winning_only_past_the
     rigged.iloc[days, rigged.columns.get_loc("open")] = rigged["close"].iloc[days] / (1.01 + 0.01 * (days % 2))
     rep = ix.score({"SPY": spy, "QQQ": rigged}, TODAY)
     row = rep["rules"][name]
-    assert row["winning"] and row["forward"]["n"] >= ix.MIN_TRADES and row["forward"]["avg"] > 0.01
+    assert row["winning"] and row["forward"]["n"] >= ix.LOOKS[0] and row["forward"]["avg"] > 0.01
+    assert len(row["trades"]) == row["forward"]["n"] and row["trades"][0][0] >= ix.FORWARD_FROM
+    assert [n for n, r in rep["rules"].items() if r["history_ok"]] == sorted(ix.PRIOR, key=ix.NAMES.index)
     assert not ix.score({"SPY": spy, "QQQ": rigged}, date(2026, 11, 19))["rules"][name]["winning"]  # too soon
     few = rigged[rigged.index <= rigged.index[days[5]]]  # only a handful of forward trades: not yet
     assert not ix.score({"SPY": spy[spy.index <= few.index[-1]], "QQQ": few}, TODAY)["rules"][name]["winning"]
@@ -65,21 +69,32 @@ def test_a_winning_rule_is_promoted_and_comes_off_when_its_record_turns(tmp_path
     s = _settings(tmp_path)
     monkeypatch.setattr(ix, "REPORT", tmp_path / "index_rules.json")
     name, now = "ix_QQQ_rsi5_below_h5", datetime(2027, 6, 1, 22, tzinfo=UTC)
-    row = {"forward": {"n": 14, "avg": 0.012, "excess": 0.01, "t": 3.4}, "history_ok": True, "winning": True}
-    ix.REPORT.write_text(json.dumps({"rules": {name: row, "not_a_rule": row}}))
+    row = {"forward": {"n": 15, "avg": 0.012, "excess": 0.01, "t": 3.4}, "p": 0.002, "history_ok": False, "winning": True,
+           "trades": [["2027-05-03", 0.012]]}
+
+    def save(rows, bars="2027-06-01"):
+        ix.REPORT.write_text(json.dumps({"bars_through": bars, "rules": rows}))
+
+    twin, blocked = {**row, "p": 0.01}, {**row, "p": 0.0001}
+    save({name: row}, bars="2027-05-20")
+    assert promote.candidates(s, {}, now) == []  # the bars stopped refreshing: an old report proposes nothing
+    save({name: row, "not_a_rule": row, "ix_QQQ_rsi10_below_h5": twin, "ix_QQQ_rsi5_above_h5": blocked,
+          "ix_SPY_dd7_any_h1": {"winning": True}})  # a row that is not whole is ignored, not a crash
+    [c] = promote.candidates(s, {}, now)  # one rule a fund, and never one the QQQ core would block
+    assert c["target"] == name
     item = promote.propose(s, {}, now, approve=True)
     assert (item["kind"], item["target"], item["status"]) == ("rule", name, "active") and "96" in item["evidence"]
-    assert promote.active(s)["rules"] == {name}
+    assert promote.active(s)["rules"] == {name} and promote.candidates(s, {}, now) == []
     [ws] = ix.live_strategies(promote.active(s)["rules"] | {"fx_some_factory_rule"})
     assert ws.strategy.name == name and ws.mode == "trade"
-    assert promote.review(s, now) == []
     row["winning"], row["forward"]["avg"] = False, 0.002  # no longer significant, still positive: it stays
-    ix.REPORT.write_text(json.dumps({"rules": {name: row}}))
-    assert promote.review(s, now) == []
-    row["forward"]["avg"] = -0.001
-    ix.REPORT.write_text(json.dumps({"rules": {name: row}}))
-    [ended] = promote.review(s, now)
-    assert ended["status"] == "undone" and promote.active(s)["rules"] == frozenset()
+    row["trades"] += [["2027-06-02", -0.01], ["2027-06-10", -0.01]]
+    save({name: row})
+    assert promote.review(s, now) == []  # two losing trades since the promotion are not yet a verdict
+    row["trades"] += [["2027-06-20", 0.005]]
+    save({name: row})
+    [ended] = promote.review(s, now)  # three that lost on average are, though the whole record is still up
+    assert ended["status"] == "undone" and "stopped winning" in ended["why_ended"] and promote.active(s)["rules"] == frozenset()
 
 
 def test_the_live_rule_buys_once_at_the_open_with_a_stop_and_a_timed_exit():
@@ -98,6 +113,8 @@ def test_the_live_rule_buys_once_at_the_open_with_a_stop_and_a_timed_exit():
     rule = ix.IndexRule(name)
     [sig] = rule.generate(ctx)
     assert sig.symbol == "QQQ" and sig.evidence["stop"] == 184.0 and sig.evidence["systematic"]
-    assert datetime.fromisoformat(sig.evidence["exit_at"]).date() > today
+    assert datetime.fromisoformat(sig.evidence["exit_at"]).date() == qqq.index[day + 5].date()  # the replay's exit bar
+    [one] = ix.IndexRule("ix_QQQ_three_down_any_h1").generate(ctx)
+    assert datetime.fromisoformat(one.evidence["exit_at"]).date() == today and one.evidence["size_pct"] == 1.0
     assert rule.generate(ctx) == []  # once a day
     assert ix.IndexRule(name).generate(NS(**{**vars(ctx), "held_symbols": frozenset({"QQQ"})})) == []
