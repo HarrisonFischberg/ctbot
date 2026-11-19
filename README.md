@@ -1,8 +1,8 @@
 # CTbot · Creature Trading Bot
 
 A paper-trading bot you run on your own computer or a small server. Turn on **Autopilot**, give it
-one amount of paper money and three rules, and it picks the strategies, funds them and trades
-them for you. CTbot reads live prices from your own Robinhood
+one amount of paper money, and it picks the strategies, funds them, sets its own stop levels and
+trades them for you. CTbot reads live prices from your own Robinhood
 account, can ask Claude to review each trade idea, and runs every order through hard risk rules
 first.
 
@@ -24,7 +24,7 @@ left rail (a bottom bar on a phone), in light or dark. The older design is in th
 
 ### Autopilot: the bot picks, funds and trades the strategies for you
 
-| Set three rules, pick the trading modes, flip it on, give it an amount | Every strategy it may use, and why |
+| Pick Swing, Day trade or Mix, flip it on, give it an amount | Every strategy it may use, and why |
 |---|---|
 | <img src="docs/images/autopilot.png" alt="Autopilot tab: trading rules (max loss per trade 5%, give back from high 8%, how sure Claude must be 20%), Invest for Me with $10,500, the trading modes box (QQQ as market gauge on, sell intraday by 3:45 PM) under the rules, the Aggressive day trading switch next to Autopilot, the strategy vs Nasdaq backtest chart, latest decisions and running strategies" width="400"> | <img src="docs/images/library.png" alt="Strategy library: 31 strategies trading and 15 benched, each with the reason, such as no practice trades lately or failed its test because results could be luck" width="400"> |
 | **Activity: every idea, what happened and why** | **Dark mode** |
@@ -42,9 +42,10 @@ dashboard on your Mac and phone over Tailscale, ntfy phone messages, and turning
   [SETUP.md](docs/SETUP.md)), in the Opening Bell style by default, light or dark:
   - **Home**: portfolio value and its chart, account allocation, Bub's take on the market, a
     4-step setup checklist, holdings (with each stop), running strategies and a stock chart.
-  - **Autopilot**: set three rules (max loss per trade, how much of a run-up to give back before
-    selling, and how sure Claude must be before a buy) and switch it on. CTbot then picks trades
-    from every strategy by itself, with trailing stops and no fixed profit cap. **Invest for Me**
+  - **Autopilot**: pick a trading style (below) and switch it on. CTbot then picks trades from
+    every strategy by itself. The profit and loss levels (max loss per trade, how much of a
+    run-up to give back, how sure Claude must be) are not options: the bot sets them nightly
+    (see *Self-set levels* below). **Invest for Me**
     takes one dollar amount, picks and funds the strategies, re-picks weekly and tops them up as
     cash frees.
 
@@ -57,18 +58,23 @@ dashboard on your Mac and phone over Tailscale, ntfy phone messages, and turning
     (every strategy, trading or benched and why), *Testing* (a crash test back to 1999, a
     no-hindsight walk-forward test, the comparison books), *Backtests* (growth of $5,000 since
     2010, the leaderboard) and *Outside traders*.
-  - **Trading modes** (next to the Autopilot switch, paper only, main book only):
-    - *QQQ as market gauge* (default on): QQQ under its average makes the account stop borrowing.
-      Off skips only that trigger; the bad-day and drawdown pull-backs still apply.
-    - *Aggressive day trading* (default off): the same-day models (opening-range breakout, VWAP
-      reversion, ORB with live quotes) trade, a stock may be bought again after it was sold that
-      day, and more ideas and Claude reviews fit per cycle. Positions opened that day are sold at
-      market at 15:45 ET (or 15 minutes before an early close), and no new buys start after that.
-      The Nasdaq-100 trend cores, holdings from earlier days and trades with a planned exit on a
-      later day are kept, unless you tick *also flatten these*. Every hard limit stays on. The
-      daily Claude spend cap stays the same, so heavy days can hit it and stop reviews early.
-      Paper fills are kinder than real ones, so these results overstate fast trading; the page
-      shows today's P&L after an optional per-order commission.
+  - **Trading style** (next to the Autopilot switch, paper only, main book only), one choice:
+    - *Swing* (default): the standard behaviour; same-day models stay off.
+    - *Day trade*: the same-day models (opening-range breakout, VWAP reversion, ORB with live
+      quotes) trade, a stock may be bought again after it was sold that day, and more ideas and
+      Claude reviews fit per cycle. Everything is sold at market at 15:45 ET (or 15 minutes before
+      an early close) and no new buys start after that.
+    - *Mix*: the same-day models trade as above, but swing holds and the Nasdaq-100 trend cores
+      are kept overnight.
+
+    The QQQ gauge, overnight, sell-by time and commission fields are hidden; they keep their
+    saved values. Every hard limit stays on, and the daily Claude spend cap stays the same.
+    Paper fills are kinder than real ones, so day-trade results overstate fast trading.
+  - **Self-set levels**: `ctbot-learn levels` runs nightly (plain code, no Claude). Main's max loss
+    and give-back start at the backtest's 8% / 8% and move only when a replay of the account's own
+    approved ideas shows another pair clearly ahead (t >= 3). `LEVELS_AUTO=false` only reports.
+    If equity falls to 75% of the money put in (`REEVALUATE_BELOW_PCT`), new buys stop once and a
+    notice goes out; stops and exits keep running until you re-evaluate.
   - **Learning journal**: every evening CTbot writes a journal for each paper book in
     `data/learning/journal/`: the book's day, each model's settled paper record, idea scores,
     calibration and the factory's picks. Plain code writes it; Claude isn't called.
@@ -77,7 +83,10 @@ dashboard on your Mac and phone over Tailscale, ntfy phone messages, and turning
     journals and proposes up to three short *reviewer lessons*. Code checks each one (no lesson may
     touch money, size, stops or limits) and logs it with a hash chain, and any lesson can be rolled
     back. Only the separate `learner` paper book uses them, and a lesson is rolled back if that
-    book falls behind. The main book gets a lesson only after you approve it.
+    book falls behind. A nightly research agent also proposes new rules for the strategy factory to test. Learned
+    changes that pass their paper A/B test are promoted to the main book by themselves
+    (`PROMOTE_AUTO=true`, the default; set it to `false` to approve each one on the dashboard) and
+    rolled back if they fall behind.
   - **Activity**: the bot's trade ideas and what happened to each, results by strategy, what each
     trade taught, safety limits, trade history, the watchlist and a live log.
   - **Settings**: add your API keys, connect Robinhood, run a health check, review Bub's changes.
@@ -86,7 +95,7 @@ dashboard on your Mac and phone over Tailscale, ntfy phone messages, and turning
   risk level, on the Autopilot tab.
 - **Hard limits** no model can override: per-position size, total money, daily loss pause,
   drawdown stop, bid/ask spread and liquidity checks, no holding through earnings, SEC 8-K red
-  flags, and your own max loss and take-profit per strategy. Optional rules from the trading skill
+  flags, and the max loss per strategy (set by the bot). Optional rules from the trading skill
   packs (`.claude/skills/`): risk-per-trade sizing, total open risk, entries per day, minimum
   reward/risk, half off at 1R, a VWAP entry gate and a bear-market gate (see `.env.example`).
 

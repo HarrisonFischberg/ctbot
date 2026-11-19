@@ -175,11 +175,9 @@ with a **Revert** button, and it can never turn on real money or raise your loss
 
 Open the **Autopilot** tab:
 
-1. **Trading rules** (left column), then **Save rules**. Mine:
-   - **Max loss per trade: 7%**. Each position's starting stop.
-   - **Give back from high: 3.5%**. Once a trade is up, the stop trails 3.5% below its best
-     price, so winners keep running with no fixed profit cap but gains are locked in quickly.
-   - **How sure Claude must be: 15%**. Lower means more trades; higher means fewer, surer ones.
+1. **Trading rules**: nothing to set. The bot picks max loss per trade, give-back from the high
+   and how sure Claude must be itself, starting at 8% / 8% and adjusting nightly from its own
+   record. If equity falls to 75% of the money you put in, new buys stop and ntfy tells you.
 2. Flip **Autopilot** on (top right). The bot now picks trades from every strategy in the
    library that passed its tests, sizes each one by that strategy's last 30 days of results, and
    benches any strategy that keeps losing.
@@ -188,13 +186,13 @@ Open the **Autopilot** tab:
    CTbot picks the strategies itself, funds them, re-picks weekly (only swapping a pick for one that scores 20% better) and tops them up as cash frees.
 4. If the account has less than your limit (for example after losses), **Add paper cash** tops it
    back up. Deposits are recorded and kept out of your P&L.
-5. **Trading modes** (the switches next to Autopilot, paper only):
-   - **QQQ as market gauge**: leave it on (the default). When QQQ is under its average the
-     account stops borrowing; off skips only that trigger.
-   - **Aggressive day trading**: off by default. On, the same-day models trade, a stock can be
-     bought again after it was sold that day, and positions opened that day are sold at 15:45 ET.
-     Holdings from earlier days are kept unless you tick *also flatten these*. Your Claude spend
-     cap is not raised, so busy days can use it up early.
+5. **Trading style** (next to Autopilot, paper only), pick one:
+   - **Swing** (default): same-day models stay off.
+   - **Day trade**: the same-day models trade, a stock can be bought again after it was sold that
+     day, and everything is sold at 15:45 ET.
+   - **Mix**: same-day models trade, but swing holds and the Nasdaq-100 trend cores are kept.
+
+   Your Claude spend cap is not raised, so busy days can use it up early.
 
 **Pause all strategies** stops new buys at any time (exits still run).
 
