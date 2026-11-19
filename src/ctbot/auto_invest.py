@@ -117,7 +117,10 @@ def run(settings: Settings, now: datetime, force: bool = False) -> dict[str, flo
     runs = allocations.load(settings.allocations_path)
     if force or picked_at is None or now - picked_at >= REPICK:
         names = sorted(n for n, t in load_strategy_config(settings.strategies_file).items() if t.get("enabled"))
-        verdicts = autopilot.decide(names, _read(settings.paper_ledger_path).get("fills", []), now)
+        from ctbot import promote
+
+        verdicts = autopilot.decide(names, _read(settings.paper_ledger_path).get("fills", []), now,
+                                    benched=promote.active(settings)["bench"])
         perf = _read(PERF_PATH).get("strategies", {})
         picks = pick(perf, [n for n in names if verdicts[n]["status"] == "trading"], amount,
                      keep=tuple(plan.get("picks") or ()))

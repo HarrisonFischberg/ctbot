@@ -339,8 +339,8 @@ def apply(folder: Path, edits: list[dict[str, Any]], latest: dict[str, Any],
 def rollback(folder: Path, event: str, now: datetime | None = None) -> dict[str, Any]:
     """Undo one applied edit: restore the lesson as it was before that event."""
     row = next((r for r in history(folder) if r["event"] == event), None)
-    if row is None or row["refused"]:
-        raise ValueError(f"no applied edit {event}")
+    if row is None or row["refused"] or row["action"] not in ("create", "update", "delete"):
+        raise ValueError(f"no applied lesson edit {event}")
     target = (row["after"] or row["before"])["id"]
     lessons = [x for x in load_lessons(folder) if x["id"] != target] + ([row["before"]] if row["before"] else [])
     _save(folder, lessons)
@@ -421,6 +421,10 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("scoreboard", help="approved ideas per strategy and each lesson's effect, from the latest journal")
     b = sub.add_parser("rollback", help="undo one applied lesson edit")
     b.add_argument("event")
+    sub.add_parser("promote", help="nightly: end promotions that stopped paying, propose at most one new change")
+    sub.add_parser("promotions", help="list proposed and active promotions")
+    for name in ("approve", "decline"):
+        sub.add_parser(name, help=f"{name} a waiting proposal").add_argument("id")
     args = p.parse_args(argv)
     s = Settings.from_env()
     day = getattr(args, "day", None) or market_hours.trading_date(datetime.now(UTC))
@@ -437,6 +441,22 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "lessons":
         for x in load_lessons(folder):
             print(f"{x['id']} [{', '.join(x['models'])}] {x['text']}")
+        return
+    if args.cmd in ("promote", "promotions", "approve", "decline"):
+        from ctbot import promote  # lazy: promote imports this module
+
+        now = datetime.now(UTC)
+        if args.cmd == "promote":
+            for x in promote.review(s, now):
+                print(f"ended: {x['title']} ({x['why_ended']})")
+            new = promote.propose(s, previous(journal_dir(s), date.max) or {}, now)
+            print(f"proposed {new['id']}: {new['title']} ({new['evidence']})" if new else "promotions: nothing new to propose")
+        elif args.cmd != "promotions":
+            x = promote.decide(s, args.id, args.cmd == "approve", now)
+            print(f"{x['status']}: {x['title']}")
+        for x in promote.load(s):
+            if args.cmd == "promotions" or x["status"] in ("proposed", "active"):
+                print(f"  {x['id']} {x['status']:<9} {x['title']} ({x['evidence']})")
         return
     if args.cmd == "scoreboard":
         j = previous(journal_dir(s), date.max) or {}

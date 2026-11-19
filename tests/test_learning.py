@@ -174,7 +174,20 @@ def test_a_review_with_lessons_is_paired_with_the_same_review_without(tmp_path):
     assert idea["status"] == "rejected" and not broker.positions()  # the verdict with lessons is the one traded
     assert idea["decision"]["paired"] == {"lessons": ["L1"], "take": False, "plain_take": True}
 
+    # the main book (REVIEW_LESSONS off) sees a lesson only once its promotion is approved
+    c.settings = replace(c.settings, review_lessons=False)
+    promos = tmp_path / "learning" / "promotions.json"
+    promos.parent.mkdir()
+    for day, status, expect in ((1, "proposed", None), (2, "active", ["L1"])):
+        promos.write_text(json.dumps({"items": [{"kind": "lesson", "target": "L1", "status": status, "evidence": ""}]}))
+        ideas.clear()
+        run_cycle(c, state, NOW + timedelta(days=day))  # a setup is reviewed once a day
+        assert (ideas[0]["decision"].get("paired") or {}).get("lessons") == expect
+        assert bool(broker.positions()) == (expect is None)  # bought until the lesson reached this book
+        broker._positions.clear()
+    c.settings = replace(c.settings, review_lessons=True)
+
     lessons.write_text(json.dumps({"lessons": []}))  # nothing to show: one plain review, no pair
     ideas.clear()
-    run_cycle(c, state, NOW + timedelta(days=1))  # a setup is reviewed once a day
+    run_cycle(c, state, NOW + timedelta(days=3))
     assert "paired" not in ideas[0]["decision"] and ideas[0]["status"] == "auto_submitted"

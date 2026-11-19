@@ -753,11 +753,12 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
                     log.exception("outcome memory failed for %s", cand.symbol)
             review = lambda acct: (c.engine.evaluate(cand, acct, debate=True) if c.settings.review_debate  # noqa: E731
                                    else c.engine.evaluate(cand, acct))
-            shown = []
-            if c.settings.review_lessons:
-                from ctbot.learn import lessons_for  # lazy: learn imports the readout and variants
+            from ctbot import promote  # lazy: learn and promote import the readout and variants
+            from ctbot.learn import lessons_for
 
-                shown = lessons_for(c.settings.lessons_file, buyers)
+            # the learner book sees every lesson; main sees the ones Harold approved for it (promote)
+            allowed = None if c.settings.review_lessons else promote.active(c.settings)["lessons"]
+            shown = [x for x in lessons_for(c.settings.lessons_file, buyers) if allowed is None or x["id"] in allowed]
             if shown:
                 # Reviewed twice, with and without the lessons, so each lesson is judged on the verdicts it
                 # changed (learn.lesson_effects). The plain review is the one the other books share.

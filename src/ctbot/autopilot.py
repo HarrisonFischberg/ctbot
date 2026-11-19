@@ -74,10 +74,11 @@ def save(path: Path, cfg: AutopilotConfig) -> None:
 
 
 def decide(models: list[str], fills: list[dict[str, Any]], now: datetime,
-           library: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
+           library: dict[str, Any] | None = None, benched: dict[str, str] | None = None) -> dict[str, dict[str, Any]]:
     """model -> {"status": "trading" | "benched", "reason", "closed", "pnl", "win_rate"} from the
     paper record of the last BENCH_WINDOW_DAYS. Strategy-library entries (lib_*) also need the
-    library backtest's admission (data/research/library_report.json)."""
+    library backtest's admission (data/research/library_report.json). `benched` is strategy -> reason for
+    the ones an approved learning-loop promotion keeps out (promote.active)."""
     from ctbot.dashboard.state import model_stats
     from ctbot.library import backtest as lbt
 
@@ -94,6 +95,8 @@ def decide(models: list[str], fills: list[dict[str, Any]], now: datetime,
         rec = {"closed": closed, "pnl": round(pnl, 2), "win_rate": (s.get("wins", 0) / closed) if closed else None}
         if m.startswith("lib_") and not (verdict := lbt.reason(library, m))[0]:
             out[m] = {**rec, "status": "benched", "reason": verdict[1]}
+        elif benched and m in benched:
+            out[m] = {**rec, "status": "benched", "reason": benched[m]}
         elif closed >= MIN_TRADES_TO_BENCH and pnl < 0:
             out[m] = {**rec, "status": "benched",
                       "reason": f"lost ${-pnl:,.2f} over its last {closed} practice trades ({BENCH_WINDOW_DAYS} days)"}
@@ -111,7 +114,9 @@ def apply(c, state, cfg: AutopilotConfig, fills: list[dict[str, Any]], now: date
     pipeline's sleeves); the risk manager trails stops."""
     if c.configured is None:
         c.configured = list(c.strategies)
-    verdicts = decide([ws.strategy.name for ws in c.configured], fills, now)
+    from ctbot import promote  # lazy: promote imports this module
+
+    verdicts = decide([ws.strategy.name for ws in c.configured], fills, now, benched=promote.active(c.settings)["bench"])
     trading = frozenset(m for m, v in verdicts.items() if v["status"] == "trading") | invested
     key = ("autopilot", trading)
     if c.launched != key:

@@ -392,6 +392,18 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
         return 200, {"ok": True, "enabled": cfg.enabled, "max_loss_pct": cfg.max_loss_pct, "giveback_pct": cfg.giveback_pct,
                      "min_confidence": cfg.min_confidence}
 
+    def decide_promotion(body: dict) -> tuple[int, dict]:
+        from ctbot import promote
+
+        if current_settings().mode.value != "paper":
+            return 400, {"error": "promotions are paper only"}
+        try:
+            item = promote.decide(current_settings(), str(body.get("id", "")), body.get("approve") is True, datetime.now(timezone.utc))
+        except ValueError as e:
+            return 400, {"error": str(e)}
+        log.info("promotion %s: %s (%s)", item["id"], item["status"], item["title"])
+        return 200, {"ok": True, "status": item["status"]}
+
     def save_trading_modes(body: dict) -> tuple[int, dict]:
         from ctbot import trading_modes
 
@@ -409,6 +421,7 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
     routes = {
         "/api/autopilot": save_autopilot,
         "/api/trading-modes": save_trading_modes,
+        "/api/promotions/decide": decide_promotion,
         "/api/assistant/chat": assistant_chat,
         "/api/assistant/apply": assistant_apply,
         "/api/assistant/dismiss": assistant_dismiss,
