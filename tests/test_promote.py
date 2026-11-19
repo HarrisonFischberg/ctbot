@@ -249,7 +249,7 @@ def test_a_factory_rule_reaches_main_only_on_forward_trades_and_in_its_own_sleev
     assert comp.configured[1].strategy.evidence["systematic"] and runs == {name: 2_000.0}  # 10% of the account, no more
 
     report["live"] = []  # the rule stops passing the nightly backtest
-    assert promote.review(s, NOW + timedelta(days=1))[0]["why_ended"] == "the rule no longer passes the nightly backtest"
+    assert promote.review(s, NOW + timedelta(days=1))[0]["why_ended"] == "the rule no longer passes its nightly check"
     runs = {}
     promote.apply_rules(comp, NS(equity=20_000.0), runs)
     assert [ws.strategy.name for ws in comp.configured] == ["orb"] and runs == {}

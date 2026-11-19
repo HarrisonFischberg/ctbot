@@ -139,6 +139,15 @@ def candidates(settings: Any, journal: dict[str, Any], now: datetime) -> list[di
                         "title": f"Let the factory rule {name} trade on the main account with up to {RULE_PCT:.0%} of it",
                         "evidence": f"in the factory test account its {s['closed']} closed trades averaged "
                                     f"{s['avg_ret']:+.2%} each and it still passes the nightly backtest"})
+    from ctbot.library import index_rules
+
+    for name, r in sorted(index_rules.load().items()):
+        if r.get("winning"):
+            f = r["forward"]
+            out.append({"kind": "rule", "target": name,
+                        "title": f"Let this index rule trade on the main account with up to {RULE_PCT:.0%} of it: {index_rules.title(name)}",
+                        "evidence": f"since {index_rules.FORWARD_FROM} its {f['n']} trades would have averaged {f['avg']:+.2%} each, "
+                                    "which holds up after counting all 96 rules tried"})
     for r in rows:
         v, vs = books.get(r["name"]), r.get("vs_main") or {}
         if (v and v.strategies == "library" and not v.env and vs.get("verdict") == "better"
@@ -169,16 +178,17 @@ def _factory_record(settings: Any, books: dict[str, Any]) -> dict[str, dict[str,
 
 
 def apply_rules(c: Any, state: Any, runs: dict[str, float]) -> None:
-    """Called by the pipeline each paper cycle: main trades its promoted factory rules as systematic
+    """Called by the pipeline each paper cycle: main trades its promoted factory and index rules as systematic
     strategies, each sized off its own sleeve (`runs`; the pipeline keeps the ones that are trading).
     A rule that leaves the list stops opening trades; what it holds keeps its stop and time exit."""
-    from ctbot.library import factory
+    from ctbot.library import factory, index_rules
 
     want = active(c.settings)["rules"]
     if want != c.promoted_rules:  # variant books never get here: no promotions file, so both are empty
         rep = factory.load_report() or {}
         live = {**rep, "live": sorted(n for n in want if n in rep.get("candidates", {}))}
-        c.configured = [ws for ws in c.configured if ws.strategy.name not in c.promoted_rules] + factory.live_strategies(live)
+        c.configured = ([ws for ws in c.configured if ws.strategy.name not in c.promoted_rules]
+                        + factory.live_strategies(live) + index_rules.live_strategies(want))
         c.promoted_rules, c.launched = want, None
         log.info("promoted factory rules on this book: %s", ", ".join(sorted(want)) or "none")
     for name in want:
@@ -294,10 +304,10 @@ def review(settings: Any, now: datetime) -> list[dict[str, Any]]:
     shortcut: the main-vs-base test reruns nightly on overlapping data and ends every active promotion at once,
     so a harmless change is undone more often than t < -2 suggests (it errs toward undoing); give each
     promotion one fixed check date if good changes keep getting undone."""
-    from ctbot.library import factory
+    from ctbot.library import factory, index_rules
 
     items = load(settings)
-    live_rules = set((factory.load_report() or {}).get("live", []))
+    live_rules = set((factory.load_report() or {}).get("live", [])) | index_rules.keepers()
     ended = []
     for x in items:
         if x["status"] == "proposed" and _age(x["proposed"], now) >= timedelta(days=PROPOSAL_DAYS):
@@ -311,7 +321,7 @@ def review(settings: Any, now: datetime) -> list[dict[str, Any]]:
         elif x["kind"] == "lesson" and _lesson_text(settings, x["target"]) != x.get("text"):
             _end(settings, x, "undone", "the lesson was deleted or reworded", now)
         elif x["kind"] == "rule" and x["target"] not in live_rules:
-            _end(settings, x, "undone", "the rule no longer passes the nightly backtest", now)
+            _end(settings, x, "undone", "the rule no longer passes its nightly check", now)
         elif days >= CHECK_MIN_DAYS and t < CHECK_T:
             _end(settings, x, "undone", f"main fell behind the base account over the {days} days since (t {t:.1f})", now)
         else:

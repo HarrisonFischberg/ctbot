@@ -10,7 +10,8 @@
 # 6) after the close only: the strategy factory (ctbot-factory), whose live list the factory book trades;
 #    it first fetches full daily history once for any symbol whose cache is short; then the library
 #    backtest (ctbot-library-research), which decides the lib_* entries the autopilot may trade; then
-#    the learning journal (ctbot-learn journal: code only, no Claude), data/learning/journal/, and
+#    the learning journal (ctbot-learn journal: code only, no Claude), data/learning/journal/, which
+#    also replays the 96 index dip rules on the fresh SPY and QQQ bars (data/research/index_rules.json), and
 #    one Claude call proposing reviewer lessons (ctbot-learn refine, capped at LEARN_MAX_USD_PER_DAY);
 #    then ctbot-learn research (one Claude call, capped at RESEARCH_MAX_USD_PER_DAY): new entry rules
 #    for tomorrow's factory run; then ctbot-learn levels (code only): the bot sets main's max loss and
