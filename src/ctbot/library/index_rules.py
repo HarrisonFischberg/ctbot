@@ -94,7 +94,7 @@ def _trades(d: pd.DataFrame, sig: pd.Series, hold: int) -> pd.Series:
 
 def _stat(t: pd.Series, base: float) -> dict[str, Any]:
     n = len(t)
-    ex = t - (base if base == base else 0.0)  # base is NaN when the period has no bars in the gate
+    ex = t - (0.0 if math.isnan(base) else base)  # base is NaN when the period has no bars in the gate
     sd = float(ex.std()) if n > 2 else 0.0
     return {"n": n, "avg": round(float(t.mean()), 5) if n else None, "excess": round(float(ex.mean()), 5) if n else None,
             "t": round(float(ex.mean()) / (sd / math.sqrt(n)), 3) if sd > 0 else None}
