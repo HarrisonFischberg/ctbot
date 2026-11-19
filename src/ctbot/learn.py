@@ -86,8 +86,25 @@ def journal(settings: Any, day: date, factory_report: dict[str, Any] | None = No
     fac = {"generated": factory_report.get("generated"), "n_candidates": factory_report.get("n_candidates"),
            "passed": len(factory_report.get("passed", [])), "live": factory_report.get("live", [])}
     return {"day": day.isoformat(), "written": datetime.now(UTC).isoformat(timespec="seconds"),
-            "books": books, "ideas": ideas, "factory": fac, "scoreboard": scoreboard((ideas or {}).get("recent") or {}),
+            "books": books, "ideas": ideas, "factory": fac, "index_rules": _index_rules(), "scoreboard": scoreboard((ideas or {}).get("recent") or {}),
             "lessons": lesson_effects(s.ideas_path for name, s in _books(settings) if name in ("main", GUARD_BOOK))}
+
+
+def _index_rules() -> dict[str, Any] | None:
+    """The latest score of the 96 index rules (ctbot.library.index_rules; `ctbot-learn journal` refreshes
+    it first), cut to the rules with a forward record or a passing history. The full table is
+    data/research/index_rules.json."""
+    from ctbot.library import index_rules
+
+    rep = index_rules.report()
+    if not rep:
+        return None
+    rows = rep["rules"]
+    return {"tracked": len(rows), "bars_through": rep["bars_through"], "forward_from": rep["forward_from"],
+            "traded": sum(bool(r["forward"]["n"]) for r in rows.values()),
+            "winning": sorted(n for n, r in rows.items() if r["winning"]),
+            "rules": {n: {"forward": r["forward"], "history_ok": r["history_ok"], "fires_today": r["fires_today"]}
+                      for n, r in rows.items() if r["forward"]["n"] or r["history_ok"]}}
 
 
 def scoreboard(summary: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -495,10 +512,26 @@ def main(argv: list[str] | None = None) -> None:
             print(f"  {m:<24}{r['avg_bps']:>+8.1f} bps over {r['n']}{p}{'  LOSING' if r['losing'] else ''}")
         for lid, e in (j.get("lessons") or {}).items():
             print(f"  lesson {lid}: changed {e['n']} verdicts, {e['avg_bps']:+.1f} bps each")
+        if ix := j.get("index_rules"):
+            from ctbot.library import index_rules
+
+            print(f"index rules: {ix['tracked']} tracked since {ix['forward_from']}, {ix['traded']} have traded, "
+                  f"{len(ix['winning'])} winning (bars through {ix['bars_through']})")
+            for n, r in sorted(ix["rules"].items(), key=lambda kv: -(kv[1]["forward"]["avg"] or -9)):
+                f = r["forward"]
+                avg = "no trades yet" if not f["n"] else f"{f['avg']:+.2%} a trade over {f['n']}"
+                print(f"  {avg:<28}{'WINNING  ' if n in ix['winning'] else ''}{'passed history  ' if r['history_ok'] else ''}"
+                      f"{index_rules.title(n)}")
         return
     if args.cmd == "rollback":
         print(f"rolled back: {rollback(folder, args.event)['after']}")
         return
+    try:  # the nightly replay of the 96 index rules; the journal is still worth writing without it
+        from ctbot.library import index_rules
+
+        index_rules.refresh(day)
+    except Exception:
+        log.exception("index rule scoring failed")
     path = write(s, day)
     cur = json.loads(path.read_text())
     lines = changes(previous(path.parent, day), cur)

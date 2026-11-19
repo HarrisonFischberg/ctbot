@@ -151,7 +151,9 @@ def _learning_line(settings: Any, day: date) -> str:
     return ("What changed: " + ("; ".join(lines) if lines else "no newly settled trades.")
             + f" Reviewer lessons: {len(learn.load_lessons(folder))} active, {len(edits)} edited today"
             + "."
-            + (" Losing even when approved: " + ", ".join(losing) + "." if losing else ""))
+            + (" Losing even when approved: " + ", ".join(losing) + "." if losing else "")
+            + (f" Index rules: {ix['traded']} of {ix['tracked']} have traded since {ix['forward_from']}, {len(ix['winning'])} winning."
+               if (ix := cur.get("index_rules")) else ""))
 
 
 def rows(settings: Any, day: date) -> list[dict[str, Any]]:
