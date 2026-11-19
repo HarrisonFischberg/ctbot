@@ -177,7 +177,8 @@ Open the **Autopilot** tab:
 
 1. **Trading rules**: nothing to set. The bot picks max loss per trade, give-back from the high
    and how sure Claude must be itself, starting at 8% / 8% and adjusting nightly from its own
-   record. If equity falls to 75% of the money you put in, new buys stop and ntfy tells you.
+   record. The one risk setting, "Set your max drawdown before reconsideration" (default 25% under the
+   money you put in), stops new buys and has ntfy tell you.
 2. Flip **Autopilot** on (top right). The bot now picks trades from every strategy in the
    library that passed its tests, sizes each one by that strategy's last 30 days of results, and
    benches any strategy that keeps losing.

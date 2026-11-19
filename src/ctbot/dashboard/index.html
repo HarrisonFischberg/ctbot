@@ -1230,7 +1230,7 @@ main:focus { outline: none; }
     const TM = S.trading_modes || {};
     if (TM.aggressive) alerts.push(["warn", "△", "Aggressive mode: high trade count. Paper only."]);
     if (TM.qqq_gate === false) alerts.push(["warn", "△", "Buys can happen while the Nasdaq is in a downtrend."]);
-    if (a.kill_switch) alerts.push(["crit", "!", `Emergency stop is on: the account is down ${pct(MDD(), 0)} or more from the money you put in (your max drawdown), so the bot won't buy anything. To let it buy again, use Clear emergency stop on Autopilot in the main dashboard (/). Stops and sells keep running either way.`]);
+    if (a.kill_switch) alerts.push(["crit", "!", `Emergency stop is on: ${a.below_floor ? `the account is down ${pct(MDD(), 0)} or more from the money you put in (your max drawdown)` : "it was tripped earlier and has not been cleared"}, so the bot won't buy anything. To let it buy again, use Clear emergency stop on Autopilot in the main dashboard (/). Stops and sells keep running either way.`]);
     if (S.live_trading_enabled) alerts.push(["crit", "!", "Real-money trading is switched on (LIVE_TRADING_ENABLED is true)."]);
     if (m.data_error) alerts.push(["warn", "△", "Can't get stock prices right now: " + m.data_error]);
     const pf = S.preflight || {};
@@ -1271,7 +1271,7 @@ main:focus { outline: none; }
       ["Today's profit / loss", `<div class="value ${dir(a.day_pnl)}">${sgnUsd(a.day_pnl)}</div>
         <div class="sub">${sgnPct(a.day_pnl_pct)} today · the bot stops buying for the day at −${pct(L.max_daily_loss_pct, 0)}</div>${meter(lossUsed, lossUsed >= 1 ? "crit" : lossUsed > .6 ? "warn" : "")}`, "Today's return"],
       ["Down from its best", `<div class="value ${a.drawdown_pct < -1e-9 ? "down" : "flat"}">${sgnPct(a.drawdown_pct)}</div>
-        <div class="sub">best was ${usd(a.peak_equity)} · the bot stops buying at ${usd(a.starting_capital * (1 - MDD()), 0)}</div>${meter(ddUsed, ddUsed >= 1 ? "crit" : ddUsed > .6 ? "warn" : "")}`, "Down from high"],
+        <div class="sub">best was ${usd(a.peak_equity)} · the bot stops buying at ${usd(a.starting_capital * (1 - MDD()), 0)}; the bar shows how close that is</div>${meter(ddUsed, ddUsed >= 1 ? "crit" : ddUsed > .6 ? "warn" : "")}`, "Down from high"],
       ["Cash", `<div class="value">${usd(Math.max(0, M.cash))}</div>
         <div class="sub">free to trade now${M.cash - M.free > 1 ? ` · ${usd(M.cash - M.free, 0)} is over your ${usd(L.max_trading_capital, 0)} limit` : ""}${a.unsettled ? " · " + usd(a.unsettled) + " settling" : ""}${L.paper_margin > 1 ? ` · can borrow up to ${L.paper_margin}x: ${usd(a.buying_power, 0)} available to buy with${a.borrowed ? `, ${usd(a.borrowed, 0)} borrowed now` : ""}, but your ${usd(L.max_trading_capital, 0)} limit leaves the bot ${usd(Math.max(0, L.max_trading_capital - a.deployed - M.held), 0)} of it` : ""}</div>`, "Buying power"],
       ["Invested", `<div class="value">${usd(M.invested)}</div>
@@ -2212,7 +2212,9 @@ main:focus { outline: none; }
   const MDD = () => (S.autopilot || {}).max_drawdown_pct || 0.25;  // the owner's max drawdown before reconsideration
   function renderAutopilot() {
     const A = S.autopilot; if (!A) return;
-    if (!apDirty) $("apDd").value = String(Math.round(MDD() * 100));  // shortcut: a hand-edited value off the list shows blank, add it to the options if that happens
+    const dd = String(Math.round(MDD() * 100));
+    if (![...$("apDd").options].some((o) => o.value === dd)) $("apDd").add(new Option(dd + "%", dd));  // a hand-edited value off the list
+    if (!apDirty) $("apDd").value = dd;
     $("apDd").disabled = !canTrade();
     if (!apDirty) {
       $("apOn").checked = A.enabled; $("apLoss").value = +(A.max_loss_pct * 100).toFixed(2); $("apGive").value = +(A.giveback_pct * 100).toFixed(2);
@@ -2296,7 +2298,7 @@ main:focus { outline: none; }
     apDirty = false;
     Object.assign(S.autopilot, { enabled: j.enabled, max_loss_pct: j.max_loss_pct, giveback_pct: j.giveback_pct, min_confidence: j.min_confidence, max_drawdown_pct: j.max_drawdown_pct });
     renderAutopilot();
-    toast(j.enabled ? `Autopilot on: max loss ${pct(j.max_loss_pct, 1)}, give-back ${pct(j.giveback_pct, 1)}, Claude must be ${pct(j.min_confidence, 0)} sure. The bot picks it up next cycle.` : "Autopilot off");
+    toast(`Saved: Autopilot ${j.enabled ? "on" : "off"}, max drawdown ${pct(j.max_drawdown_pct, 0)} under the money put in. The bot picks it up next cycle.`);
   });
   let tmDirty = false;  // don't overwrite the trading-modes form while you're editing it
   const TM_NAMES = { qqq_gate: "QQQ as market gauge", aggressive: "Aggressive day trading", overnight: "Overnight holds",

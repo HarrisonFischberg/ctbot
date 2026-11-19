@@ -1657,7 +1657,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     if (TM.qqq_gate === false) alerts.push(["warn", "△", "Buys can happen while the Nasdaq is in a downtrend."]);
     if (!S.bot.running) alerts.push(["warn", "△", "The bot is off, so nothing trades. Start it in Terminal with ./run_ctbot.sh."]);
     if (S.halted) alerts.push(["warn", "△", "All strategies are paused: no new buys. Stops and sells still run. Resume them on Autopilot."]);
-    if (a.kill_switch) alerts.push(["crit", "!", `Emergency stop is on: the account is down ${pct(MDD(), 0)} or more from the money you put in (your max drawdown), so the bot won't buy anything. To let it buy again, use Clear emergency stop on Autopilot. Stops and sells keep running either way.`]);
+    if (a.kill_switch) alerts.push(["crit", "!", `Emergency stop is on: ${a.below_floor ? `the account is down ${pct(MDD(), 0)} or more from the money you put in (your max drawdown)` : "it was tripped earlier and has not been cleared"}, so the bot won't buy anything. To let it buy again, use Clear emergency stop on Autopilot. Stops and sells keep running either way.`]);
     if (S.live_trading_enabled) alerts.push(["crit", "!", "Real-money trading is switched on (LIVE_TRADING_ENABLED is true)."]);
     if (m.data_error) alerts.push(["warn", "△", "Can't get stock prices right now: " + m.data_error]);
     const pf = S.preflight || {};
@@ -2755,7 +2755,9 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
   const MDD = () => (S.autopilot || {}).max_drawdown_pct || 0.25;  // the owner's max drawdown before reconsideration
   function renderAutopilot() {
     const A = S.autopilot; if (!A) return;
-    if (!apDirty) $("apDd").value = String(Math.round(MDD() * 100));  // shortcut: a hand-edited value off the list shows blank, add it to the options if that happens
+    const dd = String(Math.round(MDD() * 100));
+    if (![...$("apDd").options].some((o) => o.value === dd)) $("apDd").add(new Option(dd + "%", dd));  // a hand-edited value off the list
+    if (!apDirty) $("apDd").value = dd;
     $("apDd").disabled = !canTrade();
     if (!apDirty) {
       $("apOn").checked = A.enabled;
@@ -2845,7 +2847,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     apDirty = false;
     Object.assign(S.autopilot, { enabled: j.enabled, max_loss_pct: j.max_loss_pct, giveback_pct: j.giveback_pct, min_confidence: j.min_confidence, max_drawdown_pct: j.max_drawdown_pct });
     renderAutopilot();
-    toast(j.enabled ? `Autopilot on: max loss ${pct(j.max_loss_pct, 1)}, give-back ${pct(j.giveback_pct, 1)}, Claude must be ${pct(j.min_confidence, 0)} sure. The bot picks it up next cycle.` : "Autopilot off");
+    toast(`Saved: Autopilot ${j.enabled ? "on" : "off"}, max drawdown ${pct(j.max_drawdown_pct, 0)} under the money put in. The bot picks it up next cycle.`);
   });
   let tmDirty = false;  // don't overwrite the trading-modes form while you're editing it
   const TM_NAMES = { qqq_gate: "QQQ as market gauge", aggressive: "Aggressive day trading", overnight: "Overnight holds",

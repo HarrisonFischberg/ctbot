@@ -285,6 +285,7 @@ def test_rethink_floor_stops_buys_once_per_fall():
     s = _state(equity=16_000, peak_equity=20_000, paid_in=20_000, max_drawdown_pct=0.25)
     rm.refresh(s, date(2026, 11, 19))
     assert not s.kill_switch and not s.below_floor  # 80% of the money put in: above the 75% floor
+    assert "max_drawdown_kill" not in rm.check_entry(_cand(), _ok_decision(), s, QUOTE, ADV).reasons
     s.equity = 15_000
     rm.refresh(s, date(2026, 11, 19))
     assert s.kill_switch and s.below_floor

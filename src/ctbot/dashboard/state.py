@@ -486,6 +486,7 @@ def build_state(
             "day_pnl": equity - day_start,
             "day_pnl_pct": (equity / day_start - 1) if day_start else 0.0,
             "kill_switch": bool(risk_state.get("kill_switch", False)),
+            "below_floor": bool(risk_state.get("below_floor", False)),
             "day_trades_5d": len(day_trades),
             "deployed": max(0.0, equity - cash),
             "buying_power": buying_power(cash, equity, market_value, settings.paper_margin),
