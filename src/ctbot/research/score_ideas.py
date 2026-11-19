@@ -1,7 +1,7 @@
 """Score every trade idea after the fact: does Claude's review pick the better trades?
 
-For each long idea with an exit plan (the intraday models), replay that plan on the cached
-5-minute bars: enter at the open of the first bar starting at or after the idea, then exit at
+For each long idea, replay its exit plan (the intraday models bring their own; a swing idea
+gets a standard one, see _plan) on the cached 5-minute bars: enter at the open of the first bar starting at or after the idea, then exit at
 the stop, the target, or the first bar at/after exit_at, whichever comes first (stop first if
 a bar touches both). Costs as in the backtest. Approved and rejected ideas are scored the same
 way, so the gap between them measures the value of the review.
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import statistics
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -27,11 +28,26 @@ from ctbot.research.backtest import cost_bps
 RECENT_DAYS = 60  # the learning loop's scoreboard: long enough for 30+ ideas, short enough to forget
 
 
+SWING_MODELS = {"momentum", "trend_template", "mean_reversion"}
+SWING_STOP, SWING_MAX_DAYS = 0.10, 30  # the standard plan a swing idea is scored with
+
+
 def _plan(idea: dict[str, Any]) -> dict[str, Any] | None:
-    for s in idea.get("signals", []):
-        if s.get("direction") == "long" and (s.get("evidence") or {}).get("exit_at"):
+    longs = [s for s in idea.get("signals", []) if s.get("direction") == "long"]
+    for s in longs:
+        if (s.get("evidence") or {}).get("exit_at"):
             return {**s["evidence"], "model": s["strategy"]}
-    return None
+    longs = [s for s in longs if s.get("strategy") in SWING_MODELS]
+    if not longs:
+        return None  # event models trade symbols whose 5-minute bars are not refreshed nightly
+    # Swing models (momentum, trend_template, mean_reversion) carry no exit plan, so every such idea
+    # is scored the same way: held for its own horizon behind a 10% disaster stop. That measures
+    # the idea, not the book's trailing settings, and lets the scoreboard judge these strategies.
+    s = longs[0]  # shortcut: the first swing model gets the whole score, split it when two often agree
+    days = float(s.get("horizon_days") or 1)
+    days = min(max(days, 1.0), SWING_MAX_DAYS) if math.isfinite(days) else 1.0  # a NaN half-life must not stop the run
+    exit_at = datetime.fromisoformat(idea["ts"]) + timedelta(days=days)
+    return {"model": s["strategy"], "exit_at": exit_at.isoformat(), "stop_pct": SWING_STOP}
 
 
 def score_idea(idea: dict[str, Any], bars: list) -> dict[str, Any] | None:
@@ -47,6 +63,8 @@ def score_idea(idea: dict[str, Any], bars: list) -> dict[str, Any] | None:
         return None  # exit day not cached yet
     entry = bars[i].open
     stop, target = plan.get("stop"), plan.get("target")
+    if plan.get("stop_pct"):
+        stop = entry * (1 - plan["stop_pct"])
     for b in bars[i:]:
         if b.ts >= exit_at:
             px, why = b.open, "time"

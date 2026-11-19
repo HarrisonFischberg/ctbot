@@ -111,8 +111,8 @@ def lesson_effects(idea_files: Iterable[Path]) -> dict[str, dict[str, Any]]:
     negated when it made the bot pass. Each (time, symbol) counts once across books.
     shortcut: a changed verdict is credited to every lesson shown in that review, so lessons for the
     same strategy share one record; show one lesson per review if they ever need telling apart.
-    shortcut: only ideas with an exit plan replay (the intraday models), so a lesson that only ever
-    changes swing-model verdicts shows n=0; replay swing ideas on daily bars when one matters."""
+    Swing ideas (momentum, trend_template, mean_reversion) replay on a standard plan, see
+    score_ideas._plan; event-model ideas still do not replay, so a lesson only about those shows n=0."""
     from ctbot.research import bars as cache
     from ctbot.research.score_ideas import score_idea, stat
 
@@ -432,6 +432,7 @@ def main(argv: list[str] | None = None) -> None:
     b = sub.add_parser("rollback", help="undo one applied lesson edit")
     b.add_argument("event")
     sub.add_parser("research", help="one Claude call proposing new entry rules for tomorrow's factory run")
+    sub.add_parser("levels", help="nightly: the bot sets the main account's max loss and give-back from replayed ideas")
     sub.add_parser("promote", help="nightly: end promotions that stopped paying, propose at most one new change")
     sub.add_parser("promotions", help="list proposed and active promotions")
     for name, what in (("approve", "a waiting proposal"), ("decline", "a waiting proposal"), ("undo", "an active promotion")):
@@ -462,6 +463,13 @@ def main(argv: list[str] | None = None) -> None:
         for row in rows or []:
             print(f"  {row['key']}: " + (f"refused ({row['refused']})" if row["refused"] else "queued for tomorrow's factory run"))
         print(f"research: {len(agent.families())} agent rules under test or passing, {len(agent.retired())} failed trials counted")
+        return
+    if args.cmd == "levels":
+        from ctbot import levels
+
+        ev = levels.run(s, datetime.now(UTC))
+        print(f"levels: max loss {ev['target'][0]:.0%}, give-back {ev['target'][1]:.0%} "
+              f"({'changed' if ev['changed'] else 'unchanged'}; {ev['ideas']} ideas on {ev['days']} days): {ev['why']}")
         return
     if args.cmd in ("promote", "promotions", "approve", "decline", "undo"):
         from ctbot import promote  # lazy: promote imports this module

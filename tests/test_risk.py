@@ -278,3 +278,30 @@ def test_exit_refuses_a_quote_with_no_bid():
     pos = Position("KO", 0.5, 55.0, datetime(2026, 10, 1, tzinfo=timezone.utc))
     v = rm.check_exit(_cand(Direction.EXIT), pos, _state(), Quote("KO", 0.0, 60.02, 60.01), date(2026, 10, 13))
     assert not v.allowed and v.reasons == ("bad_quote",)
+
+
+def test_rethink_floor_stops_buys_once_per_fall():
+    rm = RiskManager(RiskLimits(max_total_drawdown_pct=0.9))  # so only the floor can trip here
+    s = _state(equity=16_000, peak_equity=20_000, paid_in=20_000)
+    rm.refresh(s, date(2026, 11, 19))
+    assert not s.kill_switch and not s.below_floor  # 80% of the money put in: above the 75% floor
+    s.equity = 15_000
+    rm.refresh(s, date(2026, 11, 19))
+    assert s.kill_switch and s.below_floor
+    rm.clear_kill_switch(s)
+    rm.refresh(s, date(2026, 11, 19))
+    assert not s.kill_switch  # cleared by the owner: it does not trip again while still under
+    s.equity, s.peak_equity = 16_000, 16_000
+    rm.refresh(s, date(2026, 11, 20))
+    s.equity = 14_900
+    rm.refresh(s, date(2026, 11, 20))
+    assert s.kill_switch  # back above, then through it again
+    off = _state(equity=10, peak_equity=10)  # money put in unknown (test books): no floor
+    rm.refresh(off, date(2026, 11, 19))
+    assert not off.kill_switch
+    rm.clear_kill_switch(s)
+    s.paid_in = 0  # a click before the first cycle after a restart: the latch must survive
+    rm.refresh(s, date(2026, 11, 20))
+    s.paid_in = 20_000
+    rm.refresh(s, date(2026, 11, 20))
+    assert s.below_floor and not s.kill_switch

@@ -57,6 +57,11 @@ class AccountState:
     open_risk: float = 0.0
     # Trading dates of new positions (max_entries_per_day); persisted.
     entry_dates: list[date] = field(default_factory=list)
+    # Money put in (starting capital + top-ups), set by the paper bot each cycle; 0 = unknown.
+    paid_in: float = 0.0
+    # Equity is at or under reevaluate_below_pct of paid_in; persisted so the stop latches once per fall.
+    below_floor: bool = False
+    floor_crossed: bool = False  # set by refresh on a new fall; the paper loop sends the notice and clears it
 
 
 def save_account_state(state: AccountState, path: Path) -> None:
@@ -72,6 +77,7 @@ def save_account_state(state: AccountState, path: Path) -> None:
         "risk_off": state.risk_off,
         "no_quote": state.no_quote,
         "entry_dates": [d.isoformat() for d in state.entry_dates],
+        "below_floor": state.below_floor,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")  # the kill-switch latch lives here: never leave a half file
@@ -94,6 +100,7 @@ def load_account_state(state: AccountState, path: Path) -> AccountState:
     state.brackets = data.get("brackets", {})
     state.model_losing_streak = data.get("model_losing_streak", {})
     state.entry_dates = [date.fromisoformat(d) for d in data.get("entry_dates", [])]
+    state.below_floor = bool(data.get("below_floor", False))
     return state
 
 
@@ -156,6 +163,13 @@ class RiskManager:
             state.model_losing_streak = {}  # paused models get a fresh start each day
         if state.equity <= state.peak_equity * (1 - self.limits.max_total_drawdown_pct):
             state.kill_switch = True
+        # The re-think floor: falling through it stops new buys once. After the owner clears the
+        # stop it stays clear until equity has been back above the floor and falls through again.
+        if state.paid_in > 0:  # unknown (test books): leave the saved latch alone
+            below = 0 < state.equity <= self.limits.reevaluate_below_pct * state.paid_in
+            if below and not state.below_floor:
+                state.kill_switch = state.floor_crossed = True
+            state.below_floor = below
         cutoff = today - timedelta(days=7)
         state.day_trade_dates = [d for d in state.day_trade_dates if d > cutoff]
         state.entry_dates = [d for d in state.entry_dates if d == today]
@@ -187,8 +201,8 @@ class RiskManager:
         With the autopilot's trailing on, a non-systematic entry gets no fixed target: it records
         its entry, its highest price and a trail distance (Claude's stop distance capped by the
         give-back, or the give-back for a model's own stop), and `trail` raises the stop behind
-        the price. Systematic models keep
-        their own backtested exits."""
+        the price. Systematic models, and models whose plan names its
+        own exit rule, keep their backtested exits."""
         L = self.limits
         systematic = bool(plan and plan.get("systematic"))
         max_loss = L.max_stop_loss_pct if systematic or not self.max_loss_pct else self.max_loss_pct
@@ -206,7 +220,10 @@ class RiskManager:
             b = {"stop": round(fill_price * (1 - stop_pct), 4),
                  "target": round(fill_price * (1 + tp_pct), 4) if tp_pct else None}
         # a factory rule brings its own backtested give-back, even though it is systematic
-        giveback = (plan or {}).get("giveback") or (None if systematic else self.trail_giveback)
+        # A model with its own backtested exit rule (rsi2_etf sells above its 5-day average) keeps it:
+        # 2010-26, a 4% trail cut its out-of-sample edge from +11.7 to +2.6 bps a trade.
+        own_exit = systematic or bool((plan or {}).get("exit_rule"))
+        giveback = (plan or {}).get("giveback") or (None if own_exit else self.trail_giveback)
         if giveback:
             # Claude's stop sets the trail (capped by the give-back); a model's own stop (often a
             # tight ATR stop) stays the starting stop and the trail uses the give-back itself

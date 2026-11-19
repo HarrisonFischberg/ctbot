@@ -641,11 +641,12 @@ main:focus { outline: none; }
         benched: they aren't allowed to trade.</p>
       <form class="ap-form" id="apForm">
         <label class="ap-switch"><input type="checkbox" id="apOn"> <b>Autopilot on</b></label>
-        <label>Max loss per trade <span class="ap-in"><input type="number" id="apLoss" min="1" max="25" step="0.5" required> %</span>
+        <label style="display:none">Max loss per trade <span class="ap-in"><input type="number" id="apLoss" min="1" max="25" step="0.5" required> %</span>
           <span class="lm">the most a new trade can fall below its buy price before the bot sells it</span></label>
-        <label>Give back from the high <span class="ap-in"><input type="number" id="apGive" min="1" max="30" step="0.5" required> %</span>
+        <label style="display:none">Give back from the high <span class="ap-in"><input type="number" id="apGive" min="1" max="30" step="0.5" required> %</span>
           <span class="lm">once a stock rises, the bot sells it if it falls this much from its highest price</span></label>
-        <label>How sure Claude must be to buy <span class="ap-in"><input type="number" id="apConf" min="10" max="90" step="5" required> %</span>
+        <p class="lm">The bot sets its own stop and profit-take levels every night. There is nothing to choose here.</p>
+        <label style="display:none">How sure Claude must be to buy <span class="ap-in"><input type="number" id="apConf" min="10" max="90" step="5" required> %</span>
           <span class="lm"><b>Lower means more buys, including ideas Claude is less sure of. Higher means fewer buys, only ideas Claude is surer of.</b></span></label>
         <button class="btn solid" type="submit" id="apSave">Save</button>
       </form>
@@ -653,7 +654,7 @@ main:focus { outline: none; }
       <form class="ap-form" id="autoForm">
         <label>Up to <span class="ap-in">$<input type="number" id="autoAmt" min="10" step="1" required></span>
           <span class="lm" id="autoNote">the bot picks the best strategies in the library, splits this between them, keeps them funded and re-picks every week</span></label>
-        <label>Max loss per strategy <select id="autoLoss"><option value="0.1">10%</option><option value="0.15" selected>15%</option>
+        <label style="display:none">Max loss per strategy <select id="autoLoss"><option value="0.1">10%</option><option value="0.15" selected>15%</option>
           <option value="0.2">20%</option><option value="0.25">25%</option></select>
           <span class="lm">if one strategy is down this much of its own share, the bot sells it and stops it</span></label>
         <button class="btn solid" type="submit" id="autoGo">Invest for me</button>
@@ -882,11 +883,11 @@ main:focus { outline: none; }
     <div class="isec" id="invHead">Invest in it</div>
     <label class="fld"><span>Amount</span><span class="amt big">$<input id="invAmt" type="number" min="10" step="10" inputmode="decimal" required></span>
       <small id="invFree"></small></label>
-    <label class="fld"><span>Max loss</span>
+    <label class="fld" style="display:none"><span>Max loss</span>
       <select id="invLoss"><option value="">No limit</option><option value="0.05">5%</option><option value="0.1">10%</option>
         <option value="0.15" selected>15%</option><option value="0.2">20%</option><option value="0.25">25%</option><option value="0.35">35%</option></select>
       <small>If the strategy is down this much in total, the bot sells everything and stops it.</small></label>
-    <label class="fld"><span>Take profit</span>
+    <label class="fld" style="display:none"><span>Take profit</span>
       <select id="invTp"><option value="" selected>No target</option><option value="0.1">10%</option><option value="0.2">20%</option>
         <option value="0.3">30%</option><option value="0.5">50%</option><option value="1">100%</option></select>
       <small>If it is up this much in total, the bot sells and locks in the gain.</small></label>
@@ -2278,8 +2279,7 @@ main:focus { outline: none; }
   ["apOn", "apLoss", "apGive", "apConf"].forEach((id) => $(id).addEventListener("input", () => (apDirty = true)));
   $("apForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const body = { enabled: $("apOn").checked, max_loss_pct: +$("apLoss").value / 100, giveback_pct: +$("apGive").value / 100,
-      min_confidence: +$("apConf").value / 100 };
+    const body = { enabled: $("apOn").checked };  // the bot sets the levels itself (ctbot.levels); the page only switches it on or off
     const [ok, j] = await api("/api/autopilot", body);
     if (!ok) return toast(j.error || "could not save", true);
     apDirty = false;

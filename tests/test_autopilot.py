@@ -48,6 +48,15 @@ def test_model_stop_starts_tight_then_trails_by_the_giveback():
     assert rm.trail(st, "AMD", 110.0) and b["stop"] == 104.5
 
 
+def test_a_model_with_its_own_exit_rule_gets_no_trail():
+    rm, st = _rm(max_loss=0.08, giveback=0.04), AccountState(10_000, 10_000, 10_000, 10_000, 0)
+    rm.set_bracket(st, "XLF", 100.0, None, {"stop": 90.0, "target": None, "exit_at": "2026-11-20T15:50:00-05:00",
+                                            "model": "rsi2_etf", "exit_rule": "sell above the 5-day average"})
+    b = st.brackets["XLF"]
+    assert "trail" not in b and b["stop"] == 92.0  # its disaster stop, capped by the book's max loss
+    assert not rm.trail(st, "XLF", 110.0) and b["stop"] == 92.0
+
+
 def test_systematic_models_keep_their_own_exits():
     rm, st = _rm(), AccountState(10_000, 10_000, 10_000, 10_000, 0)
     rm.set_bracket(st, "QQQ", 100.0, None, {"stop": 60.0, "target": None, "exit_at": "2027-10-20T15:50:00-04:00",

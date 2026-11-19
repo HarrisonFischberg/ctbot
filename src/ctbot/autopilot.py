@@ -10,7 +10,8 @@ multi-day swings and the trend cores), except models that research rejected or t
 paper. Claude reviews each entry from a non-systematic model and proposes the starting stop;
 code sizes the trade and enforces every risk limit. Positions from Claude-reviewed models carry
 no fixed profit target: the stop ratchets up behind the price (never down) and sells when the
-price falls back through it. Systematic models (the trend cores) keep their own backtested exits.
+price falls back through it. Systematic models (the trend cores) and models whose plan names its
+own exit rule (rsi2_etf) keep their own backtested exits.
 
 Benching is computed from the ledger's own fills over the last BENCH_WINDOW_DAYS, so a benched
 model gets another chance once its losing trades age out of the window.

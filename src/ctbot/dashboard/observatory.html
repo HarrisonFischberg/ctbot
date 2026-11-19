@@ -1039,23 +1039,23 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     <div data-tab="trading" class="card span-12 ap-rules">
       <h2>Trading rules</h2>
       <form class="ap-form" id="apForm">
-        <label class="ap-row">Max loss per trade <select class="sel" id="apLoss" required></select>
+        <label class="ap-row" style="display:none">Max loss per trade <select class="sel" id="apLoss" required></select>
           <button class="info" type="button" title="The most a new trade can fall below its buy price before the bot sells it" aria-label="About max loss per trade" data-explain="loss"><svg class="ico"><use href="#i-info"/></svg></button></label>
-        <label class="ap-row">Give back from high <select class="sel" id="apGive" required></select>
+        <label class="ap-row" style="display:none">Give back from high <select class="sel" id="apGive" required></select>
           <button class="info" type="button" title="Once a stock rises, the bot sells it if it falls this much from its highest price" aria-label="About give back from high" data-explain="give"><svg class="ico"><use href="#i-info"/></svg></button></label>
-        <label class="ap-row">How sure Claude must be <select class="sel" id="apConf" required></select>
+        <label class="ap-row" style="display:none">How sure Claude must be <select class="sel" id="apConf" required></select>
           <button class="info" type="button" title="Lower means more buys, including ideas Claude is less sure of. Higher means fewer buys, only ideas Claude is surer of." aria-label="About how sure Claude must be" data-explain="conf"><svg class="ico"><use href="#i-info"/></svg></button></label>
-        <p class="ap-note"><b>Lower = more aggressive</b> (more buys) · <b>higher = more conservative</b> (fewer, surer buys)</p>
-        <button class="btn solid big" type="submit" id="apSave">Save rules</button>
+        <p class="ap-note">The bot sets its own stop and profit-take levels every night. There is nothing to choose here.</p>
+        <button class="btn solid big" type="submit" id="apSave" style="display:none">Save rules</button>
       </form>
       <div class="ap-div"></div>
       <h3>Invest for Me <button class="info" type="button" data-explain="invest" aria-label="About Invest for me"><svg class="ico"><use href="#i-info"/></svg></button></h3>
       <form class="ap-form" id="autoForm">
         <label class="money"><span aria-hidden="true">$</span><input type="text" inputmode="decimal" id="autoAmt" required autocomplete="off" aria-label="Amount to invest, in dollars"></label>
         <p class="ap-note" id="autoNote">Split between the strategies that passed their tests.</p>
-        <label class="ap-row wide">Max loss per strategy <select class="sel" id="autoLoss"><option value="0.1">10%</option><option value="0.15" selected>15%</option>
+        <label class="ap-row wide" style="display:none">Max loss per strategy <select class="sel" id="autoLoss"><option value="0.1">10%</option><option value="0.15" selected>15%</option>
           <option value="0.2">20%</option><option value="0.25">25%</option></select></label>
-        <p class="ap-note">Each strategy the bot picks gets its own share of the amount. If one is down this much of its share, the bot sells it and stops it.</p>
+        <p class="ap-note">Each strategy the bot picks gets its own share of the amount. The bot sells and stops one that is down 15% of its share.</p>
         <button class="btn solid big" type="submit" id="autoGo">Invest for Me</button>
       </form>
       <p class="ap-note" id="autoOn" hidden><span id="autoOnText"></span> <button class="linkish u" type="button" id="autoOff">Turn off Invest for Me</button></p>
@@ -1287,11 +1287,11 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     <div class="isec" id="invHead">Invest in it</div>
     <label class="fld"><span>Amount</span><span class="amt big">$<input id="invAmt" type="number" min="10" step="10" inputmode="decimal" required></span>
       <small id="invFree"></small></label>
-    <label class="fld"><span>Max loss</span>
+    <label class="fld" style="display:none"><span>Max loss</span>
       <select id="invLoss"><option value="">No limit</option><option value="0.05">5%</option><option value="0.1">10%</option>
         <option value="0.15" selected>15%</option><option value="0.2">20%</option><option value="0.25">25%</option><option value="0.35">35%</option></select>
       <small>If the strategy is down this much in total, the bot sells everything and stops it.</small></label>
-    <label class="fld"><span>Take profit</span>
+    <label class="fld" style="display:none"><span>Take profit</span>
       <select id="invTp"><option value="" selected>No target</option><option value="0.1">10%</option><option value="0.2">20%</option>
         <option value="0.3">30%</option><option value="0.5">50%</option><option value="1">100%</option></select>
       <small>If it is up this much in total, the bot sells and locks in the gain.</small></label>
@@ -2833,8 +2833,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
   $("apOn").addEventListener("change", () => { apDirty = true; $("apForm").requestSubmit(); });  // the switch saves at once
   $("apForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const body = { enabled: $("apOn").checked, max_loss_pct: +$("apLoss").value / 100, giveback_pct: +$("apGive").value / 100,
-      min_confidence: +$("apConf").value / 100 };
+    const body = { enabled: $("apOn").checked };  // the bot sets the levels itself (ctbot.levels); the page only switches it on or off
     const [ok, j] = await api("/api/autopilot", body);
     if (!ok) { apDirty = false; renderAutopilot(); return toast(j.error || "could not save", true); }
     apDirty = false;
