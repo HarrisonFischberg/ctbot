@@ -44,7 +44,6 @@ class RiskLimits:
     max_total_drawdown_pct: float = 0.15
     # Stop new buys and ask for a re-think when equity falls to this share of the money put in
     # (starting capital + top-ups): 0.75 = a $20,000 account at $15,000. 0 = off.
-    reevaluate_below_pct: float = 0.75
     min_share_price: float = 5.0
     min_avg_dollar_volume: float = 20_000_000
     allow_short: bool = False
@@ -238,7 +237,6 @@ class Settings:
             max_open_positions=_int(env, "MAX_OPEN_POSITIONS", 3),
             max_daily_loss_pct=_float(env, "MAX_DAILY_LOSS_PCT", 0.03),
             max_total_drawdown_pct=_float(env, "MAX_TOTAL_DRAWDOWN_PCT", 0.15),
-            reevaluate_below_pct=_float(env, "REEVALUATE_BELOW_PCT", 0.75),
             min_share_price=_float(env, "MIN_SHARE_PRICE", 5.0),
             min_avg_dollar_volume=_float(env, "MIN_AVG_DOLLAR_VOLUME", 20_000_000),
             allow_short=_bool(env, "ALLOW_SHORT", False),

@@ -22,7 +22,7 @@ from ctbot.contracts import Journal  # noqa: E402
 from ctbot.decision.engine import ClaudeDecisionEngine  # noqa: E402
 from ctbot.market_data.csv_provider import CsvMarketData  # noqa: E402
 from ctbot.paper.simulator import PaperBroker  # noqa: E402
-from ctbot import manual_queue, market_hours, notify, variants  # noqa: E402
+from ctbot import autopilot, manual_queue, market_hours, notify, variants  # noqa: E402
 from ctbot.pipeline import (  # noqa: E402
     Components, manage_positions, process_manual_order, run_cycle, sync_cash)
 from ctbot.providers.registry import build_providers  # noqa: E402
@@ -156,8 +156,8 @@ def main() -> None:
         open_positions=len(broker.positions()),
     )
     load_account_state(state, settings.paper_risk_state_path)
-    state.paid_in = settings.starting_capital + broker.deposits
-
+    state.paid_in, state.max_drawdown_pct = (settings.starting_capital + broker.deposits,
+        autopilot.load(settings.autopilot_path).max_drawdown_pct)
     log = logging.getLogger("ctbot.paper")
     # Side-by-side books (config/variants.toml): same data and Claude verdicts, their own settings.
     components.providers = variants.cached(components.providers)
@@ -175,8 +175,8 @@ def main() -> None:
         state.equity = broker.equity()
         sync_cash(broker, state)
         state.open_positions = len(broker.positions())
-        state.paid_in = settings.starting_capital + broker.deposits
-
+        state.paid_in, state.max_drawdown_pct = (settings.starting_capital + broker.deposits,
+            autopilot.load(settings.autopilot_path).max_drawdown_pct)
     toml_stamp = {"v": _mtime(settings.strategies_file)}
 
     def reload_keys() -> None:
@@ -292,12 +292,12 @@ def main() -> None:
         run_cycle(components, state, now)
         if state.floor_crossed:  # set by RiskManager.refresh, in this cycle or on a dashboard click
             state.floor_crossed = False
-            log.warning("re-think floor: equity $%.2f is under %.0f%% of the $%.2f put in; new buys stopped",
-                        state.equity, settings.risk.reevaluate_below_pct * 100, state.paid_in)
+            log.warning("max drawdown: equity $%.2f is %.0f%% or more under the $%.2f put in; new buys stopped",
+                        state.equity, state.max_drawdown_pct * 100, state.paid_in)
             if url := os.environ.get("NOTIFY_URL", "").strip():
-                guarded(lambda: notify.send(url, "CTbot stopped buying: time to re-evaluate",
-                                            f"The paper account is at ${state.equity:,.0f}, under "
-                                            f"{settings.risk.reevaluate_below_pct:.0%} of the ${state.paid_in:,.0f} put in. "
+                guarded(lambda: notify.send(url, "CTbot stopped buying: time to reconsider",
+                                            f"The paper account is at ${state.equity:,.0f}, down {state.max_drawdown_pct:.0%} "
+                                            f"or more from the ${state.paid_in:,.0f} put in (your max drawdown). "
                                             "Open positions keep their stops. Clear the emergency stop on the dashboard to resume."),
                         "floor notice")
         save_account_state(state, settings.paper_risk_state_path)

@@ -303,7 +303,8 @@ def _autopilot(settings: Settings, strategies: list[dict[str, Any]], fills: list
                "systematic": s["name"].startswith("trend_core"), "configured_mode": s["mode"],
                **verdicts[s["name"]]} for s in enabled]
     return {"enabled": cfg.enabled, "max_loss_pct": cfg.max_loss_pct, "giveback_pct": cfg.giveback_pct,
-            "min_confidence": cfg.min_confidence, "limits": autopilot.LIMITS, "models": models}
+            "min_confidence": cfg.min_confidence, "max_drawdown_pct": cfg.max_drawdown_pct,
+            "limits": autopilot.LIMITS, "models": models}
 
 
 def _trading_modes(settings: Settings, fills: list[dict[str, Any]], day_pnl: float, today) -> dict[str, Any]:
