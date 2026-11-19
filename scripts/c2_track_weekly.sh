@@ -13,7 +13,8 @@
 #    the learning journal (ctbot-learn journal: code only, no Claude), data/learning/journal/, and
 #    one Claude call proposing reviewer lessons (ctbot-learn refine, capped at LEARN_MAX_USD_PER_DAY);
 #    then ctbot-learn research (one Claude call, capped at RESEARCH_MAX_USD_PER_DAY): new entry rules
-#    for tomorrow's factory run; then ctbot-learn promote (code only), which applies at most one
+#    for tomorrow's factory run; then ctbot-learn levels (code only): the bot sets main's max loss and
+#    give-back from a replay of its own approved ideas (LEVELS_AUTO=false reports only); then ctbot-learn promote (code only), which applies at most one
 #    learned change to the main paper book (PROMOTE_AUTO=false makes it wait for a yes on the dashboard)
 set -u -o pipefail
 cd "$(dirname "$0")/.." || exit 1
@@ -42,6 +43,7 @@ days_ago() { .venv/bin/python -c "import datetime, sys; print(datetime.date.toda
     .venv/bin/ctbot-learn journal 2>&1 || echo "learning journal failed"
     .venv/bin/ctbot-learn refine 2>&1 | tail -5 || echo "lesson refine failed"
     .venv/bin/ctbot-learn research 2>&1 | tail -5 || echo "research agent failed"
+    .venv/bin/ctbot-learn levels 2>&1 | tail -2 || echo "stop-level check failed"
     .venv/bin/ctbot-learn promote 2>&1 | tail -5 || echo "promotion check failed"
   fi
 } >> "$LOG" 2>&1

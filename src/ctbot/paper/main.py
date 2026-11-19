@@ -22,7 +22,7 @@ from ctbot.contracts import Journal  # noqa: E402
 from ctbot.decision.engine import ClaudeDecisionEngine  # noqa: E402
 from ctbot.market_data.csv_provider import CsvMarketData  # noqa: E402
 from ctbot.paper.simulator import PaperBroker  # noqa: E402
-from ctbot import manual_queue, market_hours, variants  # noqa: E402
+from ctbot import manual_queue, market_hours, notify, variants  # noqa: E402
 from ctbot.pipeline import (  # noqa: E402
     Components, manage_positions, process_manual_order, run_cycle, sync_cash)
 from ctbot.providers.registry import build_providers  # noqa: E402
@@ -287,7 +287,17 @@ def main() -> None:
         refresh_state()
         # run_cycle -> RiskManager.refresh updates peak, rolls the day, trips the kill switch.
         now = datetime.now(timezone.utc)
+        state.paid_in, was_below = settings.starting_capital + broker.deposits, state.below_floor
         run_cycle(components, state, now)
+        if state.below_floor and not was_below:
+            log.warning("re-think floor: equity $%.2f is under %.0f%% of the $%.2f put in; new buys stopped",
+                        state.equity, settings.risk.reevaluate_below_pct * 100, state.paid_in)
+            if url := os.environ.get("NOTIFY_URL", "").strip():
+                guarded(lambda: notify.send(url, "CTbot stopped buying: time to re-evaluate",
+                                            f"The paper account is at ${state.equity:,.0f}, under "
+                                            f"{settings.risk.reevaluate_below_pct:.0%} of the ${state.paid_in:,.0f} put in. "
+                                            "Open positions keep their stops. Clear the emergency stop on the dashboard to resume."),
+                        "floor notice")
         save_account_state(state, settings.paper_risk_state_path)
         _record_equity(settings, broker, _market_moves(components))
         variants.run(books, components, now, _record_equity)
