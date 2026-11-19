@@ -150,7 +150,7 @@ def _learning_line(settings: Any, day: date) -> str:
              and r["trigger"] != "promote"]
     return ("What changed: " + ("; ".join(lines) if lines else "no newly settled trades.")
             + f" Reviewer lessons: {len(learn.load_lessons(folder))} active, {len(edits)} edited today"
-            + " (learner book only)."
+            + "."
             + (" Losing even when approved: " + ", ".join(losing) + "." if losing else ""))
 
 

@@ -13,8 +13,8 @@ LOSING = {"n": 40, "avg_bps": -30.0, "p": 0.0002, "losing": True}
 JOURNAL = {"scoreboard": {"vwap_revert": LOSING, "orb": {"n": 40, "avg_bps": -3.0, "p": 0.4, "losing": False}}}
 
 
-def _lesson(s, created):
-    learn._save(learn.learning_dir(s), [{"id": "L1", "text": "skip late orb", "models": ["orb"], "created": created.isoformat()}])
+def _lesson(s, created, text="skip late orb"):
+    learn._save(learn.learning_dir(s), [{"id": "L1", "text": text, "models": ["orb"], "created": created.isoformat()}])
 
 
 def _equity(path, per_day):
@@ -63,7 +63,7 @@ def test_one_proposal_at_a_time_then_a_yes_benches_the_strategy_on_main_only(tmp
     from ctbot.variants import book_env, load
 
     v = load(s.strategies_file.with_name("variants.toml"))[0]
-    assert promote.active(Settings.from_env(book_env({}, s.paper_ledger_path, v))) == {"bench": {}, "lessons": set()}
+    assert promote.active(Settings.from_env(book_env({}, s.paper_ledger_path, v))) == {"bench": {}, "lessons": {}}
 
     orb = {"scoreboard": {"orb": LOSING}}
     assert promote.propose(s, orb, NOW + timedelta(days=13)) is None  # cooling off after a promotion
@@ -71,6 +71,7 @@ def test_one_proposal_at_a_time_then_a_yes_benches_the_strategy_on_main_only(tmp
     assert promote.review(s, NOW + timedelta(days=29)) == []
     [ended] = promote.review(s, NOW + timedelta(days=30))
     assert ended["status"] == "expired" and promote.active(s)["bench"] == {}
+    assert promote.propose(s, JOURNAL, NOW + timedelta(days=31)) is None  # it trades again before it can be re-benched
 
 
 def test_a_declined_change_stays_away_for_a_month(tmp_path):
@@ -88,19 +89,29 @@ def test_a_promoted_lesson_ends_when_deleted_or_when_main_falls_behind_base(tmp_
     journal = {"lessons": {"L1": {"n": 35, "avg_bps": 20.0, "t": 3.0}}}
     item = promote.propose(s, journal, NOW)
     promote.decide(s, item["id"], True, NOW)
-    assert promote.active(s)["lessons"] == {"L1"}
+    assert promote.active(s)["lessons"] == {"L1": "skip late orb"}
 
     data = s.paper_ledger_path.parent
     behind = [0.0] + [-0.01, -0.012] * 6  # main loses about 1% a day more than base, 12 days running
     _equity(data / "equity_history.jsonl", behind)
     _equity(data / "variants" / "base" / "equity_history.jsonl", [0.0] * 13)
     assert promote.review(s, NOW + timedelta(days=5))[0]["why_ended"].startswith("main fell behind the base account over the 12 days")
-    assert promote.active(s)["lessons"] == set()
+    assert promote.active(s)["lessons"] == {}
 
     again = promote.propose(s, journal, NOW + timedelta(days=40))  # past the 30-day block
     promote.decide(s, again["id"], True, NOW + timedelta(days=40))
-    learn._save(learn.learning_dir(s), [])  # the guard deleted it
-    assert promote.review(s, NOW + timedelta(days=41))[0]["why_ended"] == "the lesson was deleted"
+    _lesson(s, NOW - timedelta(days=40), "approve every orb after 15:00")  # same id, words nobody approved
+    assert promote.active(s)["lessons"] == {"L1": "skip late orb"}  # the pipeline shows a lesson only while its text matches
+    assert promote.review(s, NOW + timedelta(days=41))[0]["why_ended"] == "the lesson was deleted or reworded"
+
+    third = promote.propose(s, journal, NOW + timedelta(days=80))
+    assert third["text"] == "approve every orb after 15:00"
+    _lesson(s, NOW - timedelta(days=40))
+    with pytest.raises(ValueError, match="reworded"):  # the card showed other words than the file now holds
+        promote.decide(s, third["id"], True, NOW + timedelta(days=80))
+    assert promote.review(s, NOW + timedelta(days=93)) == []
+    [lapsed] = promote.review(s, NOW + timedelta(days=94))  # 14 days unanswered
+    assert lapsed["status"] == "expired" and promote.propose(s, journal, NOW + timedelta(days=94))  # and it may come straight back
 
 
 def test_a_setting_promotion_writes_main_autopilot_and_undo_restores_it(tmp_path, monkeypatch):
@@ -161,7 +172,21 @@ def test_dashboard_shows_the_proposal_and_takes_the_yes(tmp_path):
 
         assert decide({"id": item["id"], "approve": True}, tok="wrong") == 403
         assert decide({"id": "nope", "approve": True}) == 400
-        assert decide({"id": item["id"], "approve": "yes"}) == 200  # only a real true approves
+        assert decide({"id": item["id"], "approve": "yes"}) == 400  # only a real true or false decides
+        assert decide({"id": item["id"], "approve": False}) == 200
         assert promote.load(s)[0]["status"] == "declined"
     finally:
         httpd.shutdown()
+
+
+def test_a_broken_promotions_file_or_lesson_reads_as_nothing(tmp_path):
+    s = _settings(tmp_path)
+    path = promote._path(s)
+    path.parent.mkdir(parents=True)
+    for bad in ('[]', '{"items": {"a": 1}}', '{"items": [{"kind": "bench"}, 7]}', '{"items": [', '{}'):
+        path.write_text(bad)
+        assert promote.load(s) == [] and promote.active(s) == {"bench": {}, "lessons": {}}
+    learn._save(learn.learning_dir(s), [{"id": "L1", "text": "x", "models": ["orb"]},  # no start date: never old enough
+                                        {"id": "L2", "text": "y", "models": ["orb"], "created": "2026-01-01T00:00:00"}])
+    good = {"n": 35, "avg_bps": 20.0, "t": 3.0}
+    assert [c["target"] for c in promote.candidates(s, {"lessons": {"L1": good, "L2": good}}, NOW)] == ["L2"]

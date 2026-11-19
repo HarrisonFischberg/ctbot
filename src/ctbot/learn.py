@@ -76,7 +76,7 @@ def journal(settings: Any, day: date, factory_report: dict[str, Any] | None = No
                        "models": _models(s.paper_ledger_path, day)}
     try:
         scores = json.loads(settings.ideas_path.with_name("idea_scores.json").read_text())
-        ideas = {k: scores.get(k) for k in ("generated_at", "scored", "summary", "calibration")}
+        ideas = {k: scores.get(k) for k in ("generated_at", "scored", "summary", "recent", "calibration")}
     except (OSError, ValueError):
         ideas = None
     if factory_report is None:
@@ -86,13 +86,13 @@ def journal(settings: Any, day: date, factory_report: dict[str, Any] | None = No
     fac = {"generated": factory_report.get("generated"), "n_candidates": factory_report.get("n_candidates"),
            "passed": len(factory_report.get("passed", [])), "live": factory_report.get("live", [])}
     return {"day": day.isoformat(), "written": datetime.now(UTC).isoformat(timespec="seconds"),
-            "books": books, "ideas": ideas, "factory": fac, "scoreboard": scoreboard((ideas or {}).get("summary") or {}),
+            "books": books, "ideas": ideas, "factory": fac, "scoreboard": scoreboard((ideas or {}).get("recent") or {}),
             "lessons": lesson_effects(s.ideas_path for name, s in _books(settings) if name in ("main", GUARD_BOOK))}
 
 
 def scoreboard(summary: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    """strategy -> {"n", "avg_bps", "p", "losing"} for the ideas Claude approved, from the idea
-    replay. `p` is how likely an average this low is if the strategy really breaks even; `losing`
+    """strategy -> {"n", "avg_bps", "p", "losing"} for the ideas Claude approved in the last
+    score_ideas.RECENT_DAYS, from the idea replay (recent only, so a benched strategy's old losses age out). `p` is how likely an average this low is if the strategy really breaks even; `losing`
     needs MIN_IDEAS approved ideas, a negative average and a p that survives Benjamini-Hochberg
     across every strategy tested, so one unlucky strategy among many is not called a loser."""
     from ctbot.research.validation import benjamini_hochberg
@@ -109,6 +109,8 @@ def lesson_effects(idea_files: Iterable[Path]) -> dict[str, dict[str, Any]]:
     (pipeline) records the verdict with and without lessons; where they differ, the replayed
     return of that idea is the lesson's effect: counted as is when the lesson made the bot buy,
     negated when it made the bot pass. Each (time, symbol) counts once across books.
+    shortcut: a changed verdict is credited to every lesson shown in that review, so lessons for the
+    same strategy share one record; show one lesson per review if they ever need telling apart.
     shortcut: only ideas with an exit plan replay (the intraday models), so a lesson that only ever
     changes swing-model verdicts shows n=0; replay swing ideas on daily bars when one matters."""
     from ctbot.research import bars as cache
@@ -124,9 +126,12 @@ def lesson_effects(idea_files: Iterable[Path]) -> dict[str, dict[str, Any]]:
         for ln in lines:
             if '"paired"' not in ln:
                 continue
-            idea = json.loads(ln)
-            pair = (idea.get("decision") or {}).get("paired") or {}
-            key = (idea["ts"], idea["symbol"])
+            try:
+                idea = json.loads(ln)
+                pair = (idea.get("decision") or {}).get("paired") or {}
+                key = (idea["ts"], idea["symbol"])
+            except (ValueError, KeyError, AttributeError):
+                continue  # a half-written line (crash mid-append) must not stop the journal
             if pair.get("take") == pair.get("plain_take") or key in seen:
                 continue
             sym = idea["symbol"]
@@ -205,7 +210,9 @@ won on. A lesson about a strategy whose ideas are already all rejected, and lose
 lesson_effects shows what each current lesson did to the verdicts it changed (positive avg_bps is
 good). Update or delete lessons the newer data contradicts. Never write about position size, stops, loss limits, leverage, spend
 or live trading: those are fixed rules outside your remit. Returning no edits is a good answer.
-Keep each lesson's text under 300 characters, updates included: longer text is refused."""
+Keep each lesson's text under 300 characters, updates included: longer text is refused. Rewording a
+lesson restarts its test from zero (its measured effect belongs to the old wording), so do not update
+a lesson only to refresh the numbers in it: put fresh numbers in `evidence` and keep the text."""
 
 EDITS_SCHEMA = {
     "type": "object", "additionalProperties": False, "required": ["edits"],
@@ -325,9 +332,12 @@ def apply(folder: Path, edits: list[dict[str, Any]], latest: dict[str, Any],
         if why is None:
             lessons = [x for x in lessons if x["id"] != edit.get("id")]
             if edit["action"] != "delete":
-                after = {"id": edit["id"] if edit["action"] == "update" else uuid.uuid4().hex[:8], "text": edit["text"].strip(),
+                # New wording is a new lesson: a fresh id and start date, so the verdicts the old text
+                # changed (lesson_effects) and any promotion of it never carry over to text nobody tested.
+                same = before is not None and before["text"] == edit["text"].strip()
+                after = {"id": before["id"] if same else uuid.uuid4().hex[:8], "text": edit["text"].strip(),
                          "models": sorted(set(edit["models"])), "evidence": (edit.get("evidence") or "")[:500],
-                         "created": (before or {}).get("created", ts), "updated": ts}
+                         "created": before.get("created", ts) if same else ts, "updated": ts}
                 lessons.append(after)
         rows.append(_append(folder, {"event": uuid.uuid4().hex[:8], "ts": ts, "trigger": trigger,
                                      "action": edit.get("action"), "before": before, "after": after,

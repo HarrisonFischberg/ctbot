@@ -758,7 +758,8 @@ def _run_cycle(c: Components, state: AccountState, now: datetime):
 
             # the learner book sees every lesson; main sees the ones Harold approved for it (promote)
             allowed = None if c.settings.review_lessons else promote.active(c.settings)["lessons"]
-            shown = [x for x in lessons_for(c.settings.lessons_file, buyers) if allowed is None or x["id"] in allowed]
+            shown = [x for x in lessons_for(c.settings.lessons_file, buyers)
+                     if x.get("id") and (allowed is None or allowed.get(x["id"]) == x["text"])]
             if shown:
                 # Reviewed twice, with and without the lessons, so each lesson is judged on the verdicts it
                 # changed (learn.lesson_effects). The plain review is the one the other books share.

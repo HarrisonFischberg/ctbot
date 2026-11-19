@@ -75,7 +75,11 @@ def test_apply_logs_a_hash_chain_and_rollback_restores(tmp_path):
     lid = lessons[0]["id"]
     up = learn.apply(tmp_path, [{"action": "update", "id": lid, "text": "orb: stricter after 15:00",
                                   "models": ["orb"], "evidence": "orb 20 closed"}], LATEST)[0]
-    assert next(x for x in learn.load_lessons(tmp_path) if x["id"] == lid)["text"] == "orb: stricter after 15:00"
+    assert up["after"]["id"] != lid and up["after"]["created"] == up["ts"]  # new words are a new lesson, tested from zero
+    assert [x["text"] for x in learn.load_lessons(tmp_path) if x["id"] in (lid, up["after"]["id"])] == ["orb: stricter after 15:00"]
+    same = learn.apply(tmp_path, [{"action": "update", "id": up["after"]["id"], "text": "orb: stricter after 15:00",
+                                   "models": ["orb"], "evidence": "orb 21 closed"}], LATEST)[0]
+    assert same["after"]["id"] == up["after"]["id"]  # fresh evidence alone keeps the lesson and its record
     learn.rollback(tmp_path, up["event"])
     assert next(x for x in learn.load_lessons(tmp_path) if x["id"] == lid)["text"] == lessons[0]["text"]
     learn.rollback(tmp_path, rows[0]["event"])  # undo the create

@@ -44,7 +44,10 @@ MIN_FLIPS, LESSON_MIN_AGE_DAYS, MAX_PROMOTED_LESSONS = 30, 28, 3
 SETTING_MIN_DAYS = 40
 BENCH_DAYS, COOL_DAYS, BLOCK_DAYS = 30, 14, 30
 CHECK_MIN_DAYS, CHECK_T = 10, -2.0
+PROPOSAL_DAYS = 14  # an unanswered proposal lapses, so stale evidence is never approved and the queue moves
 SETTING_KEYS = ("max_loss_pct", "giveback_pct", "min_confidence")
+KEYS = {"id", "kind", "target", "title", "evidence", "status", "proposed", "decided", "ended", "why_ended", "undo"}
+STATUSES = {"proposed", "active", "declined", "undone", "expired"}
 
 
 def _path(settings: Any) -> Path:
@@ -52,9 +55,12 @@ def _path(settings: Any) -> Path:
 
 
 def load(settings: Any) -> list[dict[str, Any]]:
+    """The promotion items; a missing, half-written or hand-broken file reads as none (main trades every cycle
+    through this, so it must never raise)."""
     try:
-        return json.loads(_path(settings).read_text()).get("items", [])
-    except (OSError, ValueError):
+        items = json.loads(_path(settings).read_text())["items"]
+        return [x for x in items if isinstance(x, dict) and KEYS <= x.keys() and x["status"] in STATUSES]
+    except (OSError, ValueError, KeyError, TypeError):
         return []
 
 
@@ -67,10 +73,10 @@ def _save(settings: Any, items: list[dict[str, Any]]) -> None:
 
 
 def active(settings: Any) -> dict[str, Any]:
-    """What main applies right now: {"bench": {strategy: reason}, "lessons": {lesson ids}}."""
+    """What main applies right now: {"bench": {strategy: reason}, "lessons": {lesson id: the approved text}}."""
     live = [x for x in load(settings) if x["status"] == "active"]
     return {"bench": {x["target"]: f"benched by the learning loop: {x['evidence']}" for x in live if x["kind"] == "bench"},
-            "lessons": {x["target"] for x in live if x["kind"] == "lesson"}}
+            "lessons": {x["target"]: x.get("text") for x in live if x["kind"] == "lesson"}}
 
 
 def _log(settings: Any, action: str, item: dict[str, Any], now: datetime, why: str = "") -> None:
@@ -103,11 +109,10 @@ def candidates(settings: Any, journal: dict[str, Any], now: datetime) -> list[di
     effects = {k: e for k, e in (journal.get("lessons") or {}).items() if e["n"] >= MIN_FLIPS and e.get("t") is not None}
     keep = benjamini_hochberg({k: NormalDist().cdf(-e["t"]) for k, e in effects.items()}) if effects else {}
     for x in learn.load_lessons(learn.learning_dir(settings)):
-        e = effects.get(x["id"])
-        old = now - datetime.fromisoformat(x["created"]) >= timedelta(days=LESSON_MIN_AGE_DAYS)
-        if e and keep[x["id"]] and e["avg_bps"] > 0 and old:
-            out.append({"kind": "lesson", "target": x["id"], "title": f'Show the main account\'s reviewer this lesson: "{x["text"]}"',
-                        "evidence": f"in the learner book it changed {e['n']} verdicts and they came out "
+        e = effects.get(x.get("id"))
+        if e and keep[x["id"]] and e["avg_bps"] > 0 and _age(x.get("created"), now) >= timedelta(days=LESSON_MIN_AGE_DAYS):
+            out.append({"kind": "lesson", "target": x["id"], "text": x["text"], "title": f'Show the main account\'s reviewer this lesson: "{x["text"]}"',
+                        "evidence": f"it changed {e['n']} verdicts and they came out "
                                     f"{e['avg_bps'] / 100:+.2f}% better each"})
 
     cfg = autopilot.load(settings.autopilot_path)
@@ -126,8 +131,13 @@ def candidates(settings: Any, journal: dict[str, Any], now: datetime) -> list[di
     return out
 
 
-def _when(x: dict[str, Any], key: str) -> datetime:
-    return datetime.fromisoformat(x[key])
+def _age(ts: str | None, now: datetime) -> timedelta:
+    """now - ts; zero for a missing or unreadable time, so nothing passes an age bar by accident."""
+    try:
+        t = datetime.fromisoformat(ts or "")
+        return now - (t if t.tzinfo else t.replace(tzinfo=UTC))
+    except ValueError:
+        return timedelta(0)
 
 
 def propose(settings: Any, journal: dict[str, Any], now: datetime) -> dict[str, Any] | None:
@@ -135,10 +145,11 @@ def propose(settings: Any, journal: dict[str, Any], now: datetime) -> dict[str, 
     items = load(settings)
     if any(x["status"] == "proposed" for x in items):
         return None
-    if any(x["status"] != "declined" and x["decided"] and now - _when(x, "decided") < timedelta(days=COOL_DAYS) for x in items):
+    if any(x["status"] != "declined" and x["decided"] and _age(x["decided"], now) < timedelta(days=COOL_DAYS) for x in items):
         return None
+    # a lapsed proposal (never decided) may come straight back with fresh evidence; everything else waits
     block = {(x["kind"], x["target"]) for x in items if x["status"] == "active"
-             or (x["status"] in ("declined", "undone") and now - _when(x, "ended") < timedelta(days=BLOCK_DAYS))}
+             or (x["decided"] and x["ended"] and _age(x["ended"], now) < timedelta(days=BLOCK_DAYS))}
     lessons_full = len(active(settings)["lessons"]) >= MAX_PROMOTED_LESSONS
     for c in candidates(settings, journal, now):
         if (c["kind"], c["target"]) in block or (c["kind"] == "lesson" and lessons_full):
@@ -163,8 +174,13 @@ def decide(settings: Any, pid: str, approve: bool, now: datetime) -> dict[str, A
     if not approve:
         item.update(status="declined", decided=ts, ended=ts, why_ended="declined")
     else:
+        if item["kind"] == "lesson" and _lesson_text(settings, item["target"]) != item.get("text"):
+            raise ValueError("that lesson was reworded or deleted since it was proposed: decline it")
         if item["kind"] == "setting":
-            book = next(v for v in variants.load(settings.strategies_file.with_name(variants.CONFIG.name)) if v.name == item["target"])
+            book = next((v for v in variants.load(settings.strategies_file.with_name(variants.CONFIG.name))
+                         if v.name == item["target"]), None)
+            if book is None:
+                raise ValueError(f"the {item['target']} test account no longer exists: decline it")
             cfg = autopilot.load(settings.autopilot_path)
             new = {k: getattr(book.autopilot, k) for k in SETTING_KEYS}
             item["undo"] = {"before": {k: getattr(cfg, k) for k in SETTING_KEYS}, "after": new}
@@ -173,6 +189,10 @@ def decide(settings: Any, pid: str, approve: bool, now: datetime) -> dict[str, A
     _save(settings, items)
     _log(settings, "promote" if approve else "decline", item, now)
     return item
+
+
+def _lesson_text(settings: Any, lid: str) -> str | None:
+    return next((x.get("text") for x in learn.load_lessons(learn.learning_dir(settings)) if x.get("id") == lid), None)
 
 
 def _end(settings: Any, item: dict[str, Any], status: str, why: str, now: datetime) -> None:
@@ -194,18 +214,24 @@ def _main_vs_base(settings: Any, since: str) -> tuple[int, float]:
 
 
 def review(settings: Any, now: datetime) -> list[dict[str, Any]]:
-    """End the active promotions that ran out or stopped paying; returns the ones ended."""
+    """End the active promotions that ran out or stopped paying, and the proposal nobody answered;
+    returns the ones ended.
+    shortcut: the main-vs-base test reruns nightly on overlapping data and ends every active promotion at once,
+    so a harmless change is undone more often than t < -2 suggests (it errs toward undoing); give each
+    promotion one fixed check date if good changes keep getting undone."""
     items = load(settings)
-    lessons = {x["id"] for x in learn.load_lessons(learn.learning_dir(settings))}
     ended = []
     for x in items:
+        if x["status"] == "proposed" and _age(x["proposed"], now) >= timedelta(days=PROPOSAL_DAYS):
+            _end(settings, x, "expired", f"not answered in {PROPOSAL_DAYS} days", now)
+            ended.append(x)
         if x["status"] != "active":
             continue
         days, t = _main_vs_base(settings, x["decided"][:10])
-        if x["kind"] == "bench" and now - _when(x, "decided") >= timedelta(days=BENCH_DAYS):
+        if x["kind"] == "bench" and _age(x["decided"], now) >= timedelta(days=BENCH_DAYS):
             _end(settings, x, "expired", f"{BENCH_DAYS} days are up: it trades again and must re-earn a bench", now)
-        elif x["kind"] == "lesson" and x["target"] not in lessons:
-            _end(settings, x, "undone", "the lesson was deleted", now)
+        elif x["kind"] == "lesson" and _lesson_text(settings, x["target"]) != x.get("text"):
+            _end(settings, x, "undone", "the lesson was deleted or reworded", now)
         elif days >= CHECK_MIN_DAYS and t < CHECK_T:
             _end(settings, x, "undone", f"main fell behind the base account over the {days} days since (t {t:.1f})", now)
         else:

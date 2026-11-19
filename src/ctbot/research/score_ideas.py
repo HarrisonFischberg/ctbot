@@ -24,6 +24,9 @@ from ctbot.research import bars as cache
 from ctbot.research.backtest import cost_bps
 
 
+RECENT_DAYS = 60  # the learning loop's scoreboard: long enough for 30+ ideas, short enough to forget
+
+
 def _plan(idea: dict[str, Any]) -> dict[str, Any] | None:
     for s in idea.get("signals", []):
         if s.get("direction") == "long" and (s.get("evidence") or {}).get("exit_at"):
@@ -130,8 +133,10 @@ def run(ideas_path: Path, out: Path, fetch=None) -> dict[str, Any]:
             pending += 1
         else:
             scores.append(s)
-    report = {"generated_at": datetime.now(timezone.utc).isoformat(), "scored": len(scores),
-              "pending": pending, "summary": summarize(scores), "calibration": calibration(scores), "scores": scores[-500:]}
+    now = datetime.now(timezone.utc)
+    recent = [s for s in scores if datetime.fromisoformat(s["ts"]) >= now - timedelta(days=RECENT_DAYS)]
+    report = {"generated_at": now.isoformat(), "scored": len(scores), "pending": pending, "summary": summarize(scores),
+              "recent": summarize(recent), "calibration": calibration(scores), "scores": scores[-500:]}
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2, default=str))
     return report

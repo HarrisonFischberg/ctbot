@@ -179,7 +179,9 @@ def test_a_review_with_lessons_is_paired_with_the_same_review_without(tmp_path):
     promos = tmp_path / "learning" / "promotions.json"
     promos.parent.mkdir()
     for day, status, expect in ((1, "proposed", None), (2, "active", ["L1"])):
-        promos.write_text(json.dumps({"items": [{"kind": "lesson", "target": "L1", "status": status, "evidence": ""}]}))
+        promos.write_text(json.dumps({"items": [{
+            "id": "p1", "kind": "lesson", "target": "L1", "text": "skip it", "title": "", "evidence": "", "status": status,
+            "proposed": NOW.isoformat(), "decided": None, "ended": None, "why_ended": None, "undo": None}]}))
         ideas.clear()
         run_cycle(c, state, NOW + timedelta(days=day))  # a setup is reviewed once a day
         assert (ideas[0]["decision"].get("paired") or {}).get("lessons") == expect
