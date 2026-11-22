@@ -390,7 +390,7 @@ def make_handler(settings: Settings, port: int, assistant_client=None):
         log.info("autopilot: %s, max loss %.0f%%, give-back %.0f%%, Claude floor %.0f%%", "on" if cfg.enabled else "off",
                  cfg.max_loss_pct * 100, cfg.giveback_pct * 100, cfg.min_confidence * 100)
         return 200, {"ok": True, "enabled": cfg.enabled, "max_loss_pct": cfg.max_loss_pct, "giveback_pct": cfg.giveback_pct,
-                     "min_confidence": cfg.min_confidence}
+                     "min_confidence": cfg.min_confidence, "max_drawdown_pct": cfg.max_drawdown_pct}
 
     def decide_promotion(body: dict) -> tuple[int, dict]:
         from ctbot import promote

@@ -1045,7 +1045,8 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
           <button class="info" type="button" title="Once a stock rises, the bot sells it if it falls this much from its highest price" aria-label="About give back from high" data-explain="give"><svg class="ico"><use href="#i-info"/></svg></button></label>
         <label class="ap-row" style="display:none">How sure Claude must be <select class="sel" id="apConf" required></select>
           <button class="info" type="button" title="Lower means more buys, including ideas Claude is less sure of. Higher means fewer buys, only ideas Claude is surer of." aria-label="About how sure Claude must be" data-explain="conf"><svg class="ico"><use href="#i-info"/></svg></button></label>
-        <p class="ap-note">The bot sets its own stop and profit-take levels every night. There is nothing to choose here.</p>
+        <label class="ap-row wide">Set your max drawdown before reconsideration <select class="sel" id="apDd"><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option><option value="25">25%</option><option value="30">30%</option><option value="35">35%</option><option value="40">40%</option><option value="50">50%</option></select></label>
+        <p class="ap-note">The bot sets its own stop and profit-take levels every night. This is the only risk setting: if the account falls this far below the money you put in, the bot stops buying and tells you.</p>
         <button class="btn solid big" type="submit" id="apSave" style="display:none">Save rules</button>
       </form>
       <div class="ap-div"></div>
@@ -1656,7 +1657,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     if (TM.qqq_gate === false) alerts.push(["warn", "△", "Buys can happen while the Nasdaq is in a downtrend."]);
     if (!S.bot.running) alerts.push(["warn", "△", "The bot is off, so nothing trades. Start it in Terminal with ./run_ctbot.sh."]);
     if (S.halted) alerts.push(["warn", "△", "All strategies are paused: no new buys. Stops and sells still run. Resume them on Autopilot."]);
-    if (a.kill_switch) alerts.push(["crit", "!", `Emergency stop is on: the account fell ${pct(S.limits.max_total_drawdown_pct, 0)} or more from its high, so the bot won't buy anything. To let it buy again, use Clear emergency stop on Autopilot. Stops and sells keep running either way.`]);
+    if (a.kill_switch) alerts.push(["crit", "!", `Emergency stop is on: ${a.below_floor ? `the account is down ${pct(MDD(), 0)} or more from the money you put in (your max drawdown)` : "it was tripped earlier and has not been cleared"}, so the bot won't buy anything. To let it buy again, use Clear emergency stop on Autopilot. Stops and sells keep running either way.`]);
     if (S.live_trading_enabled) alerts.push(["crit", "!", "Real-money trading is switched on (LIVE_TRADING_ENABLED is true)."]);
     if (m.data_error) alerts.push(["warn", "△", "Can't get stock prices right now: " + m.data_error]);
     const pf = S.preflight || {};
@@ -1681,7 +1682,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     const a = S.account_summary, L = S.limits;
     put($("pvBig"), `<div class="val">${usd(a.equity)}</div><div class="pv-sub">
       <div title="The bot stops buying for the day at −${pct(L.max_daily_loss_pct, 0)}"><b class="${dir(a.day_pnl)}">${sgnUsd(a.day_pnl)} (${sgnPct(a.day_pnl_pct)})</b><span>Today</span></div>
-      <div title="Down from its best of ${usd(a.peak_equity)}. The bot stops buying at −${pct(L.max_total_drawdown_pct, 0)}"><b class="${a.drawdown_pct < -1e-9 ? "down" : "flat"}">${sgnPct(a.drawdown_pct)}</b><span>Drawdown</span></div>
+      <div title="Down from its best of ${usd(a.peak_equity)}. The bot stops buying at ${usd(a.starting_capital * (1 - MDD()), 0)}"><b class="${a.drawdown_pct < -1e-9 ? "down" : "flat"}">${sgnPct(a.drawdown_pct)}</b><span>Drawdown</span></div>
       <div title="Since you started with ${usd(a.starting_capital, 0)}"><b class="${dir(a.total_pnl)}">${sgnUsd(a.total_pnl)} (${sgnPct(a.total_pnl / a.starting_capital)})</b><span>Since you started</span></div></div>`);
   }
   function renderAlloc() {
@@ -2016,7 +2017,7 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     const L = S.limits, rows = [
       ["Most in any one stock", pct(L.max_position_pct, 0) + " of your money"], ["Most stocks held at once", L.max_open_positions],
       ["Practice money the bot can use", usd(L.max_trading_capital, 0)], ["Stops buying for the day if down", pct(L.max_daily_loss_pct, 0)],
-      ["Stops buying if down from its best", pct(L.max_total_drawdown_pct, 0)], ["Same-day buy-and-sells allowed (5 days)", L.pdt_rule ? L.max_day_trades_5d : "No limit"], ["Borrowing (practice money)", L.paper_margin > 1 ? `up to ${L.paper_margin}x your account value` : "None: cash only"], null,
+      ["Stops buying if down from the money put in", pct(MDD(), 0)], ["Same-day buy-and-sells allowed (5 days)", L.pdt_rule ? L.max_day_trades_5d : "No limit"], ["Borrowing (practice money)", L.paper_margin > 1 ? `up to ${L.paper_margin}x your account value` : "None: cash only"], null,
       ["Usual stop-loss (sells if a stock falls)", "−" + pct(L.default_stop_loss_pct, 0)], ["Largest stop-loss allowed", "−" + pct(L.max_stop_loss_pct, 0)],
       ["Skips if buy/sell price gap is over", pct(L.max_spread_pct, 1)], ["Claude must be at least", pct(L.min_claude_confidence, 0) + " sure to buy"],
       ["Skips stocks priced under", usd(L.min_share_price)], ["Skips stocks that trade less than", "$" + (L.min_avg_dollar_volume / 1e6).toFixed(0) + "M a day"],
@@ -2751,8 +2752,13 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
     put(sel, all.map((o) => `<option value="${o}">${o}%</option>`).join("")); sel.value = String(v);
   }
   const DEC_ICON = { bought: ["good", "check"], rec: ["good", "star"], watch: ["", "eye"], no: ["bad", "x"], blocked: ["bad", "ban"] };
+  const MDD = () => (S.autopilot || {}).max_drawdown_pct || 0.25;  // the owner's max drawdown before reconsideration
   function renderAutopilot() {
     const A = S.autopilot; if (!A) return;
+    const dd = String(Math.round(MDD() * 100));
+    if (![...$("apDd").options].some((o) => o.value === dd)) $("apDd").add(new Option(dd + "%", dd));  // a hand-edited value off the list
+    if (!apDirty) $("apDd").value = dd;
+    $("apDd").disabled = !canTrade();
     if (!apDirty) {
       $("apOn").checked = A.enabled;
       setSel($("apLoss"), +(A.max_loss_pct * 100).toFixed(2), [1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20, 25]);
@@ -2832,15 +2838,16 @@ body[data-tab="trading"] .card > h2::before { content: none !important; }  /* Au
   }
   ["apLoss", "apGive", "apConf"].forEach((id) => $(id).addEventListener("input", () => (apDirty = true)));
   $("apOn").addEventListener("change", () => { apDirty = true; $("apForm").requestSubmit(); });  // the switch saves at once
+  $("apDd").addEventListener("change", () => { apDirty = true; $("apForm").requestSubmit(); });  // saves at once
   $("apForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const body = { enabled: $("apOn").checked };  // the bot sets the levels itself (ctbot.levels); the page only switches it on or off
+    const body = { enabled: $("apOn").checked, max_drawdown_pct: +$("apDd").value / 100 };  // the bot sets the levels itself (ctbot.levels)
     const [ok, j] = await api("/api/autopilot", body);
     if (!ok) { apDirty = false; renderAutopilot(); return toast(j.error || "could not save", true); }
     apDirty = false;
-    Object.assign(S.autopilot, { enabled: j.enabled, max_loss_pct: j.max_loss_pct, giveback_pct: j.giveback_pct, min_confidence: j.min_confidence });
+    Object.assign(S.autopilot, { enabled: j.enabled, max_loss_pct: j.max_loss_pct, giveback_pct: j.giveback_pct, min_confidence: j.min_confidence, max_drawdown_pct: j.max_drawdown_pct });
     renderAutopilot();
-    toast(j.enabled ? `Autopilot on: max loss ${pct(j.max_loss_pct, 1)}, give-back ${pct(j.giveback_pct, 1)}, Claude must be ${pct(j.min_confidence, 0)} sure. The bot picks it up next cycle.` : "Autopilot off");
+    toast(`Saved: Autopilot ${j.enabled ? "on" : "off"}, max drawdown ${pct(j.max_drawdown_pct, 0)} under the money put in. The bot picks it up next cycle.`);
   });
   let tmDirty = false;  // don't overwrite the trading-modes form while you're editing it
   const TM_NAMES = { qqq_gate: "QQQ as market gauge", aggressive: "Aggressive day trading", overnight: "Overnight holds",

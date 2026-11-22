@@ -59,7 +59,9 @@ class AccountState:
     entry_dates: list[date] = field(default_factory=list)
     # Money put in (starting capital + top-ups), set by the paper bot each cycle; 0 = unknown.
     paid_in: float = 0.0
-    # Equity is at or under reevaluate_below_pct of paid_in; persisted so the stop latches once per fall.
+    # The owner's max drawdown before reconsideration (autopilot.json), set with paid_in; 0 = unknown.
+    max_drawdown_pct: float = 0.0
+    # Equity is max_drawdown_pct or more under paid_in; persisted so the stop latches once per fall.
     below_floor: bool = False
     floor_crossed: bool = False  # set by refresh on a new fall; the paper loop sends the notice and clears it
 
@@ -154,6 +156,10 @@ class RiskManager:
             adv = min(adv, o.get("min_avg_dollar_volume", adv))
         return price, adv
 
+    @staticmethod
+    def owner_line(state: AccountState) -> bool:
+        return state.paid_in > 0 and state.max_drawdown_pct > 0
+
     def refresh(self, state: AccountState, today: date) -> None:
         """Call at the start of every cycle, after state.equity is current."""
         state.peak_equity = max(state.peak_equity, state.equity)
@@ -161,15 +167,17 @@ class RiskManager:
             state.day_start_date = today
             state.day_start_equity = state.equity
             state.model_losing_streak = {}  # paused models get a fresh start each day
-        if state.equity <= state.peak_equity * (1 - self.limits.max_total_drawdown_pct):
-            state.kill_switch = True
-        # The re-think floor: falling through it stops new buys once. After the owner clears the
-        # stop it stays clear until equity has been back above the floor and falls through again.
-        if state.paid_in > 0:  # unknown (test books): leave the saved latch alone
-            below = 0 < state.equity <= self.limits.reevaluate_below_pct * state.paid_in
+        # The main paper account stops on the owner's line: max_drawdown_pct under the money put in.
+        # Falling through it stops new buys once; after he clears the stop it stays clear until equity
+        # has been back above the line and falls through again. Books without that line (test books,
+        # unknown money put in) keep the fall-from-the-high stop.
+        if self.owner_line(state):
+            below = 0 < state.equity <= state.paid_in * (1 - state.max_drawdown_pct)
             if below and not state.below_floor:
                 state.kill_switch = state.floor_crossed = True
             state.below_floor = below
+        elif state.equity <= state.peak_equity * (1 - self.limits.max_total_drawdown_pct):
+            state.kill_switch = True
         cutoff = today - timedelta(days=7)
         state.day_trade_dates = [d for d in state.day_trade_dates if d > cutoff]
         state.entry_dates = [d for d in state.entry_dates if d == today]
@@ -437,7 +445,7 @@ class RiskManager:
             reasons.append("max_open_positions")
         if state.equity <= state.day_start_equity * (1 - L.max_daily_loss_pct):
             reasons.append("daily_loss_limit")
-        if state.equity <= state.peak_equity * (1 - L.max_total_drawdown_pct):
+        if not self.owner_line(state) and state.equity <= state.peak_equity * (1 - L.max_total_drawdown_pct):
             reasons.append("max_drawdown_kill")
         min_price, min_adv = self.liquidity_limits(candidate)
         if quote is None:

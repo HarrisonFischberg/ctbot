@@ -325,7 +325,8 @@ def binding_limits(state: dict[str, Any], settings: Settings, ideas: dict[str, A
     if not state["market"]["open"]:
         out.append(f"market closed (next open {state['market']['next_open']})")
     if a["kill_switch"]:
-        out.append(f"kill switch is on (drawdown {a['drawdown_pct']:.1%} vs {L['max_total_drawdown_pct']:.0%} limit)")
+        out.append("kill switch is on (" + ("at the owner's max drawdown under the money put in" if a.get("below_floor")
+                   else "tripped earlier; the owner clears it on the dashboard") + ")")
     if a["day_pnl_pct"] <= -L["max_daily_loss_pct"]:
         out.append(f"daily loss halt: down {a['day_pnl_pct']:.1%} today vs {L['max_daily_loss_pct']:.0%} limit")
     if open_n >= L["max_open_positions"]:

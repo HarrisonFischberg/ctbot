@@ -303,7 +303,8 @@ def _autopilot(settings: Settings, strategies: list[dict[str, Any]], fills: list
                "systematic": s["name"].startswith("trend_core"), "configured_mode": s["mode"],
                **verdicts[s["name"]]} for s in enabled]
     return {"enabled": cfg.enabled, "max_loss_pct": cfg.max_loss_pct, "giveback_pct": cfg.giveback_pct,
-            "min_confidence": cfg.min_confidence, "limits": autopilot.LIMITS, "models": models}
+            "min_confidence": cfg.min_confidence, "max_drawdown_pct": cfg.max_drawdown_pct,
+            "limits": autopilot.LIMITS, "models": models}
 
 
 def _trading_modes(settings: Settings, fills: list[dict[str, Any]], day_pnl: float, today) -> dict[str, Any]:
@@ -485,6 +486,7 @@ def build_state(
             "day_pnl": equity - day_start,
             "day_pnl_pct": (equity / day_start - 1) if day_start else 0.0,
             "kill_switch": bool(risk_state.get("kill_switch", False)),
+            "below_floor": bool(risk_state.get("below_floor", False)),
             "day_trades_5d": len(day_trades),
             "deployed": max(0.0, equity - cash),
             "buying_power": buying_power(cash, equity, market_value, settings.paper_margin),
